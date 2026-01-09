@@ -60,7 +60,7 @@ export default async function handler(req, res) {
       const payout = order.payout || {};
       
       const sku = product.styleId || product.sku || variant.styleId || order.styleId || '';
-      const size = variant.size || variant.shoeSize || order.size || order.variantSize || '';
+      const size = variant.size || variant.shoeSize || variant.sizeUS || product.size || order.size || order.variantSize || order.shoeSize || variant.value || '';
       const name = product.productName || product.title || product.name || order.productName || 'Unknown Product';
       
       // Build image URL from SKU
