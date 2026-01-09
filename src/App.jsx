@@ -4,7 +4,7 @@ export default function App() {
   const [page, setPage] = useState('dashboard');
   const [modal, setModal] = useState(null);
   const [year, setYear] = useState('2025');
-  const [csvImport, setCsvImport] = useState({ show: false, data: [], filteredData: [], year: '2026', month: 'all', preview: false });
+  const [csvImport, setCsvImport] = useState({ show: false, data: [], filteredData: [], year: 'all', month: 'all', preview: false, headers: [] });
   const [purchases, setPurchases] = useState(() => {
     const saved = localStorage.getItem('flipledger_purchases');
     return saved ? JSON.parse(saved) : [];
@@ -84,28 +84,26 @@ export default function App() {
       });
       const data = await response.json();
       if (data.sales && data.sales.length > 0) {
-        // Filter out duplicates - check against existing sales AND pending costs
-        const existingOrderIds = new Set([
-          ...sales.filter(s => s.platform === 'StockX').map(s => s.orderNumber || s.sku + s.saleDate),
-          ...pendingCosts.map(s => s.orderNumber || s.sku + s.saleDate)
+        // Filter out duplicates - check pending (by id) AND confirmed sales (by orderId)
+        const existingIds = new Set([
+          ...pendingCosts.map(p => p.id),
+          ...sales.map(s => s.orderId || s.id) // orderId is the original order number
         ]);
         
-        const newSales = data.sales.filter(s => {
-          const orderId = s.orderNumber || s.sku + s.saleDate;
-          return !existingOrderIds.has(orderId);
-        });
+        const newSales = data.sales.filter(s => !existingIds.has(s.id));
         
         if (newSales.length > 0) {
-          setPendingCosts(prev => [...prev, ...newSales.map(s => ({
-            ...s,
-            id: 'stockx_' + (s.orderNumber || s.id) + '_' + Date.now()
-          }))]);
-          alert(`Synced ${newSales.length} NEW sales from ${year} (${data.sales.length - newSales.length} duplicates skipped)`);
+          setPendingCosts(prev => [...prev, ...newSales]);
+          if (data.sales.length - newSales.length > 0) {
+            alert(`Synced ${newSales.length} NEW sales from ${year}! (${data.sales.length - newSales.length} already existed)`);
+          } else {
+            alert(`Synced ${newSales.length} sales from ${year}!`);
+          }
         } else {
-          alert(`No new sales to sync. ${data.sales.length} sales already exist.`);
+          alert(`All ${data.sales.length} sales from ${year} already imported - nothing new to add.`);
         }
       } else {
-        alert(`No sales found for ${year}`);
+        alert(`No sales found on StockX for ${year}`);
       }
     } catch (error) {
       console.error('Failed to fetch StockX sales:', error);
@@ -210,7 +208,8 @@ export default function App() {
     const profit = sale.payout - costNum;
     setSales(prev => [...prev, { 
       ...sale, 
-      id: Date.now(), 
+      id: Date.now(),
+      orderId: sale.id, // KEEP original order number for deduplication!
       cost: costNum, 
       platform: channel,
       fees: sale.fees || (sale.salePrice - sale.payout),
@@ -232,9 +231,48 @@ export default function App() {
     const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
   };
 
+  // Parse date from various formats to YYYY-MM-DD
+  const parseDate = (dateStr) => {
+    if (!dateStr) return null;
+    const str = dateStr.trim();
+    
+    // Already YYYY-MM-DD format
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+      return str.substring(0, 10);
+    }
+    
+    // MM/DD/YYYY or M/D/YYYY format
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(str)) {
+      const parts = str.split('/');
+      const month = parts[0].padStart(2, '0');
+      const day = parts[1].padStart(2, '0');
+      const year = parts[2].substring(0, 4);
+      return `${year}-${month}-${day}`;
+    }
+    
+    // MM-DD-YYYY format
+    if (/^\d{1,2}-\d{1,2}-\d{4}/.test(str)) {
+      const parts = str.split('-');
+      const month = parts[0].padStart(2, '0');
+      const day = parts[1].padStart(2, '0');
+      const year = parts[2].substring(0, 4);
+      return `${year}-${month}-${day}`;
+    }
+    
+    // Try to parse with Date object as fallback
+    try {
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        return d.toISOString().substring(0, 10);
+      }
+    } catch {}
+    
+    return str.substring(0, 10);
+  };
+
   // CSV Import for StockX
   const handleCsvUpload = (e) => {
-    const file = e.target.files[0];
+    const file = e.target?.files?.[0] || e;
     if (!file) return;
     
     const reader = new FileReader();
@@ -243,31 +281,77 @@ export default function App() {
       const lines = text.split('\n');
       const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
       
+      // Debug: log headers to console
+      console.log('CSV Headers:', headers);
+      
       const parsed = [];
       for (let i = 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
-        // Handle CSV with commas inside quotes
-        const values = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
+        // Handle CSV with commas inside quotes - improved regex
+        const values = [];
+        let current = '';
+        let inQuotes = false;
+        for (const char of lines[i]) {
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === ',' && !inQuotes) {
+            values.push(current.trim());
+            current = '';
+          } else {
+            current += char;
+          }
+        }
+        values.push(current.trim());
+        
         const row = {};
         headers.forEach((h, idx) => {
           row[h] = values[idx] ? values[idx].replace(/"/g, '').trim() : '';
         });
-        if (row['Sale Date']) parsed.push(row);
+        
+        // Find the date field (try multiple possible names)
+        const dateField = row['Sale Date'] || row['SaleDate'] || row['Date'] || row['Order Date'] || row['Sold Date'] || '';
+        if (dateField) {
+          row['_parsedDate'] = parseDate(dateField);
+          row['_originalDate'] = dateField;
+          parsed.push(row);
+        }
       }
       
-      setCsvImport({ ...csvImport, show: true, data: parsed, preview: true });
+      // Log sample data for debugging
+      console.log('Sample parsed rows:', parsed.slice(0, 3));
+      console.log('Sample dates:', parsed.slice(0, 5).map(r => ({ original: r['_originalDate'], parsed: r['_parsedDate'] })));
+      
+      setCsvImport({ ...csvImport, show: true, data: parsed, headers: headers, preview: true });
     };
     reader.readAsText(file);
+  };
+
+  // Handle drag and drop
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const file = e.dataTransfer.files[0];
+    if (file && file.name.endsWith('.csv')) {
+      handleCsvUpload({ target: { files: [file] } });
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
   };
 
   const filterCsvData = () => {
     const { data, year: filterYear, month: filterMonth } = csvImport;
     return data.filter(row => {
-      const saleDate = row['Sale Date'] || '';
-      const rowYear = saleDate.substring(0, 4);
-      const rowMonth = saleDate.substring(5, 7);
+      const parsedDate = row['_parsedDate'] || '';
+      if (!parsedDate) return false;
       
-      if (rowYear !== filterYear) return false;
+      const rowYear = parsedDate.substring(0, 4);
+      const rowMonth = parsedDate.substring(5, 7);
+      
+      // "all" year means show everything
+      if (filterYear !== 'all' && rowYear !== filterYear) return false;
       if (filterMonth !== 'all' && rowMonth !== filterMonth) return false;
       return true;
     });
@@ -275,26 +359,41 @@ export default function App() {
 
   const importCsvSales = () => {
     const filtered = filterCsvData();
-    const newPending = filtered.map(row => ({
-      id: row['Order Number'] || row['Order Id'] || Date.now() + Math.random(),
-      orderNumber: row['Order Number'] || row['Order Id'] || '',
-      name: row['Item'] || row['Product Name'] || 'Unknown Item',
-      sku: row['Style'] || row['SKU'] || row['Style Code'] || '',
-      size: row['Sku Size'] || row['Size'] || row['Product Size'] || '',
-      salePrice: parseFloat(row['Price'] || row['Sale Price'] || row['Order Total']) || 0,
-      payout: parseFloat(row['Final Payout Amount'] || row['Payout'] || row['Total Payout']) || 0,
-      saleDate: row['Sale Date'] ? row['Sale Date'].substring(0, 10) : '',
-      platform: 'StockX',
-      source: 'csv'
-    }));
+    // Only grab what we actually USE - nothing extra
+    const newPending = filtered.map(row => {
+      const orderNum = row['Order Number'] || row['Order Id'] || row['Order #'] || '';
+      const salePrice = parseFloat((row['Price'] || row['Sale Price'] || row['Order Total'] || '0').replace(/[$,]/g, '')) || 0;
+      const payout = parseFloat((row['Final Payout Amount'] || row['Payout'] || row['Total Payout'] || '0').replace(/[$,]/g, '')) || 0;
+      
+      return {
+        id: orderNum || Date.now() + Math.random(),
+        name: row['Item'] || row['Product Name'] || 'Unknown Item',
+        sku: row['Style'] || row['SKU'] || row['Style Code'] || '',
+        size: String(row['Sku Size'] || row['Size'] || row['Product Size'] || ''),
+        salePrice,
+        payout,
+        saleDate: row['_parsedDate'] || ''
+      };
+    });
     
-    // Avoid duplicates by checking order number
-    const existingIds = new Set([...pendingCosts.map(p => p.id), ...sales.map(s => s.id)]);
+    // Avoid duplicates - check pending (by id) AND confirmed sales (by orderId)
+    const existingIds = new Set([
+      ...pendingCosts.map(p => p.id),
+      ...sales.map(s => s.orderId || s.id) // orderId is the original order number
+    ]);
     const uniqueNew = newPending.filter(p => !existingIds.has(p.id));
     
     setPendingCosts([...pendingCosts, ...uniqueNew]);
-    setCsvImport({ show: false, data: [], filteredData: [], year: '2026', month: 'all', preview: false });
-    alert(`Imported ${uniqueNew.length} sales! (${newPending.length - uniqueNew.length} duplicates skipped)`);
+    setCsvImport({ show: false, data: [], filteredData: [], year: 'all', month: 'all', preview: false, headers: [] });
+    
+    // Clear message based on what happened
+    if (uniqueNew.length === 0) {
+      alert(`All ${newPending.length} sales already imported - nothing new to add.`);
+    } else if (newPending.length - uniqueNew.length > 0) {
+      alert(`Imported ${uniqueNew.length} NEW sales! (${newPending.length - uniqueNew.length} already existed)`);
+    } else {
+      alert(`Imported ${uniqueNew.length} sales!`);
+    }
   };
 
   const printTaxPackage = () => {
@@ -1176,14 +1275,29 @@ export default function App() {
                     id="csv-upload"
                     style={{ display: 'none' }}
                   />
-                  <label htmlFor="csv-upload" style={{ display: 'block', padding: 40, border: `2px dashed ${c.border}`, borderRadius: 16, textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s' }}>
+                  <label 
+                    htmlFor="csv-upload" 
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                    style={{ display: 'block', padding: 40, border: `2px dashed ${c.border}`, borderRadius: 16, textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s' }}
+                  >
                     <div style={{ fontSize: 48, marginBottom: 12 }}>📤</div>
-                    <div style={{ fontWeight: 600, marginBottom: 4 }}>Click to upload StockX CSV</div>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>Click or drag CSV file here</div>
                     <div style={{ fontSize: 12, color: c.textMuted }}>Download from StockX → Seller Tools → Historical Sales</div>
                   </label>
                 </div>
               ) : (
                 <div>
+                  {/* Debug: Show detected headers */}
+                  {csvImport.headers && csvImport.headers.length > 0 && (
+                    <div style={{ marginBottom: 16, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 8, fontSize: 11 }}>
+                      <div style={{ color: c.textMuted, marginBottom: 4 }}>📋 Detected columns: {csvImport.headers.slice(0, 8).join(', ')}{csvImport.headers.length > 8 ? '...' : ''}</div>
+                      {csvImport.data[0] && (
+                        <div style={{ color: c.gold }}>📅 Sample date: "{csvImport.data[0]['_originalDate']}" → parsed as "{csvImport.data[0]['_parsedDate']}"</div>
+                      )}
+                    </div>
+                  )}
+                  
                   {/* Filter Controls */}
                   <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
                     <div style={{ flex: 1 }}>
@@ -1193,11 +1307,14 @@ export default function App() {
                         onChange={e => setCsvImport({ ...csvImport, year: e.target.value })}
                         style={{ ...inputStyle, padding: 12 }}
                       >
+                        <option value="all">All Years</option>
                         <option value="2026">2026</option>
                         <option value="2025">2025</option>
                         <option value="2024">2024</option>
                         <option value="2023">2023</option>
                         <option value="2022">2022</option>
+                        <option value="2021">2021</option>
+                        <option value="2020">2020</option>
                       </select>
                     </div>
                     <div style={{ flex: 1 }}>
@@ -1254,10 +1371,10 @@ export default function App() {
                         <tbody>
                           {filterCsvData().slice(0, 5).map((row, i) => (
                             <tr key={i} style={{ borderTop: `1px solid ${c.border}` }}>
-                              <td style={{ padding: '10px 12px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row['Item']}</td>
-                              <td style={{ padding: '10px 12px' }}>{row['Sku Size']}</td>
-                              <td style={{ padding: '10px 12px', textAlign: 'right', color: c.emerald }}>${row['Price']}</td>
-                              <td style={{ padding: '10px 12px', color: c.textMuted }}>{row['Sale Date']?.substring(0, 10)}</td>
+                              <td style={{ padding: '10px 12px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row['Item'] || row['Product Name'] || row['Product'] || 'Unknown'}</td>
+                              <td style={{ padding: '10px 12px' }}>{row['Sku Size'] || row['Size'] || '-'}</td>
+                              <td style={{ padding: '10px 12px', textAlign: 'right', color: c.emerald }}>${row['Price'] || row['Sale Price'] || '0'}</td>
+                              <td style={{ padding: '10px 12px', color: c.textMuted }}>{row['_parsedDate'] || '-'}</td>
                             </tr>
                           ))}
                           {filterCsvData().length > 5 && (
@@ -1275,7 +1392,7 @@ export default function App() {
                   {/* Action Buttons */}
                   <div style={{ display: 'flex', gap: 12 }}>
                     <button 
-                      onClick={() => setCsvImport({ show: false, data: [], filteredData: [], year: '2026', month: 'all', preview: false })}
+                      onClick={() => setCsvImport({ show: false, data: [], filteredData: [], year: 'all', month: 'all', preview: false, headers: [] })}
                       style={{ flex: 1, padding: 14, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', cursor: 'pointer', fontWeight: 600 }}
                     >
                       Cancel
