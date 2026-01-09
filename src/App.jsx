@@ -1208,16 +1208,45 @@ export default function App() {
                 CSV must have these columns: <strong style={{ color: '#fff' }}>Date, Name, SKU, Size, Cost</strong>
               </p>
               
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                <button onClick={downloadInventoryTemplate} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#fff', fontSize: 12, cursor: 'pointer' }}>
-                  📄 Download Template
-                </button>
-                
-                <label style={{ padding: '10px 20px', ...btnPrimary, fontSize: 12, cursor: 'pointer' }}>
-                  📤 Upload CSV
+              {/* Drag & Drop Zone */}
+              <div 
+                onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = c.gold; e.currentTarget.style.background = 'rgba(251,191,36,0.1)'; }}
+                onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = c.border; e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; }}
+                onDrop={(e) => { 
+                  e.preventDefault(); 
+                  e.currentTarget.style.borderColor = c.border; 
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
+                  const file = e.dataTransfer.files[0];
+                  if (file && file.name.endsWith('.csv')) {
+                    handleInventoryCsvUpload({ target: { files: [file] } });
+                  } else {
+                    alert('Please drop a CSV file');
+                  }
+                }}
+                style={{ 
+                  padding: 40, 
+                  border: `2px dashed ${c.border}`, 
+                  borderRadius: 12, 
+                  textAlign: 'center',
+                  background: 'rgba(255,255,255,0.02)',
+                  marginBottom: 16,
+                  transition: 'all 0.2s'
+                }}
+              >
+                <div style={{ fontSize: 36, marginBottom: 12 }}>📄</div>
+                <p style={{ margin: 0, fontSize: 14, color: c.textMuted }}>
+                  Drag & drop your CSV here
+                </p>
+                <p style={{ margin: '8px 0 0', fontSize: 12, color: c.textMuted }}>or</p>
+                <label style={{ display: 'inline-block', marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 12, cursor: 'pointer' }}>
+                  Browse Files
                   <input type="file" accept=".csv" onChange={handleInventoryCsvUpload} style={{ display: 'none' }} />
                 </label>
               </div>
+              
+              <button onClick={downloadInventoryTemplate} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#fff', fontSize: 12, cursor: 'pointer' }}>
+                📄 Download Template
+              </button>
             </div>
           )}
 
