@@ -809,7 +809,7 @@ export default function App() {
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '⬡' },
-    { id: 'inventory', label: 'Inventory', icon: '◫', count: purchases.length },
+    { id: 'inventory', label: 'Inventory', icon: '◫', count: purchases.filter(p => !p.sold).length },
     { id: 'sales', label: 'Sales', icon: '◈', count: filteredSales.length },
     { type: 'divider' },
     { id: 'expenses', label: 'Expenses', icon: '◧' },
