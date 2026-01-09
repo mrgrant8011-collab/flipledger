@@ -534,111 +534,247 @@ export default function App() {
         </div>
 
         {/* DASHBOARD */}
-        {page === 'dashboard' && <>
-          {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length > 0 && <div className="pending-pulse" style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 14, padding: 16, marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><div><span style={{ fontSize: 20, marginRight: 10 }}>⚠️</span><span style={{ color: c.gold, fontWeight: 600 }}>{pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} sales need cost basis</span></div><button className="btn-hover" onClick={() => setPage('integrations')} style={{ padding: '8px 16px', background: c.gold, border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>REVIEW</button></div>}
-          
-          {/* TOP STATS */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
+        {page === 'dashboard' && (() => {
+          // Live Pulse Component
+          const LivePulse = ({ color = '#10b981', size = 8, speed = 2, label = null, style = {} }) => (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, ...style }}>
+              <div style={{ position: 'relative', width: size, height: size }}>
+                <div className="pulse-ring" style={{ position: 'absolute', inset: -4, borderRadius: '50%', background: color, opacity: 0.3 }} />
+                <div className="pulse-glow" style={{ width: size, height: size, borderRadius: '50%', background: color, boxShadow: `0 0 ${size * 1.5}px ${color}` }} />
+              </div>
+              {label && <span style={{ fontSize: 11, fontWeight: 600, color, letterSpacing: '0.05em' }}>{label}</span>}
+            </div>
+          );
+
+          // Status Indicator Component
+          const StatusIndicator = ({ status = 'live', label = null }) => {
+            const configs = { live: { color: '#10b981', label: label || 'LIVE' }, profit: { color: '#10b981', label: label || 'PROFIT' }, synced: { color: '#8b5cf6', label: label || 'SYNCED' } };
+            const config = configs[status] || configs.live;
+            return (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: `${config.color}15`, border: `1px solid ${config.color}30`, borderRadius: 100, padding: '6px 14px' }}>
+                <LivePulse color={config.color} size={6} speed={2} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: config.color, letterSpacing: '0.08em' }}>{config.label}</span>
+              </div>
+            );
+          };
+
+          return <>
+          {/* Pending costs alert */}
+          {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length > 0 && (
+            <div className="pending-pulse" style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 14, padding: 16, marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <LivePulse color="#fbbf24" size={10} speed={1.5} />
+                <span style={{ color: c.gold, fontWeight: 600 }}>{pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} sales need cost basis</span>
+              </div>
+              <button className="btn-hover" onClick={() => setPage('integrations')} style={{ padding: '8px 16px', background: c.gold, border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer', color: '#000' }}>REVIEW</button>
+            </div>
+          )}
+
+          {/* HERO PROFIT CARD */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.02) 50%, transparent 100%)',
+            border: '1px solid rgba(16,185,129,0.15)',
+            borderRadius: 24,
+            padding: '40px 48px',
+            marginBottom: 24,
+            position: 'relative',
+            overflow: 'hidden'
+          }}>
+            <div className="shimmer-line" style={{ position: 'absolute', top: 0, left: '10%', right: '10%', height: 1, background: 'linear-gradient(90deg, transparent, rgba(16,185,129,0.6), transparent)' }} />
+            <div className="breathe" style={{ position: 'absolute', top: -150, right: -100, width: 400, height: 400, background: 'radial-gradient(circle, rgba(16,185,129,0.2) 0%, transparent 60%)', pointerEvents: 'none' }} />
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
+                  <LivePulse color="#10b981" size={10} speed={2} label="NET PROFIT YTD" />
+                  <StatusIndicator status="live" />
+                </div>
+                
+                <div style={{ fontSize: 72, fontWeight: 800, color: c.emerald, lineHeight: 1, textShadow: '0 0 80px rgba(16,185,129,0.5)', letterSpacing: '-0.02em' }}>
+                  {fmt(netProfit)}
+                </div>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginTop: 24 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, position: 'relative' }}>
+                      📦
+                      <div style={{ position: 'absolute', top: -3, right: -3 }}><LivePulse color="#10b981" size={6} speed={2.5} /></div>
+                    </div>
+                    <div>
+                      <p style={{ margin: 0, fontSize: 11, color: c.textMuted, fontWeight: 600 }}>TOTAL SALES</p>
+                      <p style={{ margin: '2px 0 0', fontSize: 20, fontWeight: 800 }}>{filteredSales.length}</p>
+                    </div>
+                  </div>
+                  <div style={{ width: 1, height: 40, background: 'rgba(255,255,255,0.1)' }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, position: 'relative' }}>
+                      🎯
+                      <div style={{ position: 'absolute', top: -3, right: -3 }}><LivePulse color="#10b981" size={6} speed={3} /></div>
+                    </div>
+                    <div>
+                      <p style={{ margin: 0, fontSize: 11, color: c.textMuted, fontWeight: 600 }}>AVG PER SALE</p>
+                      <p style={{ margin: '2px 0 0', fontSize: 20, fontWeight: 800 }}>{filteredSales.length > 0 ? fmt(netProfit / filteredSales.length) : '$0'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Circular Progress */}
+              <div style={{ position: 'relative', width: 180, height: 180 }}>
+                <svg width="180" height="180" style={{ transform: 'rotate(-90deg)' }}>
+                  <circle cx="90" cy="90" r="75" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="12" />
+                  <circle cx="90" cy="90" r="75" fill="none" stroke="url(#profitGrad)" strokeWidth="12" strokeLinecap="round"
+                    strokeDasharray={`${totalRevenue > 0 ? (netProfit / totalRevenue * 100) * 4.71 : 0} 471`}
+                    style={{ filter: 'drop-shadow(0 0 8px rgba(16,185,129,0.5))' }} />
+                  <defs><linearGradient id="profitGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#10b981" /><stop offset="100%" stopColor="#34d399" /></linearGradient></defs>
+                </svg>
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                  <LivePulse color="#10b981" size={6} speed={2} label="MARGIN" style={{ marginBottom: 4 }} />
+                  <span style={{ fontSize: 36, fontWeight: 800, color: c.emerald }}>{totalRevenue > 0 ? (netProfit / totalRevenue * 100).toFixed(1) : '0'}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* STATS ROW */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
             {[
-              { label: 'YTD PROFIT', value: netProfit, color: netProfit >= 0 ? c.emerald : c.red, glow: true },
-              { label: 'YTD COST', value: totalCOGS, color: c.gold },
-              { label: 'YTD FEES', value: totalFees, color: c.red },
-              { label: 'YTD REVENUE', value: totalRevenue, color: '#fff' }
-            ].map((card, i) => (
-              <div key={i} className="stat-card" style={{ ...cardStyle, padding: 20, position: 'relative', background: card.glow ? 'linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(16,185,129,0.02) 100%)' : cardStyle.background, border: card.glow ? '1px solid rgba(16,185,129,0.2)' : cardStyle.border, cursor: 'pointer' }}>
-                {card.glow && <div style={{ position: 'absolute', top: -50, right: -50, width: 120, height: 120, background: `radial-gradient(circle, ${c.emeraldGlow} 0%, transparent 70%)`, pointerEvents: 'none' }} />}
-                <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, letterSpacing: '0.1em' }}>{card.label}</span>
-                <p style={{ margin: '10px 0 0', fontSize: 28, fontWeight: 800, color: card.color, fontStyle: 'italic' }}>{card.isText ? card.value : fmt(card.value)}</p>
+              { label: 'Gross Revenue', value: totalRevenue, icon: '📈', color: '#fff' },
+              { label: 'Cost of Goods', value: totalCOGS, icon: '📦', color: c.gold },
+              { label: 'Platform Fees', value: totalFees, icon: '💳', color: c.red },
+              { label: 'Inventory Value', value: inventoryVal, icon: '🏪', color: '#8b5cf6' },
+            ].map((stat, i) => (
+              <div key={i} className="stat-card" style={{
+                background: 'rgba(255,255,255,0.02)',
+                border: `1px solid ${c.border}`,
+                borderRadius: 20,
+                padding: '24px',
+                position: 'relative',
+                overflow: 'hidden',
+                transition: 'all 0.3s'
+              }}>
+                <div style={{ position: 'absolute', top: 16, right: 16 }}><LivePulse color={stat.color} size={6} speed={2 + i * 0.3} /></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 14, background: `${stat.color}10`, border: `1px solid ${stat.color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>{stat.icon}</div>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: c.textMuted }}>{stat.label}</span>
+                </div>
+                <p style={{ margin: 0, fontSize: 28, fontWeight: 800, color: stat.color }}>{fmt(stat.value)}</p>
               </div>
             ))}
           </div>
 
-          {/* MONTHLY TABLE */}
-          <div style={{ ...cardStyle, marginBottom: 24 }}>
-            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}` }}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, fontStyle: 'italic' }}>MONTHLY BREAKDOWN</h3>
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: `1px solid ${c.border}` }}>
-                    <th style={{ padding: '12px 20px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: c.textMuted }}></th>
-                    <th style={{ padding: '12px 20px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>YTD COST</th>
-                    <th style={{ padding: '12px 20px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>YTD FEES</th>
-                    <th style={{ padding: '12px 20px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>YTD PROFIT</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    let runningCost = 0;
-                    let runningFees = 0;
-                    let runningProfit = 0;
-                    return ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((month, i) => {
+          {/* TWO COLUMN - TABLE & CHART */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+            {/* MONTHLY TABLE */}
+            <div style={{ ...cardStyle }}>
+              <div style={{ padding: '20px 24px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Monthly Breakdown</h3>
+                  <LivePulse color="#10b981" size={6} speed={2} />
+                </div>
+                <StatusIndicator status="profit" label={`+${fmt(netProfit)}`} />
+              </div>
+              <div style={{ overflowX: 'auto', maxHeight: 300 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
+                      <th style={{ padding: '14px 20px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: c.textMuted, letterSpacing: '0.08em' }}>MONTH</th>
+                      <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: 10, fontWeight: 700, color: c.textMuted }}>SALES</th>
+                      <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: 10, fontWeight: 700, color: c.textMuted }}>REVENUE</th>
+                      <th style={{ padding: '14px 20px', textAlign: 'right', fontSize: 10, fontWeight: 700, color: c.textMuted }}>PROFIT</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((month, i) => {
                       const monthNum = String(i + 1).padStart(2, '0');
                       const monthSales = filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === monthNum);
-                      const monthCost = monthSales.reduce((sum, s) => sum + (s.cost || 0), 0);
-                      const monthFees = monthSales.reduce((sum, s) => sum + (s.fees || 0), 0);
+                      if (monthSales.length === 0) return null;
+                      const monthRevenue = monthSales.reduce((sum, s) => sum + (s.salePrice || 0), 0);
                       const monthProfit = monthSales.reduce((sum, s) => sum + (s.profit || 0), 0);
-                      runningCost += monthCost;
-                      runningFees += monthFees;
-                      runningProfit += monthProfit;
-                      if (monthCost === 0 && monthFees === 0 && monthProfit === 0) return null;
                       return (
-                        <tr key={month} className="row-hover" style={{ borderBottom: `1px solid ${c.border}`, cursor: 'pointer' }}>
-                          <td style={{ padding: '12px 20px', fontWeight: 600 }}>{month}</td>
-                          <td style={{ padding: '12px 20px', textAlign: 'right', color: '#fff' }}>{fmt(runningCost)}</td>
-                          <td style={{ padding: '12px 20px', textAlign: 'right', color: c.red }}>{fmt(runningFees)}</td>
-                          <td style={{ padding: '12px 20px', textAlign: 'right', color: runningProfit >= 0 ? c.emerald : c.red, fontWeight: 700 }}>{fmt(runningProfit)}</td>
+                        <tr key={month} className="row-hover" style={{ borderBottom: `1px solid ${c.border}` }}>
+                          <td style={{ padding: '16px 20px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <LivePulse color="#10b981" size={6} speed={2} />
+                              <span style={{ fontWeight: 600, fontSize: 14 }}>{month}</span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '16px', textAlign: 'right', fontSize: 14, color: c.textMuted }}>{monthSales.length}</td>
+                          <td style={{ padding: '16px', textAlign: 'right', fontSize: 14 }}>{fmt(monthRevenue)}</td>
+                          <td style={{ padding: '16px 20px', textAlign: 'right' }}>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: c.emerald, background: 'rgba(16,185,129,0.1)', padding: '6px 12px', borderRadius: 6 }}>+{fmt(monthProfit)}</span>
+                          </td>
                         </tr>
                       );
-                    });
-                  })()}
-                </tbody>
-                <tfoot>
-                  <tr style={{ background: 'rgba(16,185,129,0.1)' }}>
-                    <td style={{ padding: '14px 20px', fontWeight: 800, fontStyle: 'italic' }}>Totals:</td>
-                    <td style={{ padding: '14px 20px', textAlign: 'right', fontWeight: 700, color: c.emerald }}>{fmt(totalCOGS)}</td>
-                    <td style={{ padding: '14px 20px', textAlign: 'right', fontWeight: 700, color: c.red }}>{fmt(totalFees)}</td>
-                    <td style={{ padding: '14px 20px', textAlign: 'right', fontWeight: 800, color: netProfit >= 0 ? c.emerald : c.red, fontSize: 16 }}>{fmt(netProfit)}</td>
-                  </tr>
-                </tfoot>
-              </table>
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: 'rgba(16,185,129,0.08)' }}>
+                      <td style={{ padding: '16px 20px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <LivePulse color="#10b981" size={8} speed={1.5} />
+                          <span style={{ fontWeight: 800, fontSize: 14 }}>TOTAL</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '16px', textAlign: 'right', fontSize: 14, fontWeight: 700 }}>{filteredSales.length}</td>
+                      <td style={{ padding: '16px', textAlign: 'right', fontSize: 14, fontWeight: 700 }}>{fmt(totalRevenue)}</td>
+                      <td style={{ padding: '16px 20px', textAlign: 'right' }}>
+                        <span style={{ fontSize: 16, fontWeight: 800, color: c.emerald, textShadow: '0 0 20px rgba(16,185,129,0.4)' }}>+{fmt(netProfit)}</span>
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
-          </div>
 
-          {/* CHART */}
-          <div style={{ ...cardStyle, padding: 20 }}>
-            <h3 style={{ margin: '0 0 20px', fontSize: 15, fontWeight: 700, fontStyle: 'italic' }}>MONTHLY PERFORMANCE</h3>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 200, paddingBottom: 30, position: 'relative' }}>
-              {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, i) => {
-                const monthNum = String(i + 1).padStart(2, '0');
-                const monthSales = filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === monthNum);
-                const monthCost = monthSales.reduce((sum, s) => sum + (s.cost || 0), 0);
-                const monthFees = monthSales.reduce((sum, s) => sum + (s.fees || 0), 0);
-                const monthProfit = monthSales.reduce((sum, s) => sum + (s.profit || 0), 0);
-                const maxVal = Math.max(totalCOGS, totalFees, netProfit, 1000) / 12 * 2;
-                const costHeight = Math.max((monthCost / maxVal) * 150, 0);
-                const feesHeight = Math.max((monthFees / maxVal) * 150, 0);
-                const profitHeight = Math.max((monthProfit / maxVal) * 150, 0);
-                return (
-                  <div key={month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 150 }}>
-                      <div style={{ width: 12, height: costHeight, background: c.gold, borderRadius: '4px 4px 0 0' }} title={`Cost: ${fmt(monthCost)}`} />
-                      <div style={{ width: 12, height: feesHeight, background: c.red, borderRadius: '4px 4px 0 0' }} title={`Fees: ${fmt(monthFees)}`} />
-                      <div style={{ width: 12, height: profitHeight, background: c.emerald, borderRadius: '4px 4px 0 0' }} title={`Profit: ${fmt(monthProfit)}`} />
+            {/* CHART */}
+            <div style={{ ...cardStyle }}>
+              <div style={{ padding: '20px 24px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Performance Chart</h3>
+                  <LivePulse color="#10b981" size={6} speed={2} />
+                </div>
+                <StatusIndicator status="live" label="REALTIME" />
+              </div>
+              <div style={{ padding: '24px' }}>
+                <div style={{ display: 'flex', gap: 20, marginBottom: 20 }}>
+                  {[{ label: 'Revenue', color: 'rgba(255,255,255,0.4)' }, { label: 'Profit', color: '#10b981' }].map((item, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 12, height: 12, borderRadius: 3, background: item.color === '#10b981' ? 'linear-gradient(180deg, #10b981 0%, rgba(16,185,129,0.4) 100%)' : 'linear-gradient(180deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.1) 100%)' }} />
+                      <span style={{ fontSize: 12, color: c.textMuted }}>{item.label}</span>
+                      <LivePulse color={item.color} size={4} speed={2} />
                     </div>
-                    <span style={{ fontSize: 10, color: c.textMuted, marginTop: 8 }}>{month}</span>
-                  </div>
-                );
-              })}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 24, marginTop: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><div style={{ width: 12, height: 12, background: c.gold, borderRadius: 3 }} /><span style={{ fontSize: 11, color: c.textMuted }}>Cost</span></div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><div style={{ width: 12, height: 12, background: c.red, borderRadius: 3 }} /><span style={{ fontSize: 11, color: c.textMuted }}>Fees</span></div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><div style={{ width: 12, height: 12, background: c.emerald, borderRadius: 3 }} /><span style={{ fontSize: 11, color: c.textMuted }}>Profit</span></div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 180 }}>
+                  {['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'].map((month, i) => {
+                    const monthNum = String(i + 1).padStart(2, '0');
+                    const monthSales = filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === monthNum);
+                    const monthRevenue = monthSales.reduce((sum, s) => sum + (s.salePrice || 0), 0);
+                    const monthProfit = monthSales.reduce((sum, s) => sum + (s.profit || 0), 0);
+                    const maxVal = Math.max(totalRevenue / 4, 5000);
+                    const revHeight = Math.max((monthRevenue / maxVal) * 140, monthRevenue > 0 ? 8 : 0);
+                    const profitHeight = Math.max((monthProfit / maxVal) * 140, monthProfit > 0 ? 8 : 0);
+                    const hasData = monthRevenue > 0;
+                    return (
+                      <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 140, marginBottom: 8, position: 'relative' }}>
+                          <div style={{ width: 16, height: revHeight, background: hasData ? 'linear-gradient(180deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.1) 100%)' : 'rgba(255,255,255,0.03)', borderRadius: '4px 4px 0 0', transition: 'height 0.5s ease' }} />
+                          <div style={{ width: 16, height: profitHeight, background: hasData ? 'linear-gradient(180deg, #10b981 0%, rgba(16,185,129,0.3) 100%)' : 'rgba(16,185,129,0.03)', borderRadius: '4px 4px 0 0', boxShadow: hasData ? '0 0 15px rgba(16,185,129,0.3)' : 'none', transition: 'height 0.5s ease', position: 'relative' }}>
+                            {hasData && <div style={{ position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)' }}><LivePulse color="#10b981" size={6} speed={2} /></div>}
+                          </div>
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: hasData ? c.textMuted : 'rgba(255,255,255,0.15)' }}>{month}</span>
+                        {hasData && <LivePulse color="#10b981" size={4} speed={2.5} style={{ marginTop: 4 }} />}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
-        </>}
+        </>;
+        })()}
 
         {/* INVENTORY */}
         {page === 'inventory' && <div>
@@ -2129,6 +2265,44 @@ export default function App() {
           p, span, td, th, div {
             color: black !important;
           }
+        }
+
+        /* PULSE ANIMATIONS */
+        .pulse-ring {
+          animation: pulse-ring 2s ease-out infinite;
+        }
+        
+        .pulse-glow {
+          animation: pulse-glow 2s ease-in-out infinite;
+        }
+        
+        .shimmer-line {
+          animation: shimmer 3s ease-in-out infinite;
+        }
+        
+        .breathe {
+          animation: breathe 4s ease-in-out infinite;
+        }
+
+        @keyframes pulse-ring {
+          0% { transform: scale(1); opacity: 0.4; }
+          100% { transform: scale(2.5); opacity: 0; }
+        }
+        
+        @keyframes pulse-glow {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+        
+        @keyframes shimmer {
+          0% { opacity: 0.3; left: 10%; right: 90%; }
+          50% { opacity: 1; left: 45%; right: 45%; }
+          100% { opacity: 0.3; left: 90%; right: 10%; }
+        }
+        
+        @keyframes breathe {
+          0%, 100% { transform: scale(1); opacity: 0.5; }
+          50% { transform: scale(1.15); opacity: 0.7; }
         }
       `}</style>
     </div>
