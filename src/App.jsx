@@ -1433,7 +1433,7 @@ export default function App() {
 
         {/* SALES */}
         {page === 'sales' && <SalesPage 
-          key={`sales-${salesPage}-${formData.salesSearch}-${formData.salesSort}-${formData.salesMonth}-${formData.salesFilter}`}
+          key={`sales-${salesPage}-${formData.salesSort}-${formData.salesMonth}-${formData.salesFilter}`}
           filteredSales={filteredSales}
           formData={formData}
           setFormData={setFormData}
