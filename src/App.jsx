@@ -728,7 +728,7 @@ export default function App() {
             </div>
 
             {/* CHART */}
-            <div style={{ ...cardStyle }}>
+            <div style={{ ...cardStyle, overflow: 'hidden' }}>
               <div style={{ padding: '20px 24px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Performance Chart</h3>
@@ -737,38 +737,94 @@ export default function App() {
                 <StatusIndicator status="live" label="REALTIME" />
               </div>
               <div style={{ padding: '24px' }}>
-                <div style={{ display: 'flex', gap: 20, marginBottom: 20 }}>
-                  {[{ label: 'Revenue', color: 'rgba(255,255,255,0.4)' }, { label: 'Profit', color: '#10b981' }].map((item, i) => (
+                {/* Legend */}
+                <div style={{ display: 'flex', gap: 24, marginBottom: 24 }}>
+                  {[{ label: 'Revenue', color: 'rgba(255,255,255,0.5)' }, { label: 'Profit', color: '#10b981' }].map((item, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <div style={{ width: 12, height: 12, borderRadius: 3, background: item.color === '#10b981' ? 'linear-gradient(180deg, #10b981 0%, rgba(16,185,129,0.4) 100%)' : 'linear-gradient(180deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.1) 100%)' }} />
+                      <div style={{ width: 12, height: 12, borderRadius: 3, background: item.color }} />
                       <span style={{ fontSize: 12, color: c.textMuted }}>{item.label}</span>
                       <LivePulse color={item.color} size={4} speed={2} />
                     </div>
                   ))}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 180 }}>
-                  {['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'].map((month, i) => {
-                    const monthNum = String(i + 1).padStart(2, '0');
-                    const monthSales = filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === monthNum);
-                    const monthRevenue = monthSales.reduce((sum, s) => sum + (s.salePrice || 0), 0);
-                    const monthProfit = monthSales.reduce((sum, s) => sum + (s.profit || 0), 0);
-                    const maxVal = Math.max(totalRevenue / 4, 5000);
-                    const revHeight = Math.max((monthRevenue / maxVal) * 140, monthRevenue > 0 ? 8 : 0);
-                    const profitHeight = Math.max((monthProfit / maxVal) * 140, monthProfit > 0 ? 8 : 0);
-                    const hasData = monthRevenue > 0;
-                    return (
-                      <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 140, marginBottom: 8, position: 'relative' }}>
-                          <div style={{ width: 16, height: revHeight, background: hasData ? 'linear-gradient(180deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.1) 100%)' : 'rgba(255,255,255,0.03)', borderRadius: '4px 4px 0 0', transition: 'height 0.5s ease' }} />
-                          <div style={{ width: 16, height: profitHeight, background: hasData ? 'linear-gradient(180deg, #10b981 0%, rgba(16,185,129,0.3) 100%)' : 'rgba(16,185,129,0.03)', borderRadius: '4px 4px 0 0', boxShadow: hasData ? '0 0 15px rgba(16,185,129,0.3)' : 'none', transition: 'height 0.5s ease', position: 'relative' }}>
-                            {hasData && <div style={{ position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)' }}><LivePulse color="#10b981" size={6} speed={2} /></div>}
+
+                {/* Chart Container */}
+                <div style={{ position: 'relative', height: 200, display: 'flex', flexDirection: 'column' }}>
+                  {/* Y-axis grid lines */}
+                  <div style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 40, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', pointerEvents: 'none' }}>
+                    {[100, 75, 50, 25, 0].map((pct, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.04)' }} />
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Bars */}
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', gap: 6, paddingBottom: 40 }}>
+                    {['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'].map((month, i) => {
+                      const monthNum = String(i + 1).padStart(2, '0');
+                      const monthSales = filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === monthNum);
+                      const monthRevenue = monthSales.reduce((sum, s) => sum + (s.salePrice || 0), 0);
+                      const monthProfit = monthSales.reduce((sum, s) => sum + (s.profit || 0), 0);
+                      
+                      // Calculate max value for scaling (use highest month value, minimum 1000)
+                      const allMonthsRevenue = ['01','02','03','04','05','06','07','08','09','10','11','12'].map(m => 
+                        filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === m).reduce((sum, s) => sum + (s.salePrice || 0), 0)
+                      );
+                      const maxVal = Math.max(...allMonthsRevenue, 1000);
+                      
+                      // Scale to max 120px height
+                      const revHeight = monthRevenue > 0 ? Math.max((monthRevenue / maxVal) * 120, 4) : 0;
+                      const profitHeight = monthProfit > 0 ? Math.max((monthProfit / maxVal) * 120, 4) : 0;
+                      const hasData = monthRevenue > 0;
+                      
+                      return (
+                        <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+                          {/* Bar group */}
+                          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 2, height: 120, width: '100%' }}>
+                            {/* Revenue bar */}
+                            <div style={{ 
+                              width: hasData ? 14 : 8, 
+                              height: hasData ? revHeight : 2,
+                              background: hasData 
+                                ? 'linear-gradient(180deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0.15) 100%)' 
+                                : 'rgba(255,255,255,0.05)',
+                              borderRadius: hasData ? '4px 4px 0 0' : 2,
+                              transition: 'all 0.5s ease'
+                            }} />
+                            {/* Profit bar */}
+                            <div style={{ 
+                              width: hasData ? 14 : 8, 
+                              height: hasData ? profitHeight : 2,
+                              background: hasData 
+                                ? 'linear-gradient(180deg, #10b981 0%, rgba(16,185,129,0.4) 100%)' 
+                                : 'rgba(16,185,129,0.08)',
+                              borderRadius: hasData ? '4px 4px 0 0' : 2,
+                              boxShadow: hasData ? '0 0 12px rgba(16,185,129,0.3)' : 'none',
+                              transition: 'all 0.5s ease'
+                            }} />
+                          </div>
+                          
+                          {/* Month label */}
+                          <div style={{ 
+                            position: 'absolute', 
+                            bottom: 0, 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            alignItems: 'center', 
+                            gap: 4 
+                          }}>
+                            <span style={{ 
+                              fontSize: 11, 
+                              fontWeight: 600, 
+                              color: hasData ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.2)'
+                            }}>{month}</span>
+                            {hasData && <LivePulse color="#10b981" size={4} speed={2.5} />}
                           </div>
                         </div>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: hasData ? c.textMuted : 'rgba(255,255,255,0.15)' }}>{month}</span>
-                        {hasData && <LivePulse color="#10b981" size={4} speed={2.5} style={{ marginTop: 4 }} />}
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>
@@ -912,16 +968,85 @@ export default function App() {
         {page === 'sales' && (() => {
           // Get filtered sales once to use everywhere
           const getFilteredSalesDisplay = () => filteredSales.filter(s => {
-            const search = (formData.salesSearch || '').toLowerCase();
+            const search = (formData.salesSearch || '').toLowerCase().trim();
             const filter = formData.salesFilter || 'all';
             const monthFilter = formData.salesMonth || 'all';
-            const matchesSearch = !search || s.name?.toLowerCase().includes(search) || s.sku?.toLowerCase().includes(search) || s.size?.toString().toLowerCase().includes(search);
+            
+            // Search matches - check if search term is in name, sku, or size
+            let matchesSearch = true;
+            if (search) {
+              const nameMatch = s.name?.toLowerCase().includes(search);
+              const skuMatch = s.sku?.toLowerCase().includes(search);
+              const sizeMatch = s.size?.toString().toLowerCase().includes(search);
+              matchesSearch = nameMatch || skuMatch || sizeMatch;
+            }
+            
             const matchesFilter = filter === 'all' || s.platform === filter;
             const matchesMonth = monthFilter === 'all' || (s.saleDate && s.saleDate.substring(5, 7) === monthFilter);
             return matchesSearch && matchesFilter && matchesMonth;
           });
-          const displayedSales = getFilteredSalesDisplay();
+          
+          // Sort function based on current sort setting
+          const sortSales = (salesList) => {
+            const sort = formData.salesSort || 'newest';
+            return [...salesList].sort((a, b) => {
+              switch(sort) {
+                case 'newest': return new Date(b.saleDate) - new Date(a.saleDate);
+                case 'oldest': return new Date(a.saleDate) - new Date(b.saleDate);
+                case 'profitHigh': return (b.profit || 0) - (a.profit || 0);
+                case 'profitLow': return (a.profit || 0) - (b.profit || 0);
+                case 'priceHigh': return (b.salePrice || 0) - (a.salePrice || 0);
+                case 'priceLow': return (a.salePrice || 0) - (b.salePrice || 0);
+                case 'costHigh': return (b.cost || 0) - (a.cost || 0);
+                case 'costLow': return (a.cost || 0) - (b.cost || 0);
+                case 'nameAZ': return (a.name || '').localeCompare(b.name || '');
+                case 'nameZA': return (b.name || '').localeCompare(a.name || '');
+                case 'skuAZ': return (a.sku || '').localeCompare(b.sku || '');
+                case 'skuZA': return (b.sku || '').localeCompare(a.sku || '');
+                case 'sizeAsc': return (parseFloat(a.size) || 0) - (parseFloat(b.size) || 0);
+                case 'sizeDesc': return (parseFloat(b.size) || 0) - (parseFloat(a.size) || 0);
+                case 'platformAZ': return (a.platform || '').localeCompare(b.platform || '');
+                case 'feesHigh': return (b.fees || 0) - (a.fees || 0);
+                case 'feesLow': return (a.fees || 0) - (b.fees || 0);
+                default: return 0;
+              }
+            });
+          };
+          
+          const displayedSales = sortSales(getFilteredSalesDisplay());
           const displayedProfit = displayedSales.reduce((sum, s) => sum + (s.profit || 0), 0);
+          
+          // Clickable header component
+          const SortHeader = ({ label, sortKey, sortKeyAlt, align = 'left' }) => {
+            const isActive = formData.salesSort === sortKey || formData.salesSort === sortKeyAlt;
+            const isAsc = formData.salesSort === sortKey;
+            return (
+              <span 
+                onClick={() => {
+                  if (formData.salesSort === sortKey) {
+                    setFormData({ ...formData, salesSort: sortKeyAlt });
+                  } else {
+                    setFormData({ ...formData, salesSort: sortKey });
+                  }
+                }}
+                style={{ 
+                  fontSize: 10, 
+                  fontWeight: 700, 
+                  color: isActive ? c.emerald : c.textMuted, 
+                  cursor: 'pointer',
+                  textAlign: align,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
+                  userSelect: 'none'
+                }}
+              >
+                {label}
+                {isActive && <span style={{ fontSize: 8 }}>{isAsc ? '▲' : '▼'}</span>}
+              </span>
+            );
+          };
           
           return <div>
           {/* STATS BAR */}
@@ -969,13 +1094,6 @@ export default function App() {
               <option value="eBay">eBay</option>
               <option value="Local">Local</option>
             </select>
-            <select value={formData.salesSort || 'newest'} onChange={e => setFormData({ ...formData, salesSort: e.target.value })} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
-              <option value="newest">Newest First</option>
-              <option value="oldest">Oldest First</option>
-              <option value="profitHigh">Profit: High → Low</option>
-              <option value="profitLow">Profit: Low → High</option>
-              <option value="priceHigh">Price: High → Low</option>
-            </select>
             <button onClick={() => { setFormData({}); setModal('sale'); }} style={{ padding: '14px 24px', ...btnPrimary, fontSize: 13 }}>+ RECORD SALE</button>
           </div>
 
@@ -1014,7 +1132,7 @@ export default function App() {
               <button onClick={() => exportCSV(displayedSales, 'sales.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
             </div>
             
-            {/* TABLE HEADER */}
+            {/* TABLE HEADER - Clickable for sorting */}
             <div style={{ display: 'grid', gridTemplateColumns: '40px 85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
               <div style={{ display: 'flex', alignItems: 'center' }}>
                 <input 
@@ -1030,29 +1148,21 @@ export default function App() {
                   style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }}
                 />
               </div>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>DATE</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>NAME</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>SKU</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>SIZE</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>PLATFORM</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>COST</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>PRICE</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>FEES</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>PROFIT</span>
+              <SortHeader label="DATE" sortKey="oldest" sortKeyAlt="newest" />
+              <SortHeader label="NAME" sortKey="nameAZ" sortKeyAlt="nameZA" />
+              <SortHeader label="SKU" sortKey="skuAZ" sortKeyAlt="skuZA" />
+              <SortHeader label="SIZE" sortKey="sizeAsc" sortKeyAlt="sizeDesc" />
+              <SortHeader label="PLATFORM" sortKey="platformAZ" sortKeyAlt="platformAZ" />
+              <SortHeader label="COST" sortKey="costLow" sortKeyAlt="costHigh" align="right" />
+              <SortHeader label="PRICE" sortKey="priceLow" sortKeyAlt="priceHigh" align="right" />
+              <SortHeader label="FEES" sortKey="feesLow" sortKeyAlt="feesHigh" align="right" />
+              <SortHeader label="PROFIT" sortKey="profitLow" sortKeyAlt="profitHigh" align="right" />
               <span></span>
               <span></span>
             </div>
 
             {/* TABLE ROWS */}
-            {displayedSales.length ? displayedSales.sort((a, b) => {
-              const sort = formData.salesSort || 'newest';
-              if (sort === 'newest') return new Date(b.saleDate) - new Date(a.saleDate);
-              if (sort === 'oldest') return new Date(a.saleDate) - new Date(b.saleDate);
-              if (sort === 'profitHigh') return (b.profit || 0) - (a.profit || 0);
-              if (sort === 'profitLow') return (a.profit || 0) - (b.profit || 0);
-              if (sort === 'priceHigh') return (b.salePrice || 0) - (a.salePrice || 0);
-              return 0;
-            }).map(s => (
+            {displayedSales.length ? displayedSales.map(s => (
               <div 
                 key={s.id} 
                 style={{ 
