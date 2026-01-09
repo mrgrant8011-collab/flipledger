@@ -298,97 +298,93 @@ export default function App() {
 
   const printTaxPackage = () => {
     const w = window.open('', '_blank');
-    w.document.write(`<html><head><title>FlipLedger Tax Package ${year}</title><style>body{font-family:Arial,sans-serif;padding:40px;color:#111}h1{color:#10b981}h2{border-bottom:2px solid #10b981;padding-bottom:5px;margin-top:30px}table{width:100%;border-collapse:collapse;margin:15px 0}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#10b981;color:white}.total{font-weight:bold;background:#e8f5e9}.page-break{page-break-before:always}</style></head><body>
-      <h1>📊 FlipLedger Tax Package</h1>
-      <p><strong>Tax Year:</strong> ${year === 'all' ? 'All Time' : year}</p>
-      <p><strong>Generated:</strong> ${new Date().toLocaleDateString()}</p>
-      <p><strong>Business Type:</strong> Reselling / E-Commerce</p>
-      
-      <h2>📋 Executive Summary</h2>
-      <table>
-        <tr><td>Gross Revenue</td><td style="text-align:right">${fmt(totalRevenue)}</td></tr>
-        <tr><td>Cost of Goods Sold</td><td style="text-align:right;color:#ef4444">(${fmt(totalCOGS)})</td></tr>
-        <tr><td>Gross Profit</td><td style="text-align:right">${fmt(grossProfit)}</td></tr>
-        <tr><td>Total Deductions</td><td style="text-align:right;color:#ef4444">(${fmt(totalDeductions)})</td></tr>
-        <tr class="total"><td><strong>NET PROFIT (Schedule C Line 31)</strong></td><td style="text-align:right"><strong>${fmt(netProfit)}</strong></td></tr>
-      </table>
+    w.document.write(`<!DOCTYPE html><html><head><title>FlipLedger Tax Summary ${year}</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      @page { size: letter; margin: 0.5in; }
+      @media print { body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }
+      body { font-family: Arial, sans-serif; font-size: 11px; line-height: 1.4; color: #000; background: #fff; padding: 20px; }
+      h1 { font-size: 18px; color: #10b981; margin-bottom: 5px; }
+      h2 { font-size: 12px; font-weight: bold; background: #10b981; color: white; padding: 4px 8px; margin: 12px 0 6px 0; }
+      table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 10px; }
+      th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; }
+      th { background: #f0f0f0; font-weight: bold; }
+      .total-row { background: #e8f5e9; font-weight: bold; }
+      .right { text-align: right; }
+      .red { color: #dc2626; }
+      .green { color: #10b981; }
+      .header-info { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 10px; }
+      .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+      .summary-box { border: 1px solid #ccc; padding: 8px; }
+      .summary-box h3 { font-size: 10px; color: #666; margin-bottom: 4px; }
+      .summary-box .value { font-size: 16px; font-weight: bold; }
+      .footer { margin-top: 10px; padding-top: 8px; border-top: 1px solid #ccc; font-size: 9px; color: #666; }
+    </style></head><body>
+    
+    <h1>📊 FlipLedger Tax Summary</h1>
+    <div class="header-info">
+      <span><strong>Tax Year:</strong> ${year === 'all' ? 'All Time' : year}</span>
+      <span><strong>Generated:</strong> ${new Date().toLocaleDateString()}</span>
+      <span><strong>Total Sales:</strong> ${filteredSales.length}</span>
+    </div>
 
-      <h2>📦 Deductions Breakdown</h2>
-      <table>
-        <tr><th>Category</th><th>Amount</th><th>Schedule C Line</th></tr>
-        <tr><td>Platform Selling Fees</td><td>${fmt(totalFees)}</td><td>Line 10</td></tr>
-        <tr><td>Storage Fees</td><td>${fmt(totalStor)}</td><td>Line 20b</td></tr>
-        <tr><td>Business Expenses</td><td>${fmt(totalExp)}</td><td>Line 27a</td></tr>
-        <tr><td>Mileage (${totalMiles.toFixed(1)} mi × $${settings.mileageRate})</td><td>${fmt(totalMileageDeduction)}</td><td>Line 9</td></tr>
-        <tr class="total"><td><strong>TOTAL DEDUCTIONS</strong></td><td><strong>${fmt(totalDeductions)}</strong></td><td></td></tr>
-      </table>
-
-      <h2>💰 Revenue by Platform</h2>
-      <table>
-        <tr><th>Platform</th><th>Sales</th><th>Revenue</th><th>Fees</th><th>Net</th></tr>
-        ${Object.entries(platformBreakdown).map(([p, d]) => `<tr><td>${p}</td><td>${d.sales}</td><td>${fmt(d.revenue)}</td><td>(${fmt(d.fees)})</td><td>${fmt(d.revenue - d.fees)}</td></tr>`).join('')}
-        <tr class="total"><td>TOTAL</td><td>${filteredSales.length}</td><td>${fmt(totalRevenue)}</td><td>(${fmt(totalFees)})</td><td>${fmt(totalRevenue - totalFees)}</td></tr>
-      </table>
-
-      <h2>🧾 Tax Estimate</h2>
-      <table>
-        <tr><td>Net Profit (Taxable Income)</td><td style="text-align:right">${fmt(netProfit)}</td></tr>
-        <tr><td>Self-Employment Tax (15.3%)</td><td style="text-align:right;color:#ef4444">${fmt(selfEmploymentTax)}</td></tr>
-        <tr><td>Federal Income Tax (~22%)</td><td style="text-align:right;color:#ef4444">${fmt(federalTax)}</td></tr>
-        <tr><td>State Income Tax (~5%)</td><td style="text-align:right;color:#ef4444">${fmt(stateTax)}</td></tr>
-        <tr class="total"><td><strong>ESTIMATED TOTAL TAX</strong></td><td style="text-align:right"><strong>${fmt(totalTax)}</strong></td></tr>
-        <tr><td>Quarterly Payment Amount</td><td style="text-align:right">${fmt(totalTax / 4)}</td></tr>
-      </table>
-      <p style="font-size:12px;color:#666;">* Tax estimates are approximate. Consult a licensed CPA for accurate tax advice.</p>
-
-      <div class="page-break"></div>
-
-      <h2>📋 Detailed Sales Log</h2>
-      <table>
-        <tr><th>Date</th><th>Item</th><th>Style Code</th><th>Size</th><th>Platform</th><th>Sale Price</th><th>Cost</th><th>Fees</th><th>Profit</th></tr>
-        ${filteredSales.map(s => `<tr><td>${s.saleDate}</td><td>${s.name}</td><td>${s.sku || '-'}</td><td>${s.size || '-'}</td><td>${s.platform}</td><td>${fmt(s.salePrice)}</td><td>(${fmt(s.cost)})</td><td>(${fmt(s.fees)})</td><td style="color:${s.profit >= 0 ? '#10b981' : '#ef4444'}">${fmt(s.profit)}</td></tr>`).join('') || '<tr><td colspan="9">No sales recorded</td></tr>'}
-        <tr class="total"><td colspan="5">TOTALS</td><td>${fmt(totalRevenue)}</td><td>(${fmt(totalCOGS)})</td><td>(${fmt(totalFees)})</td><td>${fmt(totalRevenue - totalCOGS - totalFees)}</td></tr>
-      </table>
-
-      <h2>📋 Expense Log</h2>
-      <table>
-        <tr><th>Date</th><th>Category</th><th>Description</th><th>Amount</th></tr>
-        ${filteredExpenses.map(e => `<tr><td>${e.date}</td><td>${e.category}</td><td>${e.description || '-'}</td><td>${fmt(e.amount)}</td></tr>`).join('') || '<tr><td colspan="4">No expenses recorded</td></tr>'}
-        <tr class="total"><td colspan="3">TOTAL EXPENSES</td><td>${fmt(totalExp)}</td></tr>
-      </table>
-
-      <h2>🚗 Mileage Log</h2>
-      <p>IRS Standard Mileage Rate: $${settings.mileageRate}/mile</p>
-      <table>
-        <tr><th>Date</th><th>Purpose</th><th>From</th><th>To</th><th>Miles</th><th>Deduction</th></tr>
-        ${filteredMileage.map(m => `<tr><td>${m.date}</td><td>${m.purpose}</td><td>${m.from}</td><td>${m.to}</td><td>${m.miles}</td><td>${fmt(m.miles * settings.mileageRate)}</td></tr>`).join('') || '<tr><td colspan="6">No mileage recorded</td></tr>'}
-        <tr class="total"><td colspan="4">TOTAL</td><td>${totalMiles.toFixed(1)}</td><td>${fmt(totalMileageDeduction)}</td></tr>
-      </table>
-
-      <h2>📦 Ending Inventory (Asset Value)</h2>
-      <p>Unsold inventory as of report date - ${filteredInventory.length} items</p>
-      <table>
-        <tr><th>Date Acquired</th><th>Item</th><th>Style Code</th><th>Size</th><th>Cost Basis</th></tr>
-        ${filteredInventory.map(p => `<tr><td>${p.date}</td><td>${p.name}</td><td>${p.sku || '-'}</td><td>${p.size || '-'}</td><td>${fmt(p.cost)}</td></tr>`).join('') || '<tr><td colspan="5">No inventory on hand</td></tr>'}
-        <tr class="total"><td colspan="4">TOTAL INVENTORY VALUE</td><td>${fmt(inventoryVal)}</td></tr>
-      </table>
-
-      <h2>📝 Tax Forms Checklist</h2>
-      <table>
-        <tr><th>Form</th><th>Purpose</th><th>Notes</th></tr>
-        <tr><td>Schedule C (Form 1040)</td><td>Profit or Loss from Business</td><td>Main form for sole proprietors</td></tr>
-        <tr><td>Schedule SE (Form 1040)</td><td>Self-Employment Tax</td><td>Required if net profit > $400</td></tr>
-        <tr><td>Form 1099-K</td><td>Payment Card Transactions</td><td>Should receive from StockX, GOAT, eBay if > $600</td></tr>
-        <tr><td>Form 4562</td><td>Depreciation</td><td>If you have business equipment > $2,500</td></tr>
-      </table>
-
-      <div style="margin-top:40px;padding-top:20px;border-top:1px solid #ddd;font-size:11px;color:#666;">
-        <p><strong>Generated by FlipLedger</strong> - Professional Reseller Accounting Software</p>
-        <p>This document is for informational purposes. Please retain all receipts and 1099 forms for your records.</p>
-        <p>Report generated: ${new Date().toLocaleString()}</p>
+    <div class="summary-grid">
+      <div class="summary-box">
+        <h3>GROSS REVENUE</h3>
+        <div class="value">${fmt(totalRevenue)}</div>
       </div>
-      </body></html>`);
-    w.document.close(); w.print();
+      <div class="summary-box">
+        <h3>COST OF GOODS SOLD</h3>
+        <div class="value red">(${fmt(totalCOGS)})</div>
+      </div>
+      <div class="summary-box">
+        <h3>TOTAL FEES & EXPENSES</h3>
+        <div class="value red">(${fmt(totalDeductions)})</div>
+      </div>
+      <div class="summary-box">
+        <h3>NET PROFIT (Schedule C Line 31)</h3>
+        <div class="value green">${fmt(netProfit)}</div>
+      </div>
+    </div>
+
+    <h2>📦 Deductions Breakdown</h2>
+    <table>
+      <tr><th>Category</th><th>Amount</th><th>Schedule C</th></tr>
+      <tr><td>Platform Selling Fees</td><td class="right">${fmt(totalFees)}</td><td>Line 10</td></tr>
+      <tr><td>Business Expenses</td><td class="right">${fmt(totalExp)}</td><td>Line 27a</td></tr>
+      <tr class="total-row"><td><strong>TOTAL</strong></td><td class="right"><strong>${fmt(totalDeductions)}</strong></td><td></td></tr>
+    </table>
+
+    <h2>📋 Sales Log</h2>
+    <table>
+      <tr><th>Date</th><th>Item</th><th>SKU</th><th>Size</th><th>Sold</th><th>Cost</th><th>Fees</th><th>Profit</th></tr>
+      ${filteredSales.slice(0, 25).map(s => `<tr>
+        <td>${s.saleDate || '-'}</td>
+        <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.name || '-'}</td>
+        <td>${s.sku || '-'}</td>
+        <td>${s.size || '-'}</td>
+        <td class="right">${fmt(s.salePrice)}</td>
+        <td class="right red">(${fmt(s.cost)})</td>
+        <td class="right red">(${fmt(s.fees)})</td>
+        <td class="right ${s.profit >= 0 ? 'green' : 'red'}">${fmt(s.profit)}</td>
+      </tr>`).join('')}
+      ${filteredSales.length > 25 ? `<tr><td colspan="8" style="text-align:center;font-style:italic;">... and ${filteredSales.length - 25} more sales (${fmt(totalRevenue)} total revenue)</td></tr>` : ''}
+      <tr class="total-row">
+        <td colspan="4"><strong>TOTALS (${filteredSales.length} sales)</strong></td>
+        <td class="right"><strong>${fmt(totalRevenue)}</strong></td>
+        <td class="right red"><strong>(${fmt(totalCOGS)})</strong></td>
+        <td class="right red"><strong>(${fmt(totalFees)})</strong></td>
+        <td class="right green"><strong>${fmt(netProfit)}</strong></td>
+      </tr>
+    </table>
+
+    <div class="footer">
+      <strong>Generated by FlipLedger</strong> • This document is for informational purposes. Consult a licensed CPA for tax advice. • ${new Date().toLocaleString()}
+    </div>
+
+    </body></html>`);
+    w.document.close();
+    w.print();
   };
 
   const navItems = [
@@ -831,9 +827,9 @@ export default function App() {
         {/* MILEAGE */}
         {/* CPA REPORTS */}
         {page === 'reports' && <div style={{ maxWidth: 900 }}>
-          {/* PRINT BUTTON - Hidden when printing */}
-          <div className="no-print" style={{ marginBottom: 20, display: 'flex', justifyContent: 'flex-end' }}>
-            <button className="btn-hover" onClick={() => window.print()} style={{ padding: '12px 24px', ...btnPrimary, fontSize: 13 }}>🖨️ Print Report</button>
+          {/* PRINT BUTTON */}
+          <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'flex-end' }}>
+            <button className="btn-hover" onClick={printTaxPackage} style={{ padding: '12px 24px', ...btnPrimary, fontSize: 13 }}>🖨️ Print Tax Summary</button>
           </div>
           
           {/* PRINTABLE REPORT - Single clean page */}
