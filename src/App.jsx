@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
 
 // SalesPage as separate component for proper re-rendering
 function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPage, selectedSales, setSelectedSales, sales, setSales, settings, setModal, ITEMS_PER_PAGE, cardStyle, btnPrimary, c, fmt, exportCSV }) {
@@ -421,71 +422,147 @@ export default function App() {
     a.click();
   };
 
-  // Import inventory from CSV
-  const handleInventoryCsvUpload = (e) => {
+  // Import inventory from CSV or XLSX
+  const handleInventoryFileUpload = (e) => {
     const file = e.target?.files?.[0];
     if (!file) return;
     
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target.result;
-      const lines = text.split('\n');
-      
-      // Parse header row
-      const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
-      
-      // Find column indexes
-      const dateIdx = headers.findIndex(h => h === 'date');
-      const nameIdx = headers.findIndex(h => h === 'name');
-      const skuIdx = headers.findIndex(h => h === 'sku');
-      const sizeIdx = headers.findIndex(h => h === 'size');
-      const costIdx = headers.findIndex(h => h === 'cost');
-      
-      const newItems = [];
-      for (let i = 1; i < lines.length; i++) {
-        if (!lines[i].trim()) continue;
-        
-        // Parse CSV line (handle commas in quotes)
-        const values = [];
-        let current = '';
-        let inQuotes = false;
-        for (const char of lines[i]) {
-          if (char === '"') inQuotes = !inQuotes;
-          else if (char === ',' && !inQuotes) { values.push(current.trim()); current = ''; }
-          else current += char;
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+    
+    if (isExcel) {
+      // Handle Excel file
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const data = new Uint8Array(event.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+          
+          if (rows.length < 2) {
+            alert('Excel file is empty or has no data rows');
+            return;
+          }
+          
+          // Parse headers (first row)
+          const headers = rows[0].map(h => String(h || '').trim().toLowerCase());
+          
+          // Find column indexes
+          const dateIdx = headers.findIndex(h => h === 'date');
+          const nameIdx = headers.findIndex(h => h === 'name');
+          const skuIdx = headers.findIndex(h => h === 'sku');
+          const sizeIdx = headers.findIndex(h => h === 'size');
+          const costIdx = headers.findIndex(h => h === 'cost');
+          
+          const newItems = [];
+          for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || row.length === 0) continue;
+            
+            // Excel dates might be numbers - convert them
+            let rawDate = dateIdx >= 0 ? row[dateIdx] : '';
+            if (typeof rawDate === 'number') {
+              // Excel date serial number to JS date
+              const excelDate = new Date((rawDate - 25569) * 86400 * 1000);
+              rawDate = excelDate.toISOString().split('T')[0];
+            }
+            
+            const name = nameIdx >= 0 ? String(row[nameIdx] || '') : '';
+            const sku = skuIdx >= 0 ? String(row[skuIdx] || '') : '';
+            const size = sizeIdx >= 0 ? String(row[sizeIdx] || '') : '';
+            const cost = costIdx >= 0 ? parseFloat(row[costIdx]) || 0 : 0;
+            
+            if (name || sku) {
+              newItems.push({
+                id: Date.now() + Math.random() + i,
+                date: parseDate(String(rawDate)) || new Date().toISOString().split('T')[0],
+                name: name || 'Unknown Item',
+                sku: sku,
+                size: size,
+                cost: cost
+              });
+            }
+          }
+          
+          if (newItems.length > 0) {
+            setPurchases(prev => [...prev, ...newItems]);
+            alert(`Imported ${newItems.length} items to inventory!`);
+          } else {
+            alert('No items found. Make sure your Excel file has headers: Date, Name, SKU, Size, Cost');
+          }
+          
+          setShowInvCsvImport(false);
+        } catch (err) {
+          console.error('Excel parse error:', err);
+          alert('Error reading Excel file. Please check the format.');
         }
-        values.push(current.trim());
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      // Handle CSV file
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const text = event.target.result;
+        const lines = text.split('\n');
         
-        // Extract values
-        const rawDate = dateIdx >= 0 ? values[dateIdx]?.replace(/"/g, '') : '';
-        const name = nameIdx >= 0 ? values[nameIdx]?.replace(/"/g, '') : '';
-        const sku = skuIdx >= 0 ? values[skuIdx]?.replace(/"/g, '') : '';
-        const size = sizeIdx >= 0 ? values[sizeIdx]?.replace(/"/g, '') : '';
-        const cost = costIdx >= 0 ? parseFloat(values[costIdx]?.replace(/[$",]/g, '')) || 0 : 0;
+        // Parse header row
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
         
-        if (name || sku) {
-          newItems.push({
-            id: Date.now() + Math.random() + i,
-            date: parseDate(rawDate) || new Date().toISOString().split('T')[0],
-            name: name || 'Unknown Item',
-            sku: sku || '',
-            size: size || '',
-            cost: cost
-          });
+        // Find column indexes
+        const dateIdx = headers.findIndex(h => h === 'date');
+        const nameIdx = headers.findIndex(h => h === 'name');
+        const skuIdx = headers.findIndex(h => h === 'sku');
+        const sizeIdx = headers.findIndex(h => h === 'size');
+        const costIdx = headers.findIndex(h => h === 'cost');
+        
+        const newItems = [];
+        for (let i = 1; i < lines.length; i++) {
+          if (!lines[i].trim()) continue;
+          
+          // Parse CSV line (handle commas in quotes)
+          const values = [];
+          let current = '';
+          let inQuotes = false;
+          for (const char of lines[i]) {
+            if (char === '"') inQuotes = !inQuotes;
+            else if (char === ',' && !inQuotes) { values.push(current.trim()); current = ''; }
+            else current += char;
+          }
+          values.push(current.trim());
+          
+          // Extract values
+          const rawDate = dateIdx >= 0 ? values[dateIdx]?.replace(/"/g, '') : '';
+          const name = nameIdx >= 0 ? values[nameIdx]?.replace(/"/g, '') : '';
+          const sku = skuIdx >= 0 ? values[skuIdx]?.replace(/"/g, '') : '';
+          const size = sizeIdx >= 0 ? values[sizeIdx]?.replace(/"/g, '') : '';
+          const cost = costIdx >= 0 ? parseFloat(values[costIdx]?.replace(/[$",]/g, '')) || 0 : 0;
+          
+          if (name || sku) {
+            newItems.push({
+              id: Date.now() + Math.random() + i,
+              date: parseDate(rawDate) || new Date().toISOString().split('T')[0],
+              name: name || 'Unknown Item',
+              sku: sku || '',
+              size: size || '',
+              cost: cost
+            });
+          }
         }
-      }
-      
-      if (newItems.length > 0) {
-        setPurchases(prev => [...prev, ...newItems]);
-        alert(`Imported ${newItems.length} items to inventory!`);
-      } else {
-        alert('No items found. Make sure your CSV has headers: Date, Name, SKU, Size, Cost');
-      }
-      
-      setShowInvCsvImport(false);
-      e.target.value = ''; // Reset file input
-    };
-    reader.readAsText(file);
+        
+        if (newItems.length > 0) {
+          setPurchases(prev => [...prev, ...newItems]);
+          alert(`Imported ${newItems.length} items to inventory!`);
+        } else {
+          alert('No items found. Make sure your CSV has headers: Date, Name, SKU, Size, Cost');
+        }
+        
+        setShowInvCsvImport(false);
+      };
+      reader.readAsText(file);
+    }
+    
+    if (e.target) e.target.value = ''; // Reset file input
   };
 
   // Parse date from various formats to YYYY-MM-DD
@@ -1205,7 +1282,7 @@ export default function App() {
               </div>
               
               <p style={{ margin: '0 0 16px', fontSize: 13, color: c.textMuted }}>
-                CSV must have these columns: <strong style={{ color: '#fff' }}>Date, Name, SKU, Size, Cost</strong>
+                CSV or Excel file with columns: <strong style={{ color: '#fff' }}>Date, Name, SKU, Size, Cost</strong>
               </p>
               
               {/* Drag & Drop Zone */}
@@ -1217,10 +1294,10 @@ export default function App() {
                   e.currentTarget.style.borderColor = c.border; 
                   e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
                   const file = e.dataTransfer.files[0];
-                  if (file && file.name.endsWith('.csv')) {
-                    handleInventoryCsvUpload({ target: { files: [file] } });
+                  if (file && (file.name.endsWith('.csv') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
+                    handleInventoryFileUpload({ target: { files: [file] } });
                   } else {
-                    alert('Please drop a CSV file');
+                    alert('Please drop a CSV or Excel file');
                   }
                 }}
                 style={{ 
@@ -1235,12 +1312,12 @@ export default function App() {
               >
                 <div style={{ fontSize: 36, marginBottom: 12 }}>📄</div>
                 <p style={{ margin: 0, fontSize: 14, color: c.textMuted }}>
-                  Drag & drop your CSV here
+                  Drag & drop your CSV or Excel file here
                 </p>
                 <p style={{ margin: '8px 0 0', fontSize: 12, color: c.textMuted }}>or</p>
                 <label style={{ display: 'inline-block', marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 12, cursor: 'pointer' }}>
                   Browse Files
-                  <input type="file" accept=".csv" onChange={handleInventoryCsvUpload} style={{ display: 'none' }} />
+                  <input type="file" accept=".csv,.xlsx,.xls" onChange={handleInventoryFileUpload} style={{ display: 'none' }} />
                 </label>
               </div>
               
@@ -2016,6 +2093,13 @@ export default function App() {
                     .map(p => (
                       <div 
                         key={p.id}
+                        style={{ 
+                          padding: '12px 16px', 
+                          borderBottom: `1px solid ${c.border}`,
+                          cursor: selectedPendingItem ? 'pointer' : 'default',
+                          transition: 'background 0.15s',
+                          background: selectedPendingItem ? 'transparent' : 'transparent'
+                        }}
                         onClick={() => {
                           if (selectedPendingItem) {
                             confirmSaleWithCost(selectedPendingItem, p.cost, 'StockX Standard');
@@ -2023,20 +2107,41 @@ export default function App() {
                             setSelectedPendingItem(null);
                           }
                         }}
-                        style={{ 
-                          padding: '12px 16px', 
-                          borderBottom: `1px solid ${c.border}`,
-                          cursor: selectedPendingItem ? 'pointer' : 'default',
-                          transition: 'background 0.15s'
-                        }}
                         onMouseEnter={e => { if (selectedPendingItem) e.currentTarget.style.background = 'rgba(16,185,129,0.1)'; }}
                         onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                       >
-                        <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 2 }}>{p.name}</div>
-                        <div style={{ fontSize: 10, color: c.emerald, marginBottom: 4 }}>{p.sku} · Size {p.size}</div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-                          <span style={{ color: c.gold, fontWeight: 700 }}>{fmt(p.cost)}</span>
-                          <span style={{ color: c.textMuted }}>{p.date}</span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 2 }}>{p.name}</div>
+                            <div style={{ fontSize: 10, color: c.emerald, marginBottom: 4 }}>{p.sku} · Size {p.size}</div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                              <span style={{ color: c.gold, fontWeight: 700 }}>{fmt(p.cost)}</span>
+                              <span style={{ color: c.textMuted }}>{p.date}</span>
+                            </div>
+                          </div>
+                          {!selectedPendingItem && (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm(`Mark "${p.name}" as sold?`)) {
+                                  setPurchases(prev => prev.map(x => x.id === p.id ? { ...x, sold: true } : x));
+                                }
+                              }}
+                              style={{ 
+                                padding: '4px 8px', 
+                                background: 'rgba(239,68,68,0.1)', 
+                                border: '1px solid rgba(239,68,68,0.3)', 
+                                borderRadius: 6, 
+                                color: c.red, 
+                                fontSize: 10, 
+                                cursor: 'pointer',
+                                marginLeft: 8,
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              Mark Sold
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))
