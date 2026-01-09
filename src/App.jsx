@@ -74,7 +74,17 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
 
     <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${c.border}`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <div style={{ display: 'flex', gap: 12 }}>
-        <button onClick={() => setSelectedSales(new Set(itemIds))} style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, color: c.emerald, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>✓ Select Page ({items.length})</button>
+        <button onClick={() => {
+          console.log('=== SELECT ALL DEBUG ===');
+          console.log('items array:', items);
+          console.log('items.length:', items.length);
+          console.log('itemIds:', itemIds);
+          console.log('itemIds.length:', itemIds.length);
+          const newSet = new Set(itemIds);
+          console.log('newSet size:', newSet.size);
+          console.log('newSet contents:', [...newSet]);
+          setSelectedSales(newSet);
+        }} style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, color: c.emerald, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>✓ Select Page ({items.length})</button>
         {selectedSales.size > 0 && <button onClick={() => setSelectedSales(new Set())} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>✗ Clear</button>}
       </div>
       <span style={{ fontSize: 13, color: selectedSales.size > 0 ? c.emerald : c.textMuted, fontWeight: selectedSales.size > 0 ? 700 : 400 }}>{selectedSales.size > 0 ? `${selectedSales.size} selected` : 'None selected'}</span>
