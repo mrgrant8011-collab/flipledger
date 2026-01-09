@@ -276,12 +276,13 @@ export default function App() {
   const importCsvSales = () => {
     const filtered = filterCsvData();
     const newPending = filtered.map(row => ({
-      id: row['Order Number'] || Date.now() + Math.random(),
-      name: row['Item'] || 'Unknown Item',
-      sku: row['Style'] || '',
-      size: row['Sku Size'] || '',
-      salePrice: parseFloat(row['Price']) || 0,
-      payout: parseFloat(row['Final Payout Amount']) || 0,
+      id: row['Order Number'] || row['Order Id'] || Date.now() + Math.random(),
+      orderNumber: row['Order Number'] || row['Order Id'] || '',
+      name: row['Item'] || row['Product Name'] || 'Unknown Item',
+      sku: row['Style'] || row['SKU'] || row['Style Code'] || '',
+      size: row['Sku Size'] || row['Size'] || row['Product Size'] || '',
+      salePrice: parseFloat(row['Price'] || row['Sale Price'] || row['Order Total']) || 0,
+      payout: parseFloat(row['Final Payout Amount'] || row['Payout'] || row['Total Payout']) || 0,
       saleDate: row['Sale Date'] ? row['Sale Date'].substring(0, 10) : '',
       platform: 'StockX',
       source: 'csv'
@@ -301,85 +302,70 @@ export default function App() {
     w.document.write(`<!DOCTYPE html><html><head><title>FlipLedger Tax Summary ${year}</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      @page { size: letter; margin: 0.5in; }
-      @media print { body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }
-      body { font-family: Arial, sans-serif; font-size: 11px; line-height: 1.4; color: #000; background: #fff; padding: 20px; }
-      h1 { font-size: 18px; color: #10b981; margin-bottom: 5px; }
-      h2 { font-size: 12px; font-weight: bold; background: #10b981; color: white; padding: 4px 8px; margin: 12px 0 6px 0; }
-      table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 10px; }
-      th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; }
-      th { background: #f0f0f0; font-weight: bold; }
-      .total-row { background: #e8f5e9; font-weight: bold; }
-      .right { text-align: right; }
-      .red { color: #dc2626; }
-      .green { color: #10b981; }
-      .header-info { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 10px; }
-      .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
-      .summary-box { border: 1px solid #ccc; padding: 8px; }
-      .summary-box h3 { font-size: 10px; color: #666; margin-bottom: 4px; }
-      .summary-box .value { font-size: 16px; font-weight: bold; }
-      .footer { margin-top: 10px; padding-top: 8px; border-top: 1px solid #ccc; font-size: 9px; color: #666; }
+      @page { size: letter; margin: 0.75in; }
+      body { font-family: Arial, sans-serif; font-size: 12px; color: #000; background: #fff; padding: 40px; }
+      h1 { font-size: 24px; margin-bottom: 8px; }
+      .header { margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #000; }
+      .header p { margin: 4px 0; color: #444; }
+      .section { margin-bottom: 25px; }
+      .section h2 { font-size: 14px; font-weight: bold; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #ccc; }
+      .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+      .row.total { border-top: 2px solid #000; border-bottom: none; font-weight: bold; font-size: 14px; margin-top: 8px; padding-top: 12px; }
+      .label { color: #333; }
+      .value { font-weight: 600; }
+      .negative { color: #c00; }
+      .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #ccc; font-size: 10px; color: #666; }
     </style></head><body>
     
-    <h1>📊 FlipLedger Tax Summary</h1>
-    <div class="header-info">
-      <span><strong>Tax Year:</strong> ${year === 'all' ? 'All Time' : year}</span>
-      <span><strong>Generated:</strong> ${new Date().toLocaleDateString()}</span>
-      <span><strong>Total Sales:</strong> ${filteredSales.length}</span>
+    <div class="header">
+      <h1>Tax Summary</h1>
+      <p><strong>Tax Year:</strong> ${year === 'all' ? 'All Time' : year}</p>
+      <p><strong>Generated:</strong> ${new Date().toLocaleDateString()}</p>
+      <p><strong>Total Transactions:</strong> ${filteredSales.length}</p>
     </div>
 
-    <div class="summary-grid">
-      <div class="summary-box">
-        <h3>GROSS REVENUE</h3>
-        <div class="value">${fmt(totalRevenue)}</div>
+    <div class="section">
+      <h2>Income</h2>
+      <div class="row">
+        <span class="label">Gross Sales Revenue</span>
+        <span class="value">${fmt(totalRevenue)}</span>
       </div>
-      <div class="summary-box">
-        <h3>COST OF GOODS SOLD</h3>
-        <div class="value red">(${fmt(totalCOGS)})</div>
+      <div class="row">
+        <span class="label">Cost of Goods Sold</span>
+        <span class="value negative">(${fmt(totalCOGS)})</span>
       </div>
-      <div class="summary-box">
-        <h3>TOTAL FEES & EXPENSES</h3>
-        <div class="value red">(${fmt(totalDeductions)})</div>
-      </div>
-      <div class="summary-box">
-        <h3>NET PROFIT (Schedule C Line 31)</h3>
-        <div class="value green">${fmt(netProfit)}</div>
+      <div class="row total">
+        <span class="label">Gross Profit</span>
+        <span class="value">${fmt(totalRevenue - totalCOGS)}</span>
       </div>
     </div>
 
-    <h2>📦 Deductions Breakdown</h2>
-    <table>
-      <tr><th>Category</th><th>Amount</th><th>Schedule C</th></tr>
-      <tr><td>Platform Selling Fees</td><td class="right">${fmt(totalFees)}</td><td>Line 10</td></tr>
-      <tr><td>Business Expenses</td><td class="right">${fmt(totalExp)}</td><td>Line 27a</td></tr>
-      <tr class="total-row"><td><strong>TOTAL</strong></td><td class="right"><strong>${fmt(totalDeductions)}</strong></td><td></td></tr>
-    </table>
+    <div class="section">
+      <h2>Expenses</h2>
+      <div class="row">
+        <span class="label">Platform Selling Fees</span>
+        <span class="value negative">(${fmt(totalFees)})</span>
+      </div>
+      <div class="row">
+        <span class="label">Business Expenses</span>
+        <span class="value negative">(${fmt(totalExp)})</span>
+      </div>
+      <div class="row total">
+        <span class="label">Total Expenses</span>
+        <span class="value negative">(${fmt(totalFees + totalExp)})</span>
+      </div>
+    </div>
 
-    <h2>📋 Sales Log</h2>
-    <table>
-      <tr><th>Date</th><th>Item</th><th>SKU</th><th>Size</th><th>Sold</th><th>Cost</th><th>Fees</th><th>Profit</th></tr>
-      ${filteredSales.slice(0, 25).map(s => `<tr>
-        <td>${s.saleDate || '-'}</td>
-        <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.name || '-'}</td>
-        <td>${s.sku || '-'}</td>
-        <td>${s.size || '-'}</td>
-        <td class="right">${fmt(s.salePrice)}</td>
-        <td class="right red">(${fmt(s.cost)})</td>
-        <td class="right red">(${fmt(s.fees)})</td>
-        <td class="right ${s.profit >= 0 ? 'green' : 'red'}">${fmt(s.profit)}</td>
-      </tr>`).join('')}
-      ${filteredSales.length > 25 ? `<tr><td colspan="8" style="text-align:center;font-style:italic;">... and ${filteredSales.length - 25} more sales (${fmt(totalRevenue)} total revenue)</td></tr>` : ''}
-      <tr class="total-row">
-        <td colspan="4"><strong>TOTALS (${filteredSales.length} sales)</strong></td>
-        <td class="right"><strong>${fmt(totalRevenue)}</strong></td>
-        <td class="right red"><strong>(${fmt(totalCOGS)})</strong></td>
-        <td class="right red"><strong>(${fmt(totalFees)})</strong></td>
-        <td class="right green"><strong>${fmt(netProfit)}</strong></td>
-      </tr>
-    </table>
+    <div class="section">
+      <h2>Net Income</h2>
+      <div class="row total" style="font-size: 18px;">
+        <span class="label">Net Profit (Schedule C, Line 31)</span>
+        <span class="value" style="color: ${netProfit >= 0 ? '#000' : '#c00'}">${fmt(netProfit)}</span>
+      </div>
+    </div>
 
     <div class="footer">
-      <strong>Generated by FlipLedger</strong> • This document is for informational purposes. Consult a licensed CPA for tax advice. • ${new Date().toLocaleString()}
+      Generated by FlipLedger • For informational purposes only • Consult a licensed CPA for tax advice
     </div>
 
     </body></html>`);
@@ -1089,7 +1075,7 @@ export default function App() {
                             <div style={{ fontSize: 11, color: c.emerald }}>{s.sku}</div>
                             <div style={{ fontSize: 10, color: c.textMuted }}>{s.saleDate}</div>
                           </td>
-                          <td style={{ padding: '12px 8px', textAlign: 'center', fontSize: 13 }}>{s.size || '-'}</td>
+                          <td style={{ padding: '12px 8px', textAlign: 'center', fontSize: 14, fontWeight: 600 }}>{s.size || '-'}</td>
                           <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 14, fontWeight: 600 }}>{fmt(s.salePrice)}</td>
                           <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 14, fontWeight: 700, color: c.emerald }}>{fmt(s.payout)}</td>
                           <td style={{ padding: '8px 12px', textAlign: 'center' }}>
