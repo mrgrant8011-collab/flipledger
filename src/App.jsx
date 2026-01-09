@@ -815,7 +815,7 @@ export default function App() {
     { id: 'expenses', label: 'Expenses', icon: '◧' },
     { id: 'reports', label: 'CPA Reports', icon: '📊' },
     { type: 'divider' },
-    { id: 'integrations', label: 'Integrations', icon: '🔗', badge: pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length || null },
+    { id: 'import', label: 'Import', icon: '📥', badge: pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length || null },
     { id: 'settings', label: 'Settings', icon: '⚙' },
   ];
 
@@ -898,7 +898,7 @@ export default function App() {
                 <LivePulse color="#fbbf24" size={10} speed={1.5} />
                 <span style={{ color: c.gold, fontWeight: 600 }}>{pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} sales need cost basis</span>
               </div>
-              <button className="btn-hover" onClick={() => setPage('integrations')} style={{ padding: '8px 16px', background: c.gold, border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer', color: '#000' }}>REVIEW</button>
+              <button className="btn-hover" onClick={() => setPage('import')} style={{ padding: '8px 16px', background: c.gold, border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer', color: '#000' }}>REVIEW</button>
             </div>
           )}
 
@@ -1658,8 +1658,8 @@ export default function App() {
           </div>
         </div>}
 
-        {/* INTEGRATIONS */}
-        {page === 'integrations' && <div style={{ maxWidth: 1100 }}>
+        {/* IMPORT */}
+        {page === 'import' && <div style={{ maxWidth: 1100 }}>
           {/* SPLIT SCREEN LAYOUT - Always visible */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20 }}>
             {/* LEFT SIDE - Main Content */}
