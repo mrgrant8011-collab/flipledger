@@ -1,15 +1,14 @@
 import { useState, useEffect } from 'react';
 
-// SalesPage Component - extracted for proper state handling
+// SalesPage as separate component for proper re-rendering
 function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPage, selectedSales, setSelectedSales, sales, setSales, settings, setModal, ITEMS_PER_PAGE, cardStyle, btnPrimary, c, fmt, exportCSV }) {
-  // Get search term
+  // Filter
   const searchTerm = (formData.salesSearch || '').toLowerCase().trim();
   const platformFilter = formData.salesFilter || 'all';
   const monthFilter = formData.salesMonth || 'all';
   const sortBy = formData.salesSort || 'newest';
   
-  // Step 1: Filter sales
-  const filteredDisplaySales = filteredSales.filter(s => {
+  const filtered = filteredSales.filter(s => {
     if (searchTerm) {
       const inName = s.name && s.name.toLowerCase().includes(searchTerm);
       const inSku = s.sku && s.sku.toLowerCase().includes(searchTerm);
@@ -17,14 +16,12 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
       if (!inName && !inSku && !inSize) return false;
     }
     if (platformFilter !== 'all' && s.platform !== platformFilter) return false;
-    if (monthFilter !== 'all') {
-      if (!s.saleDate || s.saleDate.substring(5, 7) !== monthFilter) return false;
-    }
+    if (monthFilter !== 'all' && (!s.saleDate || s.saleDate.substring(5, 7) !== monthFilter)) return false;
     return true;
   });
   
-  // Step 2: Sort sales
-  const sortedSales = [...filteredDisplaySales].sort((a, b) => {
+  // Sort
+  const sorted = [...filtered].sort((a, b) => {
     switch(sortBy) {
       case 'oldest': return new Date(a.saleDate || 0) - new Date(b.saleDate || 0);
       case 'newest': return new Date(b.saleDate || 0) - new Date(a.saleDate || 0);
@@ -47,122 +44,70 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
     }
   });
   
-  // Step 3: Pagination
-  const totalItems = sortedSales.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / ITEMS_PER_PAGE));
-  const currentPage = Math.min(salesPage, totalPages);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, totalItems);
-  const pageItems = sortedSales.slice(startIndex, endIndex);
-  
-  // Step 4: Selection helpers
-  const pageItemIds = pageItems.map(s => s.id);
-  const allOnPageSelected = pageItems.length > 0 && pageItemIds.every(id => selectedSales.has(id));
-  const totalProfit = sortedSales.reduce((sum, s) => sum + (s.profit || 0), 0);
-  
+  // Paginate
+  const total = sorted.length;
+  const pages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE));
+  const page = Math.min(salesPage, pages);
+  const start = (page - 1) * ITEMS_PER_PAGE;
+  const end = Math.min(start + ITEMS_PER_PAGE, total);
+  const items = sorted.slice(start, end);
+  const itemIds = items.map(s => s.id);
+  const allSelected = items.length > 0 && itemIds.every(id => selectedSales.has(id));
+  const profit = sorted.reduce((sum, s) => sum + (s.profit || 0), 0);
+
   return <div>
-    {/* STATS BAR */}
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 20 }}>
-      <div style={{ ...cardStyle, padding: 16 }}>
-        <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL SALES</span>
-        <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: '#fff' }}>{totalItems}</p>
-      </div>
-      <div style={{ ...cardStyle, padding: 16 }}>
-        <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL PROFIT</span>
-        <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: totalProfit >= 0 ? c.emerald : c.red }}>{fmt(totalProfit)}</p>
-      </div>
+      <div style={{ ...cardStyle, padding: 16 }}><span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL SALES</span><p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: '#fff' }}>{total}</p></div>
+      <div style={{ ...cardStyle, padding: 16 }}><span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL PROFIT</span><p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: profit >= 0 ? c.emerald : c.red }}>{fmt(profit)}</p></div>
     </div>
 
-    {/* SEARCH & FILTERS */}
     <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-      <input 
-        type="text" 
-        placeholder="🔍 Search by name, SKU, or size..." 
-        value={formData.salesSearch || ''} 
-        onChange={e => { setFormData(prev => ({ ...prev, salesSearch: e.target.value })); setSalesPage(1); }}
-        style={{ flex: 1, minWidth: 200, padding: 14, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 14 }} 
-      />
-      <select value={formData.salesMonth || 'all'} onChange={e => { setFormData(prev => ({ ...prev, salesMonth: e.target.value })); setSalesPage(1); }} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
-        <option value="all">All Months</option>
-        <option value="01">January</option><option value="02">February</option><option value="03">March</option><option value="04">April</option><option value="05">May</option><option value="06">June</option><option value="07">July</option><option value="08">August</option><option value="09">September</option><option value="10">October</option><option value="11">November</option><option value="12">December</option>
+      <input type="text" placeholder="🔍 Search by name, SKU, or size..." value={formData.salesSearch || ''} onChange={e => { setFormData({ ...formData, salesSearch: e.target.value }); setSalesPage(1); }} style={{ flex: 1, minWidth: 200, padding: 14, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 14 }} />
+      <select value={formData.salesMonth || 'all'} onChange={e => { setFormData({ ...formData, salesMonth: e.target.value }); setSalesPage(1); }} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13 }}>
+        <option value="all">All Months</option><option value="01">January</option><option value="02">February</option><option value="03">March</option><option value="04">April</option><option value="05">May</option><option value="06">June</option><option value="07">July</option><option value="08">August</option><option value="09">September</option><option value="10">October</option><option value="11">November</option><option value="12">December</option>
       </select>
-      <select value={formData.salesFilter || 'all'} onChange={e => { setFormData(prev => ({ ...prev, salesFilter: e.target.value })); setSalesPage(1); }} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
-        <option value="all">All Platforms</option>
-        <option value="StockX Standard">StockX Standard</option><option value="StockX Direct">StockX Direct</option><option value="StockX Flex">StockX Flex</option><option value="GOAT">GOAT</option><option value="eBay">eBay</option><option value="Local">Local</option>
+      <select value={formData.salesFilter || 'all'} onChange={e => { setFormData({ ...formData, salesFilter: e.target.value }); setSalesPage(1); }} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13 }}>
+        <option value="all">All Platforms</option><option value="StockX Standard">StockX Standard</option><option value="StockX Direct">StockX Direct</option><option value="StockX Flex">StockX Flex</option><option value="GOAT">GOAT</option><option value="eBay">eBay</option><option value="Local">Local</option>
       </select>
       <button onClick={() => { setFormData({}); setModal('sale'); }} style={{ padding: '14px 24px', ...btnPrimary, fontSize: 13 }}>+ RECORD SALE</button>
     </div>
 
-    {/* QUICK ACTIONS BAR */}
     <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${c.border}`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-        <button 
-          onClick={() => {
-            const ids = pageItems.map(s => s.id);
-            setSelectedSales(new Set(ids));
-          }}
-          style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.15)', border: `1px solid rgba(16,185,129,0.3)`, borderRadius: 8, color: c.emerald, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
-        >
-          ✓ Select All on Page ({pageItems.length})
-        </button>
-        {selectedSales.size > 0 && (
-          <button 
-            onClick={() => setSelectedSales(new Set())}
-            style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}
-          >
-            ✗ Clear Selection
-          </button>
-        )}
+      <div style={{ display: 'flex', gap: 12 }}>
+        <button onClick={() => setSelectedSales(new Set(itemIds))} style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, color: c.emerald, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>✓ Select Page ({items.length})</button>
+        {selectedSales.size > 0 && <button onClick={() => setSelectedSales(new Set())} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>✗ Clear</button>}
       </div>
-      <span style={{ fontSize: 13, color: selectedSales.size > 0 ? c.emerald : c.textMuted, fontWeight: selectedSales.size > 0 ? 700 : 400 }}>
-        {selectedSales.size > 0 ? `${selectedSales.size} selected` : 'None selected'}
-      </span>
+      <span style={{ fontSize: 13, color: selectedSales.size > 0 ? c.emerald : c.textMuted, fontWeight: selectedSales.size > 0 ? 700 : 400 }}>{selectedSales.size > 0 ? `${selectedSales.size} selected` : 'None selected'}</span>
     </div>
 
-    {/* BULK DELETE BAR */}
-    {selectedSales.size > 0 && (
-      <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontWeight: 700, color: c.red, fontSize: 14 }}>🗑️ {selectedSales.size} sale{selectedSales.size > 1 ? 's' : ''} ready to delete</span>
-        <button 
-          onClick={() => { 
-            if (confirm(`DELETE ${selectedSales.size} SALES?\n\nThis cannot be undone!`)) { 
-              setSales(prev => prev.filter(s => !selectedSales.has(s.id))); 
-              setSelectedSales(new Set()); 
-            }
-          }} 
-          style={{ padding: '10px 24px', background: c.red, border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700 }}
-        >
-          🗑️ DELETE {selectedSales.size} SALES
-        </button>
-      </div>
-    )}
+    {selectedSales.size > 0 && <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <span style={{ fontWeight: 700, color: c.red, fontSize: 14 }}>🗑️ {selectedSales.size} ready to delete</span>
+      <button onClick={() => { if(confirm(`DELETE ${selectedSales.size} SALES?`)) { setSales(sales.filter(s => !selectedSales.has(s.id))); setSelectedSales(new Set()); }}} style={{ padding: '10px 24px', background: c.red, border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700 }}>🗑️ DELETE {selectedSales.size}</button>
+    </div>}
 
-    {/* SALES TABLE */}
     <div style={cardStyle}>
       <div style={{ padding: '14px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 13, color: c.textMuted }}>{totalItems > 0 ? `Showing ${startIndex + 1}-${endIndex} of ${totalItems} sales` : 'No sales found'}</span>
-        <button onClick={() => exportCSV(sortedSales, 'sales.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
+        <span style={{ fontSize: 13, color: c.textMuted }}>{total > 0 ? `Showing ${start + 1}-${end} of ${total}` : 'No sales'}</span>
+        <button onClick={() => exportCSV(sorted, 'sales.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
       </div>
       
-      {/* TABLE HEADER */}
       <div style={{ display: 'grid', gridTemplateColumns: '40px 85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
-        <div><input type="checkbox" checked={allOnPageSelected} onChange={e => { if (e.target.checked) { setSelectedSales(new Set(pageItemIds)); } else { setSelectedSales(new Set()); }}} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }} /></div>
-        <span onClick={() => { setFormData(prev => ({ ...prev, salesSort: sortBy === 'oldest' ? 'newest' : 'oldest' })); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'oldest' || sortBy === 'newest') ? c.emerald : c.textMuted, cursor: 'pointer' }}>DATE {sortBy === 'oldest' ? '▲' : sortBy === 'newest' ? '▼' : ''}</span>
-        <span onClick={() => { setFormData(prev => ({ ...prev, salesSort: sortBy === 'nameAZ' ? 'nameZA' : 'nameAZ' })); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'nameAZ' || sortBy === 'nameZA') ? c.emerald : c.textMuted, cursor: 'pointer' }}>NAME {sortBy === 'nameAZ' ? '▲' : sortBy === 'nameZA' ? '▼' : ''}</span>
-        <span onClick={() => { setFormData(prev => ({ ...prev, salesSort: sortBy === 'skuAZ' ? 'skuZA' : 'skuAZ' })); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'skuAZ' || sortBy === 'skuZA') ? c.emerald : c.textMuted, cursor: 'pointer' }}>SKU {sortBy === 'skuAZ' ? '▲' : sortBy === 'skuZA' ? '▼' : ''}</span>
-        <span onClick={() => { setFormData(prev => ({ ...prev, salesSort: sortBy === 'sizeAsc' ? 'sizeDesc' : 'sizeAsc' })); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'sizeAsc' || sortBy === 'sizeDesc') ? c.emerald : c.textMuted, cursor: 'pointer' }}>SIZE {sortBy === 'sizeAsc' ? '▲' : sortBy === 'sizeDesc' ? '▼' : ''}</span>
-        <span onClick={() => { setFormData(prev => ({ ...prev, salesSort: 'platformAZ' })); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: sortBy === 'platformAZ' ? c.emerald : c.textMuted, cursor: 'pointer' }}>PLATFORM</span>
-        <span onClick={() => { setFormData(prev => ({ ...prev, salesSort: sortBy === 'costLow' ? 'costHigh' : 'costLow' })); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'costLow' || sortBy === 'costHigh') ? c.emerald : c.textMuted, cursor: 'pointer', textAlign: 'right' }}>COST {sortBy === 'costLow' ? '▲' : sortBy === 'costHigh' ? '▼' : ''}</span>
-        <span onClick={() => { setFormData(prev => ({ ...prev, salesSort: sortBy === 'priceLow' ? 'priceHigh' : 'priceLow' })); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'priceLow' || sortBy === 'priceHigh') ? c.emerald : c.textMuted, cursor: 'pointer', textAlign: 'right' }}>PRICE {sortBy === 'priceLow' ? '▲' : sortBy === 'priceHigh' ? '▼' : ''}</span>
-        <span onClick={() => { setFormData(prev => ({ ...prev, salesSort: sortBy === 'feesLow' ? 'feesHigh' : 'feesLow' })); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'feesLow' || sortBy === 'feesHigh') ? c.emerald : c.textMuted, cursor: 'pointer', textAlign: 'right' }}>FEES {sortBy === 'feesLow' ? '▲' : sortBy === 'feesHigh' ? '▼' : ''}</span>
-        <span onClick={() => { setFormData(prev => ({ ...prev, salesSort: sortBy === 'profitLow' ? 'profitHigh' : 'profitLow' })); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'profitLow' || sortBy === 'profitHigh') ? c.emerald : c.textMuted, cursor: 'pointer', textAlign: 'right' }}>PROFIT {sortBy === 'profitLow' ? '▲' : sortBy === 'profitHigh' ? '▼' : ''}</span>
+        <div><input type="checkbox" checked={allSelected} onChange={e => setSelectedSales(e.target.checked ? new Set(itemIds) : new Set())} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }} /></div>
+        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'oldest' ? 'newest' : 'oldest' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'oldest' || sortBy === 'newest') ? c.emerald : c.textMuted, cursor: 'pointer' }}>DATE {sortBy === 'oldest' ? '▲' : sortBy === 'newest' ? '▼' : ''}</span>
+        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'nameAZ' ? 'nameZA' : 'nameAZ' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'nameAZ' || sortBy === 'nameZA') ? c.emerald : c.textMuted, cursor: 'pointer' }}>NAME {sortBy === 'nameAZ' ? '▲' : sortBy === 'nameZA' ? '▼' : ''}</span>
+        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'skuAZ' ? 'skuZA' : 'skuAZ' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'skuAZ' || sortBy === 'skuZA') ? c.emerald : c.textMuted, cursor: 'pointer' }}>SKU {sortBy === 'skuAZ' ? '▲' : sortBy === 'skuZA' ? '▼' : ''}</span>
+        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'sizeAsc' ? 'sizeDesc' : 'sizeAsc' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'sizeAsc' || sortBy === 'sizeDesc') ? c.emerald : c.textMuted, cursor: 'pointer' }}>SIZE {sortBy === 'sizeAsc' ? '▲' : sortBy === 'sizeDesc' ? '▼' : ''}</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>PLATFORM</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>COST</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>PRICE</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>FEES</span>
+        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'profitLow' ? 'profitHigh' : 'profitLow' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'profitLow' || sortBy === 'profitHigh') ? c.emerald : c.textMuted, cursor: 'pointer', textAlign: 'right' }}>PROFIT {sortBy === 'profitLow' ? '▲' : sortBy === 'profitHigh' ? '▼' : ''}</span>
         <span></span><span></span>
       </div>
 
-      {/* TABLE ROWS */}
-      {pageItems.length > 0 ? pageItems.map(s => (
+      {items.length > 0 ? items.map(s => (
         <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '40px 85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : 'transparent' }}>
-          <div><input type="checkbox" checked={selectedSales.has(s.id)} onChange={e => { const newSet = new Set(selectedSales); if (e.target.checked) newSet.add(s.id); else newSet.delete(s.id); setSelectedSales(newSet); }} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }} /></div>
+          <div><input type="checkbox" checked={selectedSales.has(s.id)} onChange={e => { const n = new Set(selectedSales); e.target.checked ? n.add(s.id) : n.delete(s.id); setSelectedSales(n); }} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }} /></div>
           <span style={{ fontSize: 12, color: c.textMuted }}>{s.saleDate}</span>
           <span style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</span>
           <span style={{ fontSize: 11, color: c.emerald }}>{s.sku || '-'}</span>
@@ -175,25 +120,15 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
           <button onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14 }}>✏️</button>
           <button onClick={() => { setSales(sales.filter(x => x.id !== s.id)); setSelectedSales(prev => { const n = new Set(prev); n.delete(s.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16 }}>×</button>
         </div>
-      )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💵</div><p style={{ color: c.textMuted }}>No sales match your filters</p><button onClick={() => { setFormData({}); setModal('sale'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Record Sale</button></div>}
+      )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💵</div><p style={{ color: c.textMuted }}>No sales</p></div>}
       
-      {/* PAGINATION */}
-      {totalPages > 1 && (
-        <div style={{ padding: '16px 20px', borderTop: `1px solid ${c.border}`, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-          <button onClick={() => setSalesPage(1)} disabled={currentPage === 1} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: currentPage === 1 ? c.textMuted : '#fff', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}>«</button>
-          <button onClick={() => setSalesPage(currentPage - 1)} disabled={currentPage === 1} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: currentPage === 1 ? c.textMuted : '#fff', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}>‹</button>
-          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-            let pageNum;
-            if (totalPages <= 5) pageNum = i + 1;
-            else if (currentPage <= 3) pageNum = i + 1;
-            else if (currentPage >= totalPages - 2) pageNum = totalPages - 4 + i;
-            else pageNum = currentPage - 2 + i;
-            return <button key={pageNum} onClick={() => setSalesPage(pageNum)} style={{ padding: '8px 14px', background: currentPage === pageNum ? c.emerald : 'rgba(255,255,255,0.05)', border: `1px solid ${currentPage === pageNum ? c.emerald : c.border}`, borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: currentPage === pageNum ? 700 : 400 }}>{pageNum}</button>;
-          })}
-          <button onClick={() => setSalesPage(currentPage + 1)} disabled={currentPage === totalPages} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: currentPage === totalPages ? c.textMuted : '#fff', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', fontSize: 12 }}>›</button>
-          <button onClick={() => setSalesPage(totalPages)} disabled={currentPage === totalPages} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: currentPage === totalPages ? c.textMuted : '#fff', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', fontSize: 12 }}>»</button>
-        </div>
-      )}
+      {pages > 1 && <div style={{ padding: '16px 20px', borderTop: `1px solid ${c.border}`, display: 'flex', justifyContent: 'center', gap: 8 }}>
+        <button onClick={() => setSalesPage(1)} disabled={page === 1} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: page === 1 ? c.textMuted : '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}>«</button>
+        <button onClick={() => setSalesPage(page - 1)} disabled={page === 1} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: page === 1 ? c.textMuted : '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}>‹</button>
+        {[...Array(Math.min(5, pages))].map((_, i) => { let n = pages <= 5 ? i + 1 : page <= 3 ? i + 1 : page >= pages - 2 ? pages - 4 + i : page - 2 + i; return <button key={n} onClick={() => setSalesPage(n)} style={{ padding: '8px 14px', background: page === n ? c.emerald : 'rgba(255,255,255,0.05)', border: `1px solid ${page === n ? c.emerald : c.border}`, borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: page === n ? 700 : 400 }}>{n}</button>; })}
+        <button onClick={() => setSalesPage(page + 1)} disabled={page === pages} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: page === pages ? c.textMuted : '#fff', cursor: page === pages ? 'not-allowed' : 'pointer', fontSize: 12 }}>›</button>
+        <button onClick={() => setSalesPage(pages)} disabled={page === pages} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: page === pages ? c.textMuted : '#fff', cursor: page === pages ? 'not-allowed' : 'pointer', fontSize: 12 }}>»</button>
+      </div>}
     </div>
   </div>;
 }
