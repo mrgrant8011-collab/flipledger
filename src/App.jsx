@@ -48,6 +48,9 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem('flipledger_pending')) || []; }
     catch { return []; }
   });
+  const [selectedPending, setSelectedPending] = useState(new Set());
+  const [bulkCost, setBulkCost] = useState('');
+  const [selectedSales, setSelectedSales] = useState(new Set());
 
   // Check for StockX token in URL on load
   useEffect(() => {
@@ -770,36 +773,65 @@ export default function App() {
         </div>}
 
         {/* SALES */}
-        {page === 'sales' && <div>
+        {page === 'sales' && (() => {
+          // Get filtered sales once to use everywhere
+          const getFilteredSalesDisplay = () => filteredSales.filter(s => {
+            const search = (formData.salesSearch || '').toLowerCase();
+            const filter = formData.salesFilter || 'all';
+            const monthFilter = formData.salesMonth || 'all';
+            const matchesSearch = !search || s.name?.toLowerCase().includes(search) || s.sku?.toLowerCase().includes(search) || s.size?.toString().toLowerCase().includes(search);
+            const matchesFilter = filter === 'all' || s.platform === filter;
+            const matchesMonth = monthFilter === 'all' || (s.saleDate && s.saleDate.substring(5, 7) === monthFilter);
+            return matchesSearch && matchesFilter && matchesMonth;
+          });
+          const displayedSales = getFilteredSalesDisplay();
+          const displayedProfit = displayedSales.reduce((sum, s) => sum + (s.profit || 0), 0);
+          
+          return <div>
           {/* STATS BAR */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 20 }}>
             <div style={{ ...cardStyle, padding: 16 }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL SALES</span>
-              <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: '#fff' }}>{filteredSales.length}</p>
+              <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: '#fff' }}>{displayedSales.length}</p>
             </div>
             <div style={{ ...cardStyle, padding: 16 }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL PROFIT</span>
-              <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: netProfit >= 0 ? c.emerald : c.red }}>{fmt(netProfit)}</p>
+              <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: displayedProfit >= 0 ? c.emerald : c.red }}>{fmt(displayedProfit)}</p>
             </div>
           </div>
 
-          {/* SEARCH & ACTIONS */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+          {/* SEARCH & FILTERS */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
             <input 
               type="text" 
               placeholder="🔍 Search by name, SKU, or size..." 
               value={formData.salesSearch || ''} 
               onChange={e => setFormData({ ...formData, salesSearch: e.target.value })}
-              style={{ flex: 1, padding: 14, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 14 }} 
+              style={{ flex: 1, minWidth: 200, padding: 14, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 14 }} 
             />
+            <select value={formData.salesMonth || 'all'} onChange={e => setFormData({ ...formData, salesMonth: e.target.value })} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
+              <option value="all">All Months</option>
+              <option value="01">January</option>
+              <option value="02">February</option>
+              <option value="03">March</option>
+              <option value="04">April</option>
+              <option value="05">May</option>
+              <option value="06">June</option>
+              <option value="07">July</option>
+              <option value="08">August</option>
+              <option value="09">September</option>
+              <option value="10">October</option>
+              <option value="11">November</option>
+              <option value="12">December</option>
+            </select>
             <select value={formData.salesFilter || 'all'} onChange={e => setFormData({ ...formData, salesFilter: e.target.value })} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
-              <option value="all">All Platforms ({filteredSales.length})</option>
-              <option value="StockX Standard">StockX Standard ({filteredSales.filter(s => s.platform === 'StockX Standard').length})</option>
-              <option value="StockX Direct">StockX Direct ({filteredSales.filter(s => s.platform === 'StockX Direct').length})</option>
-              <option value="StockX Flex">StockX Flex ({filteredSales.filter(s => s.platform === 'StockX Flex').length})</option>
-              <option value="GOAT">GOAT ({filteredSales.filter(s => s.platform === 'GOAT').length})</option>
-              <option value="eBay">eBay ({filteredSales.filter(s => s.platform === 'eBay').length})</option>
-              <option value="Local">Local ({filteredSales.filter(s => s.platform === 'Local').length})</option>
+              <option value="all">All Platforms</option>
+              <option value="StockX Standard">StockX Standard</option>
+              <option value="StockX Direct">StockX Direct</option>
+              <option value="StockX Flex">StockX Flex</option>
+              <option value="GOAT">GOAT</option>
+              <option value="eBay">eBay</option>
+              <option value="Local">Local</option>
             </select>
             <select value={formData.salesSort || 'newest'} onChange={e => setFormData({ ...formData, salesSort: e.target.value })} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
               <option value="newest">Newest First</option>
@@ -811,21 +843,57 @@ export default function App() {
             <button onClick={() => { setFormData({}); setModal('sale'); }} style={{ padding: '14px 24px', ...btnPrimary, fontSize: 13 }}>+ RECORD SALE</button>
           </div>
 
+          {/* BULK DELETE BAR - shows when items selected */}
+          {selectedSales.size > 0 && (
+            <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(239,68,68,0.15)', border: `1px solid rgba(239,68,68,0.3)`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontWeight: 700, color: c.red, fontSize: 14 }}>
+                {selectedSales.size} sale{selectedSales.size > 1 ? 's' : ''} selected
+              </span>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button 
+                  onClick={() => setSelectedSales(new Set())}
+                  style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}
+                >
+                  Clear Selection
+                </button>
+                <button 
+                  onClick={() => {
+                    if (confirm(`Delete ${selectedSales.size} sale${selectedSales.size > 1 ? 's' : ''}? This cannot be undone.`)) {
+                      setSales(prev => prev.filter(s => !selectedSales.has(s.id)));
+                      setSelectedSales(new Set());
+                    }
+                  }}
+                  style={{ padding: '8px 20px', background: c.red, border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
+                >
+                  🗑️ Delete {selectedSales.size} Sale{selectedSales.size > 1 ? 's' : ''}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* SALES TABLE */}
           <div style={cardStyle}>
             <div style={{ padding: '14px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, color: c.textMuted }}>Showing {filteredSales.filter(s => {
-                const search = (formData.salesSearch || '').toLowerCase();
-                const filter = formData.salesFilter || 'all';
-                const matchesSearch = !search || s.name?.toLowerCase().includes(search) || s.sku?.toLowerCase().includes(search) || s.size?.toLowerCase().includes(search);
-                const matchesFilter = filter === 'all' || s.platform === filter;
-                return matchesSearch && matchesFilter;
-              }).length} sales</span>
-              <button onClick={() => exportCSV(filteredSales, 'sales.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
+              <span style={{ fontSize: 13, color: c.textMuted }}>Showing {displayedSales.length} sales</span>
+              <button onClick={() => exportCSV(displayedSales, 'sales.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
             </div>
             
             {/* TABLE HEADER */}
-            <div style={{ display: 'grid', gridTemplateColumns: '85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '40px 85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <input 
+                  type="checkbox"
+                  checked={displayedSales.length > 0 && displayedSales.every(s => selectedSales.has(s.id))}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedSales(new Set(displayedSales.map(s => s.id)));
+                    } else {
+                      setSelectedSales(new Set());
+                    }
+                  }}
+                  style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }}
+                />
+              </div>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>DATE</span>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>NAME</span>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>SKU</span>
@@ -840,27 +908,7 @@ export default function App() {
             </div>
 
             {/* TABLE ROWS */}
-            {filteredSales.filter(s => {
-              const search = (formData.salesSearch || '').toLowerCase();
-              const filter = formData.salesFilter || 'all';
-              const matchesSearch = !search || s.name?.toLowerCase().includes(search) || s.sku?.toLowerCase().includes(search) || s.size?.toLowerCase().includes(search);
-              const matchesFilter = filter === 'all' || s.platform === filter;
-              return matchesSearch && matchesFilter;
-            }).sort((a, b) => {
-              const sort = formData.salesSort || 'newest';
-              if (sort === 'newest') return new Date(b.saleDate) - new Date(a.saleDate);
-              if (sort === 'oldest') return new Date(a.saleDate) - new Date(b.saleDate);
-              if (sort === 'profitHigh') return (b.profit || 0) - (a.profit || 0);
-              if (sort === 'profitLow') return (a.profit || 0) - (b.profit || 0);
-              if (sort === 'priceHigh') return (b.salePrice || 0) - (a.salePrice || 0);
-              return 0;
-            }).length ? filteredSales.filter(s => {
-              const search = (formData.salesSearch || '').toLowerCase();
-              const filter = formData.salesFilter || 'all';
-              const matchesSearch = !search || s.name?.toLowerCase().includes(search) || s.sku?.toLowerCase().includes(search) || s.size?.toLowerCase().includes(search);
-              const matchesFilter = filter === 'all' || s.platform === filter;
-              return matchesSearch && matchesFilter;
-            }).sort((a, b) => {
+            {displayedSales.length ? displayedSales.sort((a, b) => {
               const sort = formData.salesSort || 'newest';
               if (sort === 'newest') return new Date(b.saleDate) - new Date(a.saleDate);
               if (sort === 'oldest') return new Date(a.saleDate) - new Date(b.saleDate);
@@ -869,7 +917,33 @@ export default function App() {
               if (sort === 'priceHigh') return (b.salePrice || 0) - (a.salePrice || 0);
               return 0;
             }).map(s => (
-              <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, alignItems: 'center' }}>
+              <div 
+                key={s.id} 
+                style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: '40px 85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', 
+                  padding: '12px 20px', 
+                  borderBottom: `1px solid ${c.border}`, 
+                  alignItems: 'center',
+                  background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : 'transparent'
+                }}
+              >
+                <div>
+                  <input 
+                    type="checkbox"
+                    checked={selectedSales.has(s.id)}
+                    onChange={(e) => {
+                      const newSelected = new Set(selectedSales);
+                      if (e.target.checked) {
+                        newSelected.add(s.id);
+                      } else {
+                        newSelected.delete(s.id);
+                      }
+                      setSelectedSales(newSelected);
+                    }}
+                    style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }}
+                  />
+                </div>
                 <span style={{ fontSize: 12, color: c.textMuted }}>{s.saleDate}</span>
                 <span style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</span>
                 <span style={{ fontSize: 11, color: c.emerald }}>{s.sku || '-'}</span>
@@ -880,11 +954,12 @@ export default function App() {
                 <span style={{ fontSize: 12, textAlign: 'right', color: c.red }}>{fmt(s.fees)}</span>
                 <span style={{ fontSize: 13, fontWeight: 700, textAlign: 'right', color: s.profit >= 0 ? c.emerald : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</span>
                 <button onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14 }}>✏️</button>
-                <button onClick={() => setSales(sales.filter(x => x.id !== s.id))} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16 }}>×</button>
+                <button onClick={() => { setSales(sales.filter(x => x.id !== s.id)); setSelectedSales(prev => { const n = new Set(prev); n.delete(s.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16 }}>×</button>
               </div>
-            )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💵</div><p style={{ color: c.textMuted }}>No sales</p><button onClick={() => { setFormData({}); setModal('sale'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Record Sale</button></div>}
+            )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💵</div><p style={{ color: c.textMuted }}>No sales match your filters</p><button onClick={() => { setFormData({}); setModal('sale'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Record Sale</button></div>}
           </div>
-        </div>}
+        </div>;
+        })()}
 
         {/* EXPENSES */}
         {page === 'expenses' && <div style={cardStyle}>
@@ -1109,7 +1184,7 @@ export default function App() {
                 <div style={{ padding: '16px 20px', background: 'rgba(251,191,36,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${c.border}` }}>
                   <div>
                     <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: c.gold }}>⚡ Bulk Cost Entry</h3>
-                    <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Tab through, enter costs, confirm all</p>
+                    <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Select multiple items to apply same cost</p>
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <select 
@@ -1131,33 +1206,86 @@ export default function App() {
                       <option value="item">Sort: Item Name</option>
                       <option value="price">Sort: Price</option>
                     </select>
-                    <button onClick={() => {
-                      const yearPending = pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year)));
-                      const toConfirm = yearPending.filter(s => document.getElementById(`bulkcost_${s.id}`)?.value);
-                      if (toConfirm.length === 0) { alert('Enter at least one cost first'); return; }
-                      toConfirm.forEach(s => {
-                        const cost = document.getElementById(`bulkcost_${s.id}`)?.value;
-                        if (cost) confirmSaleWithCost(s.id, cost, 'StockX Standard');
-                      });
-                    }} style={{ padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>
-                      ✓ Confirm All Filled
-                    </button>
                     <button onClick={() => { 
                       const yearPending = pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year)));
                       if (confirm(`Delete all ${yearPending.length} pending sales?`)) {
                         setPendingCosts(pendingCosts.filter(s => !(year === 'all' || (s.saleDate && s.saleDate.startsWith(year)))));
+                        setSelectedPending(new Set());
                       }
                     }} style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 10, color: c.red, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                      🗑️ Clear
+                      🗑️ Clear All
                     </button>
                   </div>
                 </div>
+
+                {/* Multi-Select Action Bar - shows when items selected */}
+                {selectedPending.size > 0 && (
+                  <div style={{ padding: '12px 20px', background: 'rgba(16,185,129,0.15)', borderBottom: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 16 }}>
+                    <span style={{ fontWeight: 700, color: c.emerald, fontSize: 14 }}>
+                      {selectedPending.size} selected
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                      <span style={{ fontSize: 13, color: c.textMuted }}>Cost each:</span>
+                      <input 
+                        type="number" 
+                        placeholder="$0.00"
+                        value={bulkCost}
+                        onChange={e => setBulkCost(e.target.value)}
+                        style={{ 
+                          width: 100, 
+                          padding: '10px 14px', 
+                          background: 'rgba(255,255,255,0.1)', 
+                          border: `2px solid ${c.emerald}`, 
+                          borderRadius: 8, 
+                          color: c.text, 
+                          fontSize: 15, 
+                          fontWeight: 600,
+                          textAlign: 'center'
+                        }} 
+                      />
+                      <button 
+                        onClick={() => {
+                          if (!bulkCost) { alert('Enter a cost first'); return; }
+                          selectedPending.forEach(id => {
+                            confirmSaleWithCost(id, bulkCost, 'StockX Standard');
+                          });
+                          setSelectedPending(new Set());
+                          setBulkCost('');
+                        }}
+                        style={{ padding: '10px 20px', ...btnPrimary, fontSize: 13 }}
+                      >
+                        ✓ Apply to {selectedPending.size} Items
+                      </button>
+                    </div>
+                    <button 
+                      onClick={() => setSelectedPending(new Set())}
+                      style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}
+                    >
+                      Clear Selection
+                    </button>
+                  </div>
+                )}
                 
                 {/* Bulk Table */}
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
+                        <th style={{ padding: '12px 16px', textAlign: 'center', width: 40 }}>
+                          <input 
+                            type="checkbox"
+                            checked={selectedPending.size === pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length && selectedPending.size > 0}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                const allIds = pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).map(s => s.id);
+                                setSelectedPending(new Set(allIds));
+                              } else {
+                                setSelectedPending(new Set());
+                              }
+                            }}
+                            style={{ width: 18, height: 18, cursor: 'pointer', accentColor: c.emerald }}
+                          />
+                        </th>
                         <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: c.textMuted, letterSpacing: '0.05em' }}>ITEM</th>
                         <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: c.textMuted }}>SIZE</th>
                         <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>SOLD</th>
@@ -1168,7 +1296,29 @@ export default function App() {
                     </thead>
                     <tbody>
                       {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).map((s, idx) => (
-                        <tr key={s.id} style={{ borderTop: `1px solid ${c.border}` }}>
+                        <tr 
+                          key={s.id} 
+                          style={{ 
+                            borderTop: `1px solid ${c.border}`,
+                            background: selectedPending.has(s.id) ? 'rgba(16,185,129,0.1)' : 'transparent'
+                          }}
+                        >
+                          <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                            <input 
+                              type="checkbox"
+                              checked={selectedPending.has(s.id)}
+                              onChange={(e) => {
+                                const newSelected = new Set(selectedPending);
+                                if (e.target.checked) {
+                                  newSelected.add(s.id);
+                                } else {
+                                  newSelected.delete(s.id);
+                                }
+                                setSelectedPending(newSelected);
+                              }}
+                              style={{ width: 18, height: 18, cursor: 'pointer', accentColor: c.emerald }}
+                            />
+                          </td>
                           <td style={{ padding: '12px 16px' }}>
                             <div style={{ fontWeight: 600, fontSize: 13, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
                             <div style={{ fontSize: 11, color: c.emerald }}>{s.sku}</div>
@@ -1206,7 +1356,10 @@ export default function App() {
                           </td>
                           <td style={{ padding: '8px', textAlign: 'center' }}>
                             <button 
-                              onClick={() => setPendingCosts(prev => prev.filter(x => x.id !== s.id))} 
+                              onClick={() => {
+                                setPendingCosts(prev => prev.filter(x => x.id !== s.id));
+                                setSelectedPending(prev => { const n = new Set(prev); n.delete(s.id); return n; });
+                              }} 
                               style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16, padding: 4 }}
                             >×</button>
                           </td>
@@ -1222,7 +1375,7 @@ export default function App() {
                     {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} sales pending
                   </span>
                   <span style={{ fontSize: 11, color: c.textMuted }}>
-                    💡 Enter cost + press Enter to confirm each row
+                    💡 Select items with checkbox, then apply cost to all • Or enter cost + Enter for single item
                   </span>
                 </div>
               </div>
@@ -1288,16 +1441,6 @@ export default function App() {
                 </div>
               ) : (
                 <div>
-                  {/* Debug: Show detected headers */}
-                  {csvImport.headers && csvImport.headers.length > 0 && (
-                    <div style={{ marginBottom: 16, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 8, fontSize: 11 }}>
-                      <div style={{ color: c.textMuted, marginBottom: 4 }}>📋 Detected columns: {csvImport.headers.slice(0, 8).join(', ')}{csvImport.headers.length > 8 ? '...' : ''}</div>
-                      {csvImport.data[0] && (
-                        <div style={{ color: c.gold }}>📅 Sample date: "{csvImport.data[0]['_originalDate']}" → parsed as "{csvImport.data[0]['_parsedDate']}"</div>
-                      )}
-                    </div>
-                  )}
-                  
                   {/* Filter Controls */}
                   <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
                     <div style={{ flex: 1 }}>
