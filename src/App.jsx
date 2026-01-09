@@ -4,6 +4,7 @@ export default function App() {
   const [page, setPage] = useState('dashboard');
   const [modal, setModal] = useState(null);
   const [year, setYear] = useState('2025');
+  const [csvImport, setCsvImport] = useState({ show: false, data: [], filteredData: [], year: '2026', month: 'all', preview: false });
   const [purchases, setPurchases] = useState(() => {
     const saved = localStorage.getItem('flipledger_purchases');
     return saved ? JSON.parse(saved) : [];
@@ -33,12 +34,33 @@ export default function App() {
     const saved = localStorage.getItem('flipledger_settings');
     return saved ? JSON.parse(saved) : { stockxLevel: 9, stockxProcessing: 3, stockxQuickShip: false, stockxDirectFee: 5, stockxDirectProcessing: 3, stockxFlexFee: 5, stockxFlexProcessing: 3, stockxFlexFulfillment: 5, goatFee: 9.5, goatProcessing: 2.9, ebayFee: 12.9, mileageRate: 0.67 };
   });
-  const [stockxConnected, setStockxConnected] = useState(false);
+  const [stockxConnected, setStockxConnected] = useState(() => {
+    return !!localStorage.getItem('flipledger_stockx_token');
+  });
+  const [stockxToken, setStockxToken] = useState(() => {
+    return localStorage.getItem('flipledger_stockx_token') || null;
+  });
   const [goatConnected, setGoatConnected] = useState(false);
   const [ebayConnected, setEbayConnected] = useState(false);
   const [qbConnected, setQbConnected] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [pendingCosts, setPendingCosts] = useState([]);
+  const [pendingCosts, setPendingCosts] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('flipledger_pending')) || []; }
+    catch { return []; }
+  });
+
+  // Check for StockX token in URL on load
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('access_token');
+    if (token) {
+      localStorage.setItem('flipledger_stockx_token', token);
+      setStockxToken(token);
+      setStockxConnected(true);
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   // Save to localStorage whenever data changes
   useEffect(() => { localStorage.setItem('flipledger_purchases', JSON.stringify(purchases)); }, [purchases]);
@@ -48,6 +70,56 @@ export default function App() {
   useEffect(() => { localStorage.setItem('flipledger_mileage', JSON.stringify(mileage)); }, [mileage]);
   useEffect(() => { localStorage.setItem('flipledger_goals', JSON.stringify(goals)); }, [goals]);
   useEffect(() => { localStorage.setItem('flipledger_settings', JSON.stringify(settings)); }, [settings]);
+  useEffect(() => { localStorage.setItem('flipledger_pending', JSON.stringify(pendingCosts)); }, [pendingCosts]);
+
+  // Fetch StockX sales
+  const fetchStockXSales = async () => {
+    if (!stockxToken) return;
+    setSyncing(true);
+    try {
+      const response = await fetch(`/api/stockx-sales?year=${year}`, {
+        headers: {
+          'Authorization': `Bearer ${stockxToken}`
+        }
+      });
+      const data = await response.json();
+      if (data.sales && data.sales.length > 0) {
+        // Filter out duplicates - check against existing sales AND pending costs
+        const existingOrderIds = new Set([
+          ...sales.filter(s => s.platform === 'StockX').map(s => s.orderNumber || s.sku + s.saleDate),
+          ...pendingCosts.map(s => s.orderNumber || s.sku + s.saleDate)
+        ]);
+        
+        const newSales = data.sales.filter(s => {
+          const orderId = s.orderNumber || s.sku + s.saleDate;
+          return !existingOrderIds.has(orderId);
+        });
+        
+        if (newSales.length > 0) {
+          setPendingCosts(prev => [...prev, ...newSales.map(s => ({
+            ...s,
+            id: 'stockx_' + (s.orderNumber || s.id) + '_' + Date.now()
+          }))]);
+          alert(`Synced ${newSales.length} NEW sales from ${year} (${data.sales.length - newSales.length} duplicates skipped)`);
+        } else {
+          alert(`No new sales to sync. ${data.sales.length} sales already exist.`);
+        }
+      } else {
+        alert(`No sales found for ${year}`);
+      }
+    } catch (error) {
+      console.error('Failed to fetch StockX sales:', error);
+      alert('Failed to sync StockX sales');
+    }
+    setSyncing(false);
+  };
+
+  // Disconnect StockX
+  const disconnectStockX = () => {
+    localStorage.removeItem('flipledger_stockx_token');
+    setStockxToken(null);
+    setStockxConnected(false);
+  };
 
   const c = { bg: '#030303', card: 'rgba(255,255,255,0.02)', border: 'rgba(255,255,255,0.06)', emerald: '#10b981', emeraldGlow: 'rgba(16,185,129,0.4)', gold: '#fbbf24', red: '#ef4444', text: '#fff', textMuted: 'rgba(255,255,255,0.4)' };
 
@@ -102,24 +174,53 @@ export default function App() {
 
   const syncPlatform = async (platform) => {
     setSyncing(true);
-    await new Promise(r => setTimeout(r, 2000));
-    const mockSales = [
-      { id: platform + '_' + Date.now(), name: 'Jordan 4 Retro Military Black', size: '10', salePrice: 340, fees: 37.40, saleDate: '2025-01-05', platform, payout: 302.60 },
-      { id: platform + '_' + Date.now() + 1, name: 'Nike Dunk Low Panda', size: '9.5', salePrice: 115, fees: 12.65, saleDate: '2025-01-04', platform, payout: 102.35 },
-    ];
-    setPendingCosts(prev => [...prev, ...mockSales]);
+    if (platform === 'StockX' && stockxToken) {
+      await fetchStockXSales();
+    } else {
+      // Mock data for other platforms
+      await new Promise(r => setTimeout(r, 2000));
+      const mockSales = [
+        { id: platform + '_' + Date.now(), name: 'Jordan 4 Retro Military Black', size: '10', salePrice: 340, fees: 37.40, saleDate: '2025-01-05', platform, payout: 302.60 },
+        { id: platform + '_' + Date.now() + 1, name: 'Nike Dunk Low Panda', size: '9.5', salePrice: 115, fees: 12.65, saleDate: '2025-01-04', platform, payout: 102.35 },
+      ];
+      setPendingCosts(prev => [...prev, ...mockSales]);
+    }
     setSyncing(false);
   };
 
-  const confirmSaleWithCost = (saleId, cost) => {
+  // Lookup product by SKU
+  const lookupSku = async (sku) => {
+    if (!sku || sku.length < 3) return null;
+    try {
+      const response = await fetch(`/api/stockx-lookup?sku=${encodeURIComponent(sku)}`);
+      if (response.ok) {
+        return await response.json();
+      }
+    } catch (error) {
+      console.error('SKU lookup failed:', error);
+    }
+    return null;
+  };
+
+  const confirmSaleWithCost = (saleId, cost, channel = 'StockX Standard') => {
     const sale = pendingCosts.find(s => s.id === saleId);
     if (!sale || !cost) return;
-    setSales(prev => [...prev, { ...sale, id: Date.now(), cost: parseFloat(cost), profit: sale.salePrice - parseFloat(cost) - sale.fees }]);
+    const costNum = parseFloat(cost);
+    // Use actual payout from StockX, calculate profit
+    const profit = sale.payout - costNum;
+    setSales(prev => [...prev, { 
+      ...sale, 
+      id: Date.now(), 
+      cost: costNum, 
+      platform: channel,
+      fees: sale.fees || (sale.salePrice - sale.payout),
+      profit: profit 
+    }]);
     setPendingCosts(prev => prev.filter(s => s.id !== saleId));
   };
 
-  const addPurchase = () => { if (!formData.name || !formData.cost) return; setPurchases([...purchases, { id: Date.now(), name: formData.name, sku: formData.sku || '', size: formData.size || '', cost: parseFloat(formData.cost), date: formData.date || new Date().toISOString().split('T')[0] }]); setModal(null); setFormData({}); };
-  const addSale = () => { if (!formData.saleName || !formData.salePrice || !formData.saleCost) return; const price = parseFloat(formData.salePrice); const cost = parseFloat(formData.saleCost); const fees = calcFees(price, formData.platform || 'StockX Standard'); setSales([...sales, { id: Date.now(), name: formData.saleName, sku: formData.saleSku || '', size: formData.saleSize || '', cost, salePrice: price, platform: formData.platform || 'StockX Standard', fees, profit: price - cost - fees, saleDate: formData.saleDate || new Date().toISOString().split('T')[0] }]); setModal(null); setFormData({}); };
+  const addPurchase = () => { if (!formData.name || !formData.cost) return; setPurchases([...purchases, { id: Date.now(), name: formData.name, sku: formData.sku || '', size: formData.size || '', cost: parseFloat(formData.cost), date: formData.date || new Date().toISOString().split('T')[0], image: formData.image || '' }]); setModal(null); setFormData({}); };
+  const addSale = () => { if (!formData.saleName || !formData.salePrice || !formData.saleCost) return; const price = parseFloat(formData.salePrice); const cost = parseFloat(formData.saleCost); const fees = calcFees(price, formData.platform || 'StockX Standard'); setSales([...sales, { id: Date.now(), name: formData.saleName, sku: formData.saleSku || '', size: formData.saleSize || '', cost, salePrice: price, platform: formData.platform || 'StockX Standard', fees, profit: price - cost - fees, saleDate: formData.saleDate || new Date().toISOString().split('T')[0], image: formData.saleImage || '' }]); setModal(null); setFormData({}); };
   const addExpense = () => { if (!formData.amount) return; setExpenses([...expenses, { id: Date.now(), category: formData.category || 'Shipping', amount: parseFloat(formData.amount), description: formData.description || '', date: formData.date || new Date().toISOString().split('T')[0] }]); setModal(null); setFormData({}); };
   const addStorage = () => { if (!formData.amount) return; setStorageFees([...storageFees, { id: Date.now(), month: formData.month || '2025-01', amount: parseFloat(formData.amount), notes: formData.notes || '' }]); setModal(null); setFormData({}); };
   const addMileage = () => { if (!formData.miles) return; setMileage([...mileage, { id: Date.now(), date: formData.date || new Date().toISOString().split('T')[0], miles: parseFloat(formData.miles), purpose: formData.purpose || 'Pickup/Dropoff', from: formData.from || '', to: formData.to || '' }]); setModal(null); setFormData({}); };
@@ -129,6 +230,70 @@ export default function App() {
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+  };
+
+  // CSV Import for StockX
+  const handleCsvUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target.result;
+      const lines = text.split('\n');
+      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+      
+      const parsed = [];
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        // Handle CSV with commas inside quotes
+        const values = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
+        const row = {};
+        headers.forEach((h, idx) => {
+          row[h] = values[idx] ? values[idx].replace(/"/g, '').trim() : '';
+        });
+        if (row['Sale Date']) parsed.push(row);
+      }
+      
+      setCsvImport({ ...csvImport, show: true, data: parsed, preview: true });
+    };
+    reader.readAsText(file);
+  };
+
+  const filterCsvData = () => {
+    const { data, year: filterYear, month: filterMonth } = csvImport;
+    return data.filter(row => {
+      const saleDate = row['Sale Date'] || '';
+      const rowYear = saleDate.substring(0, 4);
+      const rowMonth = saleDate.substring(5, 7);
+      
+      if (rowYear !== filterYear) return false;
+      if (filterMonth !== 'all' && rowMonth !== filterMonth) return false;
+      return true;
+    });
+  };
+
+  const importCsvSales = () => {
+    const filtered = filterCsvData();
+    const newPending = filtered.map(row => ({
+      id: row['Order Number'] || Date.now() + Math.random(),
+      name: row['Item'] || 'Unknown Item',
+      sku: row['Style'] || '',
+      size: row['Sku Size'] || '',
+      salePrice: parseFloat(row['Price']) || 0,
+      payout: parseFloat(row['Final Payout Amount']) || 0,
+      saleDate: row['Sale Date'] ? row['Sale Date'].substring(0, 10) : '',
+      platform: 'StockX',
+      source: 'csv'
+    }));
+    
+    // Avoid duplicates by checking order number
+    const existingIds = new Set([...pendingCosts.map(p => p.id), ...sales.map(s => s.id)]);
+    const uniqueNew = newPending.filter(p => !existingIds.has(p.id));
+    
+    setPendingCosts([...pendingCosts, ...uniqueNew]);
+    setCsvImport({ show: false, data: [], filteredData: [], year: '2026', month: 'all', preview: false });
+    alert(`Imported ${uniqueNew.length} sales! (${newPending.length - uniqueNew.length} duplicates skipped)`);
   };
 
   const printTaxPackage = () => {
@@ -232,14 +397,9 @@ export default function App() {
     { id: 'sales', label: 'Sales', icon: '◈', count: filteredSales.length },
     { type: 'divider' },
     { id: 'expenses', label: 'Expenses', icon: '◧' },
-    { id: 'mileage', label: 'Mileage', icon: '🚗' },
-    { id: 'storage', label: 'Storage', icon: '▤' },
-    { type: 'divider' },
-    { id: 'goals', label: 'Goals', icon: '◎' },
-    { id: 'taxes', label: 'Tax Center', icon: '◬' },
     { id: 'reports', label: 'CPA Reports', icon: '📊' },
     { type: 'divider' },
-    { id: 'integrations', label: 'Integrations', icon: '🔗', badge: pendingCosts.length || null },
+    { id: 'integrations', label: 'Integrations', icon: '🔗', badge: pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length || null },
     { id: 'settings', label: 'Settings', icon: '⚙' },
   ];
 
@@ -251,7 +411,7 @@ export default function App() {
     <div style={{ display: 'flex', minHeight: '100vh', background: c.bg, fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', color: c.text }}>
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', background: `radial-gradient(ellipse at 0% 0%, rgba(16,185,129,0.07) 0%, transparent 50%), radial-gradient(ellipse at 100% 100%, rgba(251,191,36,0.04) 0%, transparent 50%)` }} />
 
-      <aside style={{ width: 240, minWidth: 240, background: 'rgba(5,5,5,0.95)', borderRight: `1px solid ${c.border}`, display: 'flex', flexDirection: 'column', zIndex: 10 }}>
+      <aside className="no-print" style={{ width: 240, minWidth: 240, background: 'rgba(5,5,5,0.95)', borderRight: `1px solid ${c.border}`, display: 'flex', flexDirection: 'column', zIndex: 10 }}>
         <div style={{ padding: 20, borderBottom: `1px solid ${c.border}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 42, height: 42, background: `linear-gradient(135deg, ${c.emerald}, #059669)`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 20, boxShadow: `0 8px 32px ${c.emeraldGlow}`, fontStyle: 'italic' }}>F</div>
@@ -262,13 +422,13 @@ export default function App() {
         <div style={{ padding: '12px' }}>
           <select value={year} onChange={e => setYear(e.target.value)} style={{ width: '100%', padding: 10, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 8, color: c.emerald, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             <option value="all">All Years</option>
-            {[2026,2025,2024,2023,2022,2021,2020,2019].map(y => <option key={y} value={y}>{y}</option>)}
+            {[2026,2025,2024].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
 
         <nav style={{ flex: 1, padding: '8px', overflowY: 'auto' }}>
           {navItems.map((item, i) => item.type === 'divider' ? <div key={i} style={{ height: 1, background: c.border, margin: '8px' }} /> : (
-            <button key={item.id} onClick={() => setPage(item.id)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 12, width: '100%', padding: '11px 14px', marginBottom: 2, border: 'none', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600, background: page === item.id ? 'rgba(16,185,129,0.15)' : 'transparent', color: page === item.id ? c.emerald : c.textMuted, transition: 'all 0.2s' }}>
+            <button key={item.id} className="nav-item" onClick={() => setPage(item.id)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 12, width: '100%', padding: '11px 14px', marginBottom: 2, border: 'none', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600, background: page === item.id ? 'rgba(16,185,129,0.15)' : 'transparent', color: page === item.id ? c.emerald : c.textMuted, transition: 'all 0.2s' }}>
               <span style={{ fontSize: 16 }}>{item.icon}</span>
               <span>{item.label}</span>
               {item.badge && <span style={{ marginLeft: 'auto', background: c.red, padding: '2px 8px', borderRadius: 10, fontSize: 10 }}>{item.badge}</span>}
@@ -278,8 +438,8 @@ export default function App() {
         </nav>
 
         <div style={{ padding: 12, borderTop: `1px solid ${c.border}` }}>
-          <button onClick={() => { setFormData({}); setModal('purchase'); }} style={{ width: '100%', padding: 10, marginBottom: 8, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 10, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>+ Add Purchase</button>
-          <button onClick={() => { setFormData({}); setModal('sale'); }} style={{ width: '100%', padding: 10, ...btnPrimary, fontSize: 12 }}>+ Record Sale</button>
+          <button className="btn-hover" onClick={() => { setFormData({}); setModal('purchase'); }} style={{ width: '100%', padding: 10, marginBottom: 8, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 10, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>+ Add Purchase</button>
+          <button className="btn-hover" onClick={() => { setFormData({}); setModal('sale'); }} style={{ width: '100%', padding: 10, ...btnPrimary, fontSize: 12 }}>+ Record Sale</button>
         </div>
       </aside>
 
@@ -291,7 +451,7 @@ export default function App() {
 
         {/* DASHBOARD */}
         {page === 'dashboard' && <>
-          {pendingCosts.length > 0 && <div style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 14, padding: 16, marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><div><span style={{ fontSize: 20, marginRight: 10 }}>⚠️</span><span style={{ color: c.gold, fontWeight: 600 }}>{pendingCosts.length} sales need cost basis</span></div><button onClick={() => setPage('integrations')} style={{ padding: '8px 16px', background: c.gold, border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>REVIEW</button></div>}
+          {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length > 0 && <div className="pending-pulse" style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 14, padding: 16, marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><div><span style={{ fontSize: 20, marginRight: 10 }}>⚠️</span><span style={{ color: c.gold, fontWeight: 600 }}>{pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} sales need cost basis</span></div><button className="btn-hover" onClick={() => setPage('integrations')} style={{ padding: '8px 16px', background: c.gold, border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>REVIEW</button></div>}
           
           {/* TOP STATS */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
@@ -301,7 +461,7 @@ export default function App() {
               { label: 'YTD FEES', value: totalFees, color: c.red },
               { label: 'YTD REVENUE', value: totalRevenue, color: '#fff' }
             ].map((card, i) => (
-              <div key={i} style={{ ...cardStyle, padding: 20, position: 'relative', background: card.glow ? 'linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(16,185,129,0.02) 100%)' : cardStyle.background, border: card.glow ? '1px solid rgba(16,185,129,0.2)' : cardStyle.border }}>
+              <div key={i} className="stat-card" style={{ ...cardStyle, padding: 20, position: 'relative', background: card.glow ? 'linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(16,185,129,0.02) 100%)' : cardStyle.background, border: card.glow ? '1px solid rgba(16,185,129,0.2)' : cardStyle.border, cursor: 'pointer' }}>
                 {card.glow && <div style={{ position: 'absolute', top: -50, right: -50, width: 120, height: 120, background: `radial-gradient(circle, ${c.emeraldGlow} 0%, transparent 70%)`, pointerEvents: 'none' }} />}
                 <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, letterSpacing: '0.1em' }}>{card.label}</span>
                 <p style={{ margin: '10px 0 0', fontSize: 28, fontWeight: 800, color: card.color, fontStyle: 'italic' }}>{card.isText ? card.value : fmt(card.value)}</p>
@@ -340,7 +500,7 @@ export default function App() {
                       runningProfit += monthProfit;
                       if (monthCost === 0 && monthFees === 0 && monthProfit === 0) return null;
                       return (
-                        <tr key={month} style={{ borderBottom: `1px solid ${c.border}` }}>
+                        <tr key={month} className="row-hover" style={{ borderBottom: `1px solid ${c.border}`, cursor: 'pointer' }}>
                           <td style={{ padding: '12px 20px', fontWeight: 600 }}>{month}</td>
                           <td style={{ padding: '12px 20px', textAlign: 'right', color: '#fff' }}>{fmt(runningCost)}</td>
                           <td style={{ padding: '12px 20px', textAlign: 'right', color: c.red }}>{fmt(runningFees)}</td>
@@ -584,7 +744,7 @@ export default function App() {
             </div>
             
             {/* TABLE HEADER */}
-            <div style={{ display: 'grid', gridTemplateColumns: '85px 1fr 110px 50px 100px 70px 70px 65px 75px 40px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>DATE</span>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>NAME</span>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>SKU</span>
@@ -594,6 +754,7 @@ export default function App() {
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>PRICE</span>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>FEES</span>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>PROFIT</span>
+              <span></span>
               <span></span>
             </div>
 
@@ -627,7 +788,7 @@ export default function App() {
               if (sort === 'priceHigh') return (b.salePrice || 0) - (a.salePrice || 0);
               return 0;
             }).map(s => (
-              <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '85px 1fr 110px 50px 100px 70px 70px 65px 75px 40px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, alignItems: 'center' }}>
+              <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, alignItems: 'center' }}>
                 <span style={{ fontSize: 12, color: c.textMuted }}>{s.saleDate}</span>
                 <span style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</span>
                 <span style={{ fontSize: 11, color: c.emerald }}>{s.sku || '-'}</span>
@@ -637,6 +798,7 @@ export default function App() {
                 <span style={{ fontSize: 12, textAlign: 'right' }}>{fmt(s.salePrice)}</span>
                 <span style={{ fontSize: 12, textAlign: 'right', color: c.red }}>{fmt(s.fees)}</span>
                 <span style={{ fontSize: 13, fontWeight: 700, textAlign: 'right', color: s.profit >= 0 ? c.emerald : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</span>
+                <button onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14 }}>✏️</button>
                 <button onClick={() => setSales(sales.filter(x => x.id !== s.id))} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16 }}>×</button>
               </div>
             )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💵</div><p style={{ color: c.textMuted }}>No sales</p><button onClick={() => { setFormData({}); setModal('sale'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Record Sale</button></div>}
@@ -667,301 +829,186 @@ export default function App() {
         </div>}
 
         {/* MILEAGE */}
-        {page === 'mileage' && <div>
-          <div style={{ ...cardStyle, padding: 20, marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
-            <div>
-              <p style={{ margin: 0, fontSize: 11, color: c.textMuted, fontWeight: 600 }}>TOTAL MILES</p>
-              <p style={{ margin: '6px 0 0', fontSize: 28, fontWeight: 800, color: c.emerald, fontStyle: 'italic' }}>{totalMiles.toFixed(1)} mi</p>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <p style={{ margin: 0, fontSize: 11, color: c.textMuted, fontWeight: 600 }}>TAX DEDUCTION</p>
-              <p style={{ margin: '6px 0 0', fontSize: 28, fontWeight: 800, color: c.gold, fontStyle: 'italic' }}>{fmt(totalMileageDeduction)}</p>
-            </div>
-          </div>
-          <div style={cardStyle}>
-            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: c.textMuted }}>{filteredMileage.length} trips</span>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={() => exportCSV(filteredMileage, 'mileage.csv', ['date','purpose','from','to','miles'])} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
-                <button onClick={() => { setFormData({}); setModal('mileage'); }} style={{ padding: '8px 16px', ...btnPrimary, fontSize: 12 }}>+ Log Trip</button>
-              </div>
-            </div>
-            {filteredMileage.length ? filteredMileage.map(m => (
-              <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px', borderBottom: `1px solid ${c.border}` }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 40, height: 40, background: 'rgba(251,191,36,0.1)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>🚗</div>
-                  <div>
-                    <div style={{ fontWeight: 600 }}>{m.purpose}</div>
-                    <div style={{ fontSize: 12, color: c.textMuted }}>{m.date} • {m.from} → {m.to}</div>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 600 }}>{m.miles} mi</div>
-                    <div style={{ fontSize: 12, color: c.gold }}>{fmt(m.miles * settings.mileageRate)}</div>
-                  </div>
-                  <button onClick={() => setMileage(mileage.filter(x => x.id !== m.id))} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 18 }}>×</button>
-                </div>
-              </div>
-            )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>🚗</div><p style={{ color: c.textMuted }}>No mileage</p></div>}
-          </div>
-        </div>}
-
-        {/* STORAGE */}
-        {page === 'storage' && <div style={cardStyle}>
-          <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>Total: <span style={{ color: c.red, fontWeight: 700 }}>{fmt(totalStor)}</span></span>
-            <button onClick={() => { setFormData({}); setModal('storage'); }} style={{ padding: '8px 16px', ...btnPrimary, fontSize: 12 }}>+ Add Fee</button>
-          </div>
-          {filteredStorage.length ? filteredStorage.map(f => (
-            <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px', borderBottom: `1px solid ${c.border}` }}>
-              <div>
-                <div style={{ fontWeight: 600 }}>{f.month}</div>
-                <div style={{ fontSize: 12, color: c.textMuted }}>{f.notes || 'Storage fee'}</div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ color: c.red, fontWeight: 700 }}>{fmt(f.amount)}</span>
-                <button onClick={() => setStorageFees(storageFees.filter(x => x.id !== f.id))} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 18 }}>×</button>
-              </div>
-            </div>
-          )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>🏬</div><p style={{ color: c.textMuted }}>No storage fees</p></div>}
-        </div>}
-
-        {/* GOALS */}
-        {page === 'goals' && <div style={{ maxWidth: 500 }}>
-          <div style={{ ...cardStyle, padding: 24 }}>
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: 'block', marginBottom: 8, fontSize: 11, fontWeight: 700, color: c.textMuted, letterSpacing: '0.1em' }}>MONTHLY GOAL</label>
-              <input type="number" value={goals.monthly} onChange={e => setGoals({ ...goals, monthly: +e.target.value || 0 })} style={{ ...inputStyle, fontSize: 18, fontWeight: 700 }} />
-            </div>
-            <div style={{ marginBottom: 24 }}>
-              <label style={{ display: 'block', marginBottom: 8, fontSize: 11, fontWeight: 700, color: c.textMuted, letterSpacing: '0.1em' }}>YEARLY GOAL</label>
-              <input type="number" value={goals.yearly} onChange={e => setGoals({ ...goals, yearly: +e.target.value || 0 })} style={{ ...inputStyle, fontSize: 18, fontWeight: 700 }} />
-            </div>
-            <div style={{ background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.1)', borderRadius: 14, padding: 18 }}>
-              <div style={{ marginBottom: 18 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{ color: c.textMuted, fontWeight: 600, fontSize: 11 }}>MONTHLY PROGRESS</span>
-                  <span style={{ fontWeight: 700, fontSize: 13 }}>{fmt(netProfit)} / {fmt(goals.monthly)}</span>
-                </div>
-                <div style={{ height: 10, background: 'rgba(255,255,255,0.06)', borderRadius: 10, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: Math.min((netProfit / (goals.monthly || 1)) * 100, 100) + '%', background: `linear-gradient(90deg, ${c.emerald}, #059669)`, borderRadius: 10 }} />
-                </div>
-              </div>
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{ color: c.textMuted, fontWeight: 600, fontSize: 11 }}>YEARLY PROGRESS</span>
-                  <span style={{ fontWeight: 700, fontSize: 13 }}>{fmt(netProfit)} / {fmt(goals.yearly)}</span>
-                </div>
-                <div style={{ height: 10, background: 'rgba(255,255,255,0.06)', borderRadius: 10, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: Math.min((netProfit / (goals.yearly || 1)) * 100, 100) + '%', background: `linear-gradient(90deg, ${c.gold}, #d97706)`, borderRadius: 10 }} />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>}
-
-        {/* TAX CENTER */}
-        {page === 'taxes' && <div style={{ maxWidth: 550 }}>
-          <div style={{ ...cardStyle, padding: 24, marginBottom: 16 }}>
-            <h3 style={{ margin: '0 0 18px', fontSize: 16, fontWeight: 700 }}>🧾 Tax Summary</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 18 }}>
-              <div style={{ background: 'rgba(16,185,129,0.1)', borderRadius: 12, padding: 16 }}>
-                <p style={{ margin: 0, fontSize: 11, color: c.textMuted }}>NET PROFIT</p>
-                <p style={{ margin: '8px 0 0', fontSize: 24, fontWeight: 800, color: c.emerald, fontStyle: 'italic' }}>{fmt(netProfit)}</p>
-              </div>
-              <div style={{ background: 'rgba(239,68,68,0.1)', borderRadius: 12, padding: 16 }}>
-                <p style={{ margin: 0, fontSize: 11, color: c.textMuted }}>TOTAL TAX</p>
-                <p style={{ margin: '8px 0 0', fontSize: 24, fontWeight: 800, color: c.red, fontStyle: 'italic' }}>{fmt(totalTax)}</p>
-              </div>
-            </div>
-            <div style={{ background: 'rgba(255,255,255,0.02)', borderRadius: 12, padding: 16 }}>
-              {[
-                { l: 'Self-Employment Tax (15.3%)', v: selfEmploymentTax },
-                { l: 'Federal Income Tax (~22%)', v: federalTax },
-                { l: 'State Income Tax (~5%)', v: stateTax }
-              ].map((t, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: i < 2 ? `1px solid ${c.border}` : 'none' }}>
-                  <span style={{ color: c.textMuted }}>{t.l}</span>
-                  <span style={{ color: c.red, fontWeight: 600 }}>{fmt(t.v)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div style={{ ...cardStyle, padding: 24 }}>
-            <h3 style={{ margin: '0 0 18px', fontSize: 16, fontWeight: 700 }}>📅 Quarterly Payments</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-              {[
-                { q: 'Q1', due: 'Apr 15' },
-                { q: 'Q2', due: 'Jun 15' },
-                { q: 'Q3', due: 'Sep 15' },
-                { q: 'Q4', due: 'Jan 15' }
-              ].map(item => (
-                <div key={item.q} style={{ background: 'rgba(16,185,129,0.1)', borderRadius: 12, padding: 14, textAlign: 'center' }}>
-                  <p style={{ margin: 0, fontSize: 11, color: c.textMuted }}>{item.q}</p>
-                  <p style={{ margin: '8px 0 4px', fontSize: 18, fontWeight: 800, color: c.emerald, fontStyle: 'italic' }}>{fmt(totalTax / 4)}</p>
-                  <p style={{ margin: 0, fontSize: 10, color: c.textMuted }}>Due {item.due}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>}
-
         {/* CPA REPORTS */}
         {page === 'reports' && <div style={{ maxWidth: 900 }}>
-          <div style={{ ...cardStyle, padding: 24, marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 }}>
-              <div style={{ width: 50, height: 50, background: `linear-gradient(135deg, ${c.emerald}, #059669)`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>📊</div>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>CPA TAX PACKAGE</h3>
-                <p style={{ margin: '4px 0 0', fontSize: 13, color: c.textMuted }}>Everything your accountant needs</p>
+          {/* PRINT BUTTON - Hidden when printing */}
+          <div className="no-print" style={{ marginBottom: 20, display: 'flex', justifyContent: 'flex-end' }}>
+            <button className="btn-hover" onClick={() => window.print()} style={{ padding: '12px 24px', ...btnPrimary, fontSize: 13 }}>🖨️ Print Report</button>
+          </div>
+          
+          {/* PRINTABLE REPORT - Single clean page */}
+          <div className="print-report" style={{ ...cardStyle, padding: 32 }}>
+            {/* HEADER */}
+            <div style={{ textAlign: 'center', marginBottom: 32, paddingBottom: 20, borderBottom: '2px solid #333' }}>
+              <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800 }}>TAX SUMMARY</h1>
+              <p style={{ margin: '8px 0 0', fontSize: 14, color: c.textMuted }}>Tax Year {year} • Generated {new Date().toLocaleDateString()}</p>
+            </div>
+            
+            {/* INCOME SECTION */}
+            <div style={{ marginBottom: 24 }}>
+              <h3 style={{ margin: '0 0 12px', fontSize: 12, fontWeight: 700, color: c.textMuted, letterSpacing: '0.15em', borderBottom: `1px solid ${c.border}`, paddingBottom: 8 }}>INCOME</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
+                <span>Gross Sales (Revenue)</span>
+                <span style={{ fontWeight: 600 }}>{fmt(totalRevenue)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
+                <span>Cost of Goods Sold (COGS)</span>
+                <span style={{ fontWeight: 600 }}>({fmt(totalCOGS)})</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
+                <span>Platform Fees</span>
+                <span style={{ fontWeight: 600 }}>({fmt(totalFees)})</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', marginTop: 8, borderTop: `1px solid ${c.border}` }}>
+                <span style={{ fontWeight: 700 }}>Net Sales Income</span>
+                <span style={{ fontWeight: 800, fontSize: 16 }}>{fmt(totalRevenue - totalCOGS - totalFees)}</span>
               </div>
             </div>
+            
+            {/* DEDUCTIONS SECTION */}
+            <div style={{ marginBottom: 24 }}>
+              <h3 style={{ margin: '0 0 12px', fontSize: 12, fontWeight: 700, color: c.textMuted, letterSpacing: '0.15em', borderBottom: `1px solid ${c.border}`, paddingBottom: 8 }}>DEDUCTIONS</h3>
+              
+              {/* Expense Categories */}
+              {(() => {
+                const categories = {};
+                filteredExpenses.forEach(e => {
+                  categories[e.category] = (categories[e.category] || 0) + (e.amount || 0);
+                });
+                const sorted = Object.entries(categories).sort((a, b) => b[1] - a[1]);
+                if (sorted.length === 0) {
+                  return (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
+                      <span>Business Expenses</span>
+                      <span style={{ fontWeight: 600 }}>$0.00</span>
+                    </div>
+                  );
+                }
+                return sorted.map(([cat, amt]) => (
+                  <div key={cat} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
+                    <span>{cat}</span>
+                    <span style={{ fontWeight: 600 }}>({fmt(amt)})</span>
+                  </div>
+                ));
+              })()}
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', marginTop: 8, borderTop: `1px solid ${c.border}` }}>
+                <span style={{ fontWeight: 700 }}>Total Deductions</span>
+                <span style={{ fontWeight: 800, fontSize: 16 }}>({fmt(totalExp)})</span>
+              </div>
+            </div>
+            
+            {/* NET PROFIT - THE BIG NUMBER */}
+            <div style={{ background: 'rgba(16,185,129,0.1)', borderRadius: 12, padding: 20, marginTop: 24, border: `2px solid ${c.emerald}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>NET PROFIT (Schedule C, Line 31)</span>
+                  <p style={{ margin: '4px 0 0', fontSize: 11, color: c.textMuted }}>Gross Sales − COGS − Fees − Expenses</p>
+                </div>
+                <span style={{ fontSize: 32, fontWeight: 800, color: (totalRevenue - totalCOGS - totalFees - totalExp) >= 0 ? c.emerald : c.red }}>
+                  {fmt(totalRevenue - totalCOGS - totalFees - totalExp)}
+                </span>
+              </div>
+            </div>
+            
+            {/* FOOTER */}
+            <div style={{ marginTop: 32, paddingTop: 16, borderTop: `1px solid ${c.border}`, textAlign: 'center' }}>
+              <p style={{ margin: 0, fontSize: 11, color: c.textMuted }}>Generated by FlipLedger • {filteredSales.length} sales recorded</p>
+            </div>
           </div>
-
-          {/* MONTHLY TOTALS - Each month individually */}
-          <div style={{ ...cardStyle, marginBottom: 16 }}>
+          
+          {/* MONTHLY BREAKDOWN - Screen only */}
+          <div className="card-hover no-print" style={{ ...cardStyle, marginTop: 20, marginBottom: 20 }}>
             <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, fontStyle: 'italic' }}>MONTHLY TOTALS</h3>
-              <button onClick={() => {
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, fontStyle: 'italic' }}>📅 MONTHLY BREAKDOWN</h3>
+              <button className="btn-hover" onClick={() => {
                 const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
                 const rows = months.map((month, i) => {
                   const monthNum = String(i + 1).padStart(2, '0');
                   const monthSales = filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === monthNum);
-                  const cost = monthSales.reduce((sum, s) => sum + (s.cost || 0), 0);
-                  const fees = monthSales.reduce((sum, s) => sum + (s.fees || 0), 0);
-                  const profit = monthSales.reduce((sum, s) => sum + (s.profit || 0), 0);
                   const revenue = monthSales.reduce((sum, s) => sum + (s.salePrice || 0), 0);
-                  const payout = revenue - fees;
-                  return { month, cost, fees, profit, sellingPrice: revenue, payout };
-                }).filter(r => r.cost > 0 || r.fees > 0 || r.profit > 0);
-                rows.push({ month: 'TOTALS', cost: totalCOGS, fees: totalFees, profit: netProfit, sellingPrice: totalRevenue, payout: totalRevenue - totalFees });
-                exportCSV(rows, 'monthly-totals.csv', ['month', 'cost', 'fees', 'profit', 'sellingPrice', 'payout']);
+                  const cogs = monthSales.reduce((sum, s) => sum + (s.cost || 0), 0);
+                  const fees = monthSales.reduce((sum, s) => sum + (s.fees || 0), 0);
+                  const profit = revenue - cogs - fees;
+                  return { month, sales: monthSales.length, revenue, cogs, fees, profit };
+                }).filter(r => r.revenue > 0);
+                rows.push({ month: 'TOTAL', sales: filteredSales.length, revenue: totalRevenue, cogs: totalCOGS, fees: totalFees, profit: totalRevenue - totalCOGS - totalFees });
+                exportCSV(rows, 'monthly-breakdown.csv', ['month', 'sales', 'revenue', 'cogs', 'fees', 'profit']);
               }} style={{ padding: '8px 16px', background: c.emerald, border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>📥 Export CSV</button>
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${c.border}` }}>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: c.textMuted }}></th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>COST</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: c.textMuted }}>MONTH</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>SALES</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>REVENUE</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>COGS</th>
                     <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>FEES</th>
                     <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>PROFIT</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>SELLING PRICE</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>PAYOUT</th>
                   </tr>
                 </thead>
                 <tbody>
                   {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((month, i) => {
                     const monthNum = String(i + 1).padStart(2, '0');
                     const monthSales = filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === monthNum);
-                    const monthCost = monthSales.reduce((sum, s) => sum + (s.cost || 0), 0);
-                    const monthFees = monthSales.reduce((sum, s) => sum + (s.fees || 0), 0);
-                    const monthProfit = monthSales.reduce((sum, s) => sum + (s.profit || 0), 0);
                     const monthRevenue = monthSales.reduce((sum, s) => sum + (s.salePrice || 0), 0);
-                    const monthPayout = monthRevenue - monthFees;
-                    if (monthCost === 0 && monthFees === 0 && monthProfit === 0) return null;
+                    const monthCOGS = monthSales.reduce((sum, s) => sum + (s.cost || 0), 0);
+                    const monthFees = monthSales.reduce((sum, s) => sum + (s.fees || 0), 0);
+                    const monthProfit = monthRevenue - monthCOGS - monthFees;
+                    if (monthRevenue === 0) return null;
                     return (
-                      <tr key={month} style={{ borderBottom: `1px solid ${c.border}` }}>
-                        <td style={{ padding: '12px 16px', fontWeight: 600 }}>{month}</td>
-                        <td style={{ padding: '12px 16px', textAlign: 'right', color: c.gold }}>{fmt(monthCost)}</td>
-                        <td style={{ padding: '12px 16px', textAlign: 'right', color: c.red }}>{fmt(monthFees)}</td>
-                        <td style={{ padding: '12px 16px', textAlign: 'right', color: monthProfit >= 0 ? c.emerald : c.red, fontWeight: 700 }}>{fmt(monthProfit)}</td>
-                        <td style={{ padding: '12px 16px', textAlign: 'right', color: '#fff' }}>{fmt(monthRevenue)}</td>
-                        <td style={{ padding: '12px 16px', textAlign: 'right', color: c.emerald }}>{fmt(monthPayout)}</td>
+                      <tr key={month} className="row-hover" style={{ borderBottom: `1px solid ${c.border}`, cursor: 'pointer' }}>
+                        <td style={{ padding: '14px 16px', fontWeight: 600 }}>{month}</td>
+                        <td style={{ padding: '14px 16px', textAlign: 'right' }}>{monthSales.length}</td>
+                        <td style={{ padding: '14px 16px', textAlign: 'right' }}>{fmt(monthRevenue)}</td>
+                        <td style={{ padding: '14px 16px', textAlign: 'right', color: c.gold }}>{fmt(monthCOGS)}</td>
+                        <td style={{ padding: '14px 16px', textAlign: 'right', color: c.red }}>{fmt(monthFees)}</td>
+                        <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, color: monthProfit >= 0 ? c.emerald : c.red }}>{fmt(monthProfit)}</td>
                       </tr>
                     );
                   })}
                 </tbody>
                 <tfoot>
                   <tr style={{ background: 'rgba(16,185,129,0.1)' }}>
-                    <td style={{ padding: '14px 16px', fontWeight: 800, fontStyle: 'italic' }}>Totals:</td>
-                    <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, color: c.gold }}>{fmt(totalCOGS)}</td>
-                    <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, color: c.red }}>{fmt(totalFees)}</td>
-                    <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 800, color: netProfit >= 0 ? c.emerald : c.red }}>{fmt(netProfit)}</td>
-                    <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700 }}>{fmt(totalRevenue)}</td>
-                    <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, color: c.emerald }}>{fmt(totalRevenue - totalFees)}</td>
+                    <td style={{ padding: '16px', fontWeight: 800, fontStyle: 'italic' }}>YEARLY TOTAL</td>
+                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700 }}>{filteredSales.length}</td>
+                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700 }}>{fmt(totalRevenue)}</td>
+                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700, color: c.gold }}>{fmt(totalCOGS)}</td>
+                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700, color: c.red }}>{fmt(totalFees)}</td>
+                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 800, fontSize: 16, color: (totalRevenue - totalCOGS - totalFees) >= 0 ? c.emerald : c.red }}>{fmt(totalRevenue - totalCOGS - totalFees)}</td>
                   </tr>
                 </tfoot>
               </table>
             </div>
           </div>
-
-          {/* YTD TOTALS - Running totals */}
-          <div style={{ ...cardStyle, marginBottom: 16 }}>
-            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, fontStyle: 'italic' }}>YTD RUNNING TOTALS</h3>
-              <button onClick={() => {
-                const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-                let runningCost = 0, runningFees = 0, runningProfit = 0, runningRevenue = 0, runningPayout = 0;
-                const rows = months.map((month, i) => {
-                  const monthNum = String(i + 1).padStart(2, '0');
-                  const monthSales = filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === monthNum);
-                  runningCost += monthSales.reduce((sum, s) => sum + (s.cost || 0), 0);
-                  runningFees += monthSales.reduce((sum, s) => sum + (s.fees || 0), 0);
-                  runningProfit += monthSales.reduce((sum, s) => sum + (s.profit || 0), 0);
-                  runningRevenue += monthSales.reduce((sum, s) => sum + (s.salePrice || 0), 0);
-                  runningPayout = runningRevenue - runningFees;
-                  return { month, ytdCost: runningCost, ytdFees: runningFees, ytdProfit: runningProfit, ytdSellingPrice: runningRevenue, ytdPayout: runningPayout };
-                }).filter(r => r.ytdCost > 0 || r.ytdFees > 0 || r.ytdProfit > 0);
-                exportCSV(rows, 'ytd-running-totals.csv', ['month', 'ytdCost', 'ytdFees', 'ytdProfit', 'ytdSellingPrice', 'ytdPayout']);
-              }} style={{ padding: '8px 16px', background: c.emerald, border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>📥 Export CSV</button>
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: `1px solid ${c.border}` }}>
-                    <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: c.textMuted }}></th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>YTD COST</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>YTD FEES</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>YTD PROFIT</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>YTD SELLING PRICE</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>YTD PAYOUT</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    let runningCost = 0, runningFees = 0, runningProfit = 0, runningRevenue = 0, runningPayout = 0;
-                    return ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((month, i) => {
-                      const monthNum = String(i + 1).padStart(2, '0');
-                      const monthSales = filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === monthNum);
-                      runningCost += monthSales.reduce((sum, s) => sum + (s.cost || 0), 0);
-                      runningFees += monthSales.reduce((sum, s) => sum + (s.fees || 0), 0);
-                      runningProfit += monthSales.reduce((sum, s) => sum + (s.profit || 0), 0);
-                      runningRevenue += monthSales.reduce((sum, s) => sum + (s.salePrice || 0), 0);
-                      runningPayout = runningRevenue - runningFees;
-                      if (runningCost === 0 && runningFees === 0 && runningProfit === 0) return null;
-                      return (
-                        <tr key={month} style={{ borderBottom: `1px solid ${c.border}` }}>
-                          <td style={{ padding: '12px 16px', fontWeight: 600 }}>{month}</td>
-                          <td style={{ padding: '12px 16px', textAlign: 'right', color: c.gold }}>{fmt(runningCost)}</td>
-                          <td style={{ padding: '12px 16px', textAlign: 'right', color: c.red }}>{fmt(runningFees)}</td>
-                          <td style={{ padding: '12px 16px', textAlign: 'right', color: runningProfit >= 0 ? c.emerald : c.red, fontWeight: 700 }}>{fmt(runningProfit)}</td>
-                          <td style={{ padding: '12px 16px', textAlign: 'right', color: '#fff' }}>{fmt(runningRevenue)}</td>
-                          <td style={{ padding: '12px 16px', textAlign: 'right', color: c.emerald }}>{fmt(runningPayout)}</td>
-                        </tr>
-                      );
-                    });
-                  })()}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* EXPORT BUTTONS */}
-          <div style={{ ...cardStyle, padding: 20 }}>
-            <h4 style={{ margin: '0 0 14px', fontSize: 14, fontWeight: 700 }}>📥 Export Individual Reports</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <button onClick={() => exportCSV(filteredSales, 'sales.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: 12, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 10, color: '#fff', cursor: 'pointer', textAlign: 'left' }}>Sales Report</button>
-              <button onClick={() => exportCSV(filteredExpenses, 'expenses.csv', ['date','category','description','amount'])} style={{ padding: 12, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 10, color: '#fff', cursor: 'pointer', textAlign: 'left' }}>Expenses Report</button>
-              <button onClick={() => exportCSV(filteredMileage, 'mileage.csv', ['date','purpose','from','to','miles'])} style={{ padding: 12, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 10, color: '#fff', cursor: 'pointer', textAlign: 'left' }}>Mileage Log</button>
-              <button onClick={() => exportCSV(filteredInventory, 'inventory.csv', ['date','name','sku','size','cost'])} style={{ padding: 12, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 10, color: '#fff', cursor: 'pointer', textAlign: 'left' }}>Inventory Report</button>
+          
+          {/* EXPORT SECTION - Screen only */}
+          <div className="card-hover no-print" style={{ ...cardStyle, padding: 24 }}>
+            <h4 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, fontStyle: 'italic' }}>📎 EXPORT DETAIL REPORTS</h4>
+            <p style={{ margin: '0 0 16px', fontSize: 12, color: c.textMuted }}>Download detailed data if your CPA needs backup documentation</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+              <button className="btn-hover" onClick={() => exportCSV(filteredSales, 'sales-detail.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: 16, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', cursor: 'pointer', textAlign: 'center' }}>
+                <div style={{ fontSize: 24, marginBottom: 8 }}>💰</div>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>Sales Detail</div>
+                <div style={{ fontSize: 11, color: c.textMuted, marginTop: 4 }}>{filteredSales.length} transactions</div>
+              </button>
+              <button className="btn-hover" onClick={() => exportCSV(filteredExpenses, 'expenses-detail.csv', ['date','category','description','amount'])} style={{ padding: 16, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', cursor: 'pointer', textAlign: 'center' }}>
+                <div style={{ fontSize: 24, marginBottom: 8 }}>🧾</div>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>Expenses Detail</div>
+                <div style={{ fontSize: 11, color: c.textMuted, marginTop: 4 }}>{filteredExpenses.length} expenses</div>
+              </button>
+              <button className="btn-hover" onClick={() => exportCSV(inventory, 'inventory.csv', ['date','name','sku','size','cost'])} style={{ padding: 16, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', cursor: 'pointer', textAlign: 'center' }}>
+                <div style={{ fontSize: 24, marginBottom: 8 }}>📦</div>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>Inventory</div>
+                <div style={{ fontSize: 11, color: c.textMuted, marginTop: 4 }}>{inventory.length} items • {fmt(inventory.reduce((s, x) => s + (x.cost || 0), 0))}</div>
+              </button>
             </div>
           </div>
         </div>}
 
         {/* INTEGRATIONS */}
-        {page === 'integrations' && <div style={{ maxWidth: 650 }}>
+        {page === 'integrations' && <div style={{ maxWidth: 750 }}>
           {(stockxConnected || goatConnected || ebayConnected) && (
             <div style={{ ...cardStyle, padding: 20, marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
@@ -969,41 +1016,303 @@ export default function App() {
                 <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Pull latest sales from connected platforms</p>
               </div>
               <button onClick={() => { if (stockxConnected) syncPlatform('StockX'); if (goatConnected) syncPlatform('GOAT'); if (ebayConnected) syncPlatform('eBay'); }} disabled={syncing} style={{ padding: '12px 24px', ...btnPrimary, opacity: syncing ? 0.6 : 1 }}>
-                {syncing ? '⏳ Syncing...' : '🔄 Sync Now'}
+                {syncing ? <><span className="spin-icon">🔄</span> Syncing...</> : '🔄 Sync Now'}
               </button>
             </div>
           )}
 
-          {pendingCosts.length > 0 && (
-            <div style={{ ...cardStyle, marginBottom: 20 }}>
-              <div style={{ padding: '16px 20px', background: 'rgba(251,191,36,0.05)', borderBottom: `1px solid ${c.border}` }}>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: c.gold }}>⚠️ Pending Cost Basis ({pendingCosts.length})</h3>
-                <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Enter your purchase cost to calculate profit</p>
-              </div>
-              {pendingCosts.map(s => (
-                <div key={s.id} style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}` }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{s.name}</div>
-                      <div style={{ fontSize: 12, color: c.textMuted }}>Size {s.size} • {s.platform} • {s.saleDate}</div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: 13 }}>Sale: {fmt(s.salePrice)}</div>
-                      <div style={{ color: c.emerald, fontWeight: 600 }}>Payout: {fmt(s.payout)}</div>
-                    </div>
+          {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ ...cardStyle, overflow: 'hidden' }}>
+                {/* Header */}
+                <div style={{ padding: '16px 20px', background: 'rgba(251,191,36,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${c.border}` }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: c.gold }}>⚡ Bulk Cost Entry</h3>
+                    <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Tab through, enter costs, confirm all</p>
                   </div>
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <input type="number" placeholder="Enter cost" id={`cost_${s.id}`} style={{ ...inputStyle, flex: 1, padding: 10 }} />
-                    <button onClick={() => { const input = document.getElementById(`cost_${s.id}`); if (input.value) confirmSaleWithCost(s.id, input.value); }} style={{ padding: '10px 18px', ...btnPrimary, fontSize: 12 }}>Confirm</button>
-                    <button onClick={() => setPendingCosts(prev => prev.filter(x => x.id !== s.id))} style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 10, color: c.red, cursor: 'pointer' }}>Skip</button>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <select 
+                      id="pendingSort"
+                      defaultValue="date"
+                      onChange={(e) => {
+                        const sortBy = e.target.value;
+                        setPendingCosts(prev => {
+                          const sorted = [...prev];
+                          if (sortBy === 'item') sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+                          if (sortBy === 'date') sorted.sort((a, b) => (b.saleDate || '').localeCompare(a.saleDate || ''));
+                          if (sortBy === 'price') sorted.sort((a, b) => (b.salePrice || 0) - (a.salePrice || 0));
+                          return sorted;
+                        });
+                      }}
+                      style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 12, cursor: 'pointer' }}
+                    >
+                      <option value="date">Sort: Date</option>
+                      <option value="item">Sort: Item Name</option>
+                      <option value="price">Sort: Price</option>
+                    </select>
+                    <button onClick={() => {
+                      const yearPending = pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year)));
+                      const toConfirm = yearPending.filter(s => document.getElementById(`bulkcost_${s.id}`)?.value);
+                      if (toConfirm.length === 0) { alert('Enter at least one cost first'); return; }
+                      toConfirm.forEach(s => {
+                        const cost = document.getElementById(`bulkcost_${s.id}`)?.value;
+                        if (cost) confirmSaleWithCost(s.id, cost, 'StockX Standard');
+                      });
+                    }} style={{ padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>
+                      ✓ Confirm All Filled
+                    </button>
+                    <button onClick={() => { 
+                      const yearPending = pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year)));
+                      if (confirm(`Delete all ${yearPending.length} pending sales?`)) {
+                        setPendingCosts(pendingCosts.filter(s => !(year === 'all' || (s.saleDate && s.saleDate.startsWith(year)))));
+                      }
+                    }} style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 10, color: c.red, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                      🗑️ Clear
+                    </button>
                   </div>
                 </div>
-              ))}
+                
+                {/* Bulk Table */}
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
+                        <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: c.textMuted, letterSpacing: '0.05em' }}>ITEM</th>
+                        <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: c.textMuted }}>SIZE</th>
+                        <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>SOLD</th>
+                        <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>PAYOUT</th>
+                        <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: c.textMuted }}>YOUR COST</th>
+                        <th style={{ padding: '12px 8px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: c.textMuted }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).map((s, idx) => (
+                        <tr key={s.id} style={{ borderTop: `1px solid ${c.border}` }}>
+                          <td style={{ padding: '12px 16px' }}>
+                            <div style={{ fontWeight: 600, fontSize: 13, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
+                            <div style={{ fontSize: 11, color: c.emerald }}>{s.sku}</div>
+                            <div style={{ fontSize: 10, color: c.textMuted }}>{s.saleDate}</div>
+                          </td>
+                          <td style={{ padding: '12px 8px', textAlign: 'center', fontSize: 13 }}>{s.size || '-'}</td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 14, fontWeight: 600 }}>{fmt(s.salePrice)}</td>
+                          <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 14, fontWeight: 700, color: c.emerald }}>{fmt(s.payout)}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                            <input 
+                              type="number" 
+                              id={`bulkcost_${s.id}`}
+                              placeholder="$"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  const cost = e.target.value;
+                                  if (cost) {
+                                    confirmSaleWithCost(s.id, cost, 'StockX Standard');
+                                    e.target.value = '';
+                                  }
+                                }
+                              }}
+                              style={{ 
+                                width: 80, 
+                                padding: '10px 12px', 
+                                background: 'rgba(255,255,255,0.05)', 
+                                border: `1px solid ${c.border}`, 
+                                borderRadius: 8, 
+                                color: c.text, 
+                                fontSize: 14, 
+                                textAlign: 'center',
+                                outline: 'none'
+                              }} 
+                            />
+                          </td>
+                          <td style={{ padding: '8px', textAlign: 'center' }}>
+                            <button 
+                              onClick={() => setPendingCosts(prev => prev.filter(x => x.id !== s.id))} 
+                              style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16, padding: 4 }}
+                            >×</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                
+                {/* Footer Stats */}
+                <div style={{ padding: '12px 20px', background: 'rgba(255,255,255,0.02)', borderTop: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: c.textMuted }}>
+                    {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} sales pending
+                  </span>
+                  <span style={{ fontSize: 11, color: c.textMuted }}>
+                    💡 Enter cost + press Enter to confirm each row
+                  </span>
+                </div>
+              </div>
             </div>
           )}
 
+          {/* StockX Integration - Real OAuth */}
+          <div style={{ ...cardStyle, marginBottom: 16 }}>
+            <div style={{ padding: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ width: 54, height: 54, background: '#00c165', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: '#fff' }}>SX</div>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>STOCKX</h3>
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Auto-import your StockX sales</p>
+              </div>
+              {stockxConnected ? (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => syncPlatform('StockX')} disabled={syncing} style={{ padding: '10px 18px', ...btnPrimary, fontSize: 12, opacity: syncing ? 0.6 : 1 }}>
+                    {syncing ? 'Syncing...' : 'Sync Sales'}
+                  </button>
+                  <button onClick={disconnectStockX} style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 10, color: c.red, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Disconnect</button>
+                </div>
+              ) : (
+                <button onClick={() => window.location.href = '/api/stockx-auth'} style={{ padding: '12px 22px', ...btnPrimary }}>Connect</button>
+              )}
+            </div>
+            {stockxConnected && (
+              <div style={{ padding: '12px 20px', borderTop: `1px solid ${c.border}`, background: 'rgba(0,193,101,0.1)' }}>
+                <span style={{ color: c.emerald, fontWeight: 600, fontSize: 12 }}>✓ Connected to StockX</span>
+              </div>
+            )}
+          </div>
+
+          {/* CSV Import Section */}
+          <div style={{ ...cardStyle, marginBottom: 16 }}>
+            <div style={{ padding: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
+                <div style={{ width: 54, height: 54, background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>📄</div>
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>IMPORT CSV</h3>
+                  <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Upload StockX historical sales CSV - filter by year & month</p>
+                </div>
+              </div>
+              
+              {!csvImport.show ? (
+                <div>
+                  <input 
+                    type="file" 
+                    accept=".csv" 
+                    onChange={handleCsvUpload}
+                    id="csv-upload"
+                    style={{ display: 'none' }}
+                  />
+                  <label htmlFor="csv-upload" style={{ display: 'block', padding: 40, border: `2px dashed ${c.border}`, borderRadius: 16, textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s' }}>
+                    <div style={{ fontSize: 48, marginBottom: 12 }}>📤</div>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>Click to upload StockX CSV</div>
+                    <div style={{ fontSize: 12, color: c.textMuted }}>Download from StockX → Seller Tools → Historical Sales</div>
+                  </label>
+                </div>
+              ) : (
+                <div>
+                  {/* Filter Controls */}
+                  <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 11, color: c.textMuted, fontWeight: 600, display: 'block', marginBottom: 6 }}>YEAR</label>
+                      <select 
+                        value={csvImport.year} 
+                        onChange={e => setCsvImport({ ...csvImport, year: e.target.value })}
+                        style={{ ...inputStyle, padding: 12 }}
+                      >
+                        <option value="2026">2026</option>
+                        <option value="2025">2025</option>
+                        <option value="2024">2024</option>
+                        <option value="2023">2023</option>
+                        <option value="2022">2022</option>
+                      </select>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 11, color: c.textMuted, fontWeight: 600, display: 'block', marginBottom: 6 }}>MONTH</label>
+                      <select 
+                        value={csvImport.month} 
+                        onChange={e => setCsvImport({ ...csvImport, month: e.target.value })}
+                        style={{ ...inputStyle, padding: 12 }}
+                      >
+                        <option value="all">All Months</option>
+                        <option value="01">January</option>
+                        <option value="02">February</option>
+                        <option value="03">March</option>
+                        <option value="04">April</option>
+                        <option value="05">May</option>
+                        <option value="06">June</option>
+                        <option value="07">July</option>
+                        <option value="08">August</option>
+                        <option value="09">September</option>
+                        <option value="10">October</option>
+                        <option value="11">November</option>
+                        <option value="12">December</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  {/* Preview Stats */}
+                  <div style={{ background: 'rgba(16,185,129,0.1)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: 13, color: c.textMuted, marginBottom: 4 }}>Total rows in CSV</div>
+                        <div style={{ fontSize: 24, fontWeight: 800 }}>{csvImport.data.length.toLocaleString()}</div>
+                      </div>
+                      <div style={{ fontSize: 32 }}>→</div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 13, color: c.textMuted, marginBottom: 4 }}>Matching your filter</div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: c.emerald }}>{filterCsvData().length.toLocaleString()}</div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Preview Table */}
+                  {filterCsvData().length > 0 && (
+                    <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 16, borderRadius: 12, border: `1px solid ${c.border}` }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                        <thead>
+                          <tr style={{ background: 'rgba(255,255,255,0.05)' }}>
+                            <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Item</th>
+                            <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Size</th>
+                            <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>Price</th>
+                            <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Date</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filterCsvData().slice(0, 5).map((row, i) => (
+                            <tr key={i} style={{ borderTop: `1px solid ${c.border}` }}>
+                              <td style={{ padding: '10px 12px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row['Item']}</td>
+                              <td style={{ padding: '10px 12px' }}>{row['Sku Size']}</td>
+                              <td style={{ padding: '10px 12px', textAlign: 'right', color: c.emerald }}>${row['Price']}</td>
+                              <td style={{ padding: '10px 12px', color: c.textMuted }}>{row['Sale Date']?.substring(0, 10)}</td>
+                            </tr>
+                          ))}
+                          {filterCsvData().length > 5 && (
+                            <tr style={{ borderTop: `1px solid ${c.border}` }}>
+                              <td colSpan={4} style={{ padding: '10px 12px', textAlign: 'center', color: c.textMuted, fontStyle: 'italic' }}>
+                                ...and {filterCsvData().length - 5} more
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  
+                  {/* Action Buttons */}
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <button 
+                      onClick={() => setCsvImport({ show: false, data: [], filteredData: [], year: '2026', month: 'all', preview: false })}
+                      style={{ flex: 1, padding: 14, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', cursor: 'pointer', fontWeight: 600 }}
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={importCsvSales}
+                      disabled={filterCsvData().length === 0}
+                      style={{ flex: 2, padding: 14, ...btnPrimary, opacity: filterCsvData().length === 0 ? 0.5 : 1 }}
+                    >
+                      Import {filterCsvData().length} Sales
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Other Platforms */}
           {[
-            { name: 'StockX', code: 'SX', color: '#00c165', connected: stockxConnected, setConnected: setStockxConnected, desc: 'Auto-import your StockX sales' },
             { name: 'GOAT', code: 'GT', color: '#1a1a1a', border: '#333', connected: goatConnected, setConnected: setGoatConnected, desc: 'Auto-import your GOAT sales' },
             { name: 'eBay', code: 'eB', color: '#e53238', connected: ebayConnected, setConnected: setEbayConnected, desc: 'Auto-import your eBay sales' },
             { name: 'QuickBooks', code: 'QB', color: '#2CA01C', connected: qbConnected, setConnected: setQbConnected, desc: 'Sync with QuickBooks accounting' }
@@ -1039,52 +1348,68 @@ export default function App() {
 
         {/* SETTINGS */}
         {page === 'settings' && <div style={{ maxWidth: 550 }}>
-          <div style={{ ...cardStyle, padding: 24, marginBottom: 16 }}>
-            <h3 style={{ margin: '0 0 16px', fontSize: 14, fontWeight: 700, color: c.textMuted }}>📍 IRS MILEAGE RATE</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ color: c.textMuted }}>$</span>
-              <input type="number" step="0.01" value={settings.mileageRate} onChange={e => setSettings({ ...settings, mileageRate: parseFloat(e.target.value) || 0 })} style={{ ...inputStyle, width: 100 }} />
-              <span style={{ color: c.textMuted }}>per mile</span>
-            </div>
-            <p style={{ margin: '10px 0 0', fontSize: 11, color: c.textMuted }}>2025 IRS standard rate: $0.70/mile</p>
+          {/* Simple explanation */}
+          <div style={{ ...cardStyle, padding: 24, marginBottom: 16, background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.1)' }}>
+            <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700 }}>💡 Fee Settings</h3>
+            <p style={{ margin: 0, fontSize: 13, color: c.textMuted, lineHeight: 1.6 }}>
+              <strong>API Sync & CSV Import:</strong> Fees are automatically calculated from your StockX payout. No settings needed.
+            </p>
+            <p style={{ margin: '12px 0 0', fontSize: 13, color: c.textMuted, lineHeight: 1.6 }}>
+              <strong>Manual Entry:</strong> Use the settings below to calculate fees when entering sales manually.
+            </p>
           </div>
 
-          {[
-            { name: 'STOCKX STANDARD', code: 'Standard', color: '#00c165', fields: [{ l: 'Seller Level', k: 'stockxLevel', opts: [[9,'Level 1 (9%)'],[8.5,'Level 2 (8.5%)'],[8,'Level 3 (8%)'],[7.5,'Level 4 (7.5%)'],[7,'Level 5 (7%)']] },{ l: 'Processing', k: 'stockxProcessing', opts: [[3,'3%'],[0,'0% (Seller+)']] }], checkbox: { label: 'Quick Ship Bonus (-2%)', key: 'stockxQuickShip' }, total: settings.stockxLevel + settings.stockxProcessing + (settings.stockxQuickShip ? -2 : 0) },
-            { name: 'STOCKX DIRECT', code: 'Direct', color: '#00c165', fields: [{ l: 'Commission', k: 'stockxDirectFee', opts: [[5,'5%'],[4,'4%'],[3,'3%']] },{ l: 'Processing', k: 'stockxDirectProcessing', opts: [[3,'3%'],[0,'0%']] }], total: settings.stockxDirectFee + settings.stockxDirectProcessing },
-            { name: 'STOCKX FLEX', code: 'Flex', color: '#00c165', fields: [{ l: 'Commission', k: 'stockxFlexFee', opts: [[5,'5%'],[4,'4%'],[3,'3%']] },{ l: 'Processing', k: 'stockxFlexProcessing', opts: [[3,'3%'],[0,'0%']] },{ l: 'Fulfillment', k: 'stockxFlexFulfillment', opts: [[5,'$5'],[4,'$4'],[3,'$3'],[0,'$0']] }], total: settings.stockxFlexFee + settings.stockxFlexProcessing, extra: `+ $${settings.stockxFlexFulfillment}` },
-            { name: 'GOAT', code: 'GOAT', color: '#1a1a1a', border: '#333', fields: [{ l: 'Commission', k: 'goatFee', opts: [[9.5,'9.5%'],[9,'9%'],[8,'8%'],[7,'7%']] },{ l: 'Cash Out', k: 'goatProcessing', opts: [[2.9,'2.9%'],[0,'0% (Credit)']] }], total: settings.goatFee + settings.goatProcessing },
-            { name: 'EBAY', code: 'eBay', color: '#e53238', fields: [{ l: 'Final Value Fee', k: 'ebayFee', opts: [[13.25,'13.25%'],[12.9,'12.9%'],[11.5,'11.5%'],[10,'10%'],[8,'8% ($150+)']] }], total: settings.ebayFee }
-          ].map(platform => (
-            <div key={platform.name} style={{ ...cardStyle, padding: 22, marginBottom: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-                <div style={{ minWidth: 50, height: 40, paddingLeft: 8, paddingRight: 8, background: platform.color, border: platform.border ? `2px solid ${platform.border}` : 'none', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 11, color: '#fff' }}>{platform.code}</div>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, fontStyle: 'italic' }}>{platform.name}</h3>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                {platform.fields.map(field => (
-                  <div key={field.k}>
-                    <label style={{ display: 'block', marginBottom: 6, fontSize: 10, color: c.textMuted, fontWeight: 700, letterSpacing: '0.05em' }}>{field.l.toUpperCase()}</label>
-                    <select value={settings[field.k]} onChange={e => setSettings({ ...settings, [field.k]: parseFloat(e.target.value) })} style={{ ...inputStyle, background: 'rgba(0,0,0,0.3)', cursor: 'pointer', fontSize: 13 }}>
-                      {field.opts.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
-                    </select>
+          {/* Advanced Settings - Collapsible */}
+          <div style={{ ...cardStyle, overflow: 'hidden' }}>
+            <button 
+              onClick={() => setSettings({ ...settings, showAdvanced: !settings.showAdvanced })}
+              style={{ width: '100%', padding: '16px 24px', background: 'none', border: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', color: c.text }}
+            >
+              <span style={{ fontSize: 14, fontWeight: 700 }}>⚙️ Advanced Fee Settings (Manual Entry)</span>
+              <span style={{ fontSize: 18, color: c.textMuted }}>{settings.showAdvanced ? '▲' : '▼'}</span>
+            </button>
+            
+            {settings.showAdvanced && (
+              <div style={{ padding: '0 24px 24px' }}>
+                {[
+                  { name: 'STOCKX STANDARD', code: 'Standard', color: '#00c165', fields: [{ l: 'Seller Level', k: 'stockxLevel', opts: [[9,'Level 1 (9%)'],[8.5,'Level 2 (8.5%)'],[8,'Level 3 (8%)'],[7.5,'Level 4 (7.5%)'],[7,'Level 5 (7%)']] },{ l: 'Processing', k: 'stockxProcessing', opts: [[3,'3%'],[0,'0% (Seller+)']] }], checkbox: { label: 'Quick Ship Bonus (-2%)', key: 'stockxQuickShip' }, total: settings.stockxLevel + settings.stockxProcessing + (settings.stockxQuickShip ? -2 : 0) },
+                  { name: 'STOCKX DIRECT', code: 'Direct', color: '#00c165', fields: [{ l: 'Commission', k: 'stockxDirectFee', opts: [[5,'5%'],[4,'4%'],[3,'3%']] },{ l: 'Processing', k: 'stockxDirectProcessing', opts: [[3,'3%'],[0,'0%']] }], total: settings.stockxDirectFee + settings.stockxDirectProcessing },
+                  { name: 'STOCKX FLEX', code: 'Flex', color: '#00c165', fields: [{ l: 'Commission', k: 'stockxFlexFee', opts: [[5,'5%'],[4,'4%'],[3,'3%']] },{ l: 'Processing', k: 'stockxFlexProcessing', opts: [[3,'3%'],[0,'0%']] },{ l: 'Fulfillment', k: 'stockxFlexFulfillment', opts: [[5,'$5'],[4,'$4'],[3,'$3'],[0,'$0']] }], total: settings.stockxFlexFee + settings.stockxFlexProcessing, extra: `+ $${settings.stockxFlexFulfillment}` },
+                  { name: 'GOAT', code: 'GOAT', color: '#1a1a1a', border: '#333', fields: [{ l: 'Commission', k: 'goatFee', opts: [[9.5,'9.5%'],[9,'9%'],[8,'8%'],[7,'7%']] },{ l: 'Cash Out', k: 'goatProcessing', opts: [[2.9,'2.9%'],[0,'0% (Credit)']] }], total: settings.goatFee + settings.goatProcessing },
+                  { name: 'EBAY', code: 'eBay', color: '#e53238', fields: [{ l: 'Final Value Fee', k: 'ebayFee', opts: [[13.25,'13.25%'],[12.9,'12.9%'],[11.5,'11.5%'],[10,'10%'],[8,'8% ($150+)']] }], total: settings.ebayFee }
+                ].map(platform => (
+                  <div key={platform.name} style={{ padding: 18, marginTop: 16, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: `1px solid ${c.border}` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+                      <div style={{ minWidth: 44, height: 32, paddingLeft: 6, paddingRight: 6, background: platform.color, border: platform.border ? `2px solid ${platform.border}` : 'none', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 10, color: '#fff' }}>{platform.code}</div>
+                      <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{platform.name}</h3>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      {platform.fields.map(field => (
+                        <div key={field.k}>
+                          <label style={{ display: 'block', marginBottom: 4, fontSize: 10, color: c.textMuted, fontWeight: 600 }}>{field.l.toUpperCase()}</label>
+                          <select value={settings[field.k]} onChange={e => setSettings({ ...settings, [field.k]: parseFloat(e.target.value) })} style={{ ...inputStyle, background: 'rgba(0,0,0,0.3)', cursor: 'pointer', fontSize: 12, padding: 10 }}>
+                            {field.opts.map(([val, label]) => <option key={val} value={val}>{label}</option>)}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                    {platform.checkbox && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 11, color: 'rgba(255,255,255,0.6)', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={settings[platform.checkbox.key]} onChange={e => setSettings({ ...settings, [platform.checkbox.key]: e.target.checked })} style={{ accentColor: c.emerald, width: 14, height: 14 }} />
+                        {platform.checkbox.label}
+                      </label>
+                    )}
+                    {platform.total !== undefined && (
+                      <div style={{ marginTop: 12, padding: 10, background: 'rgba(16,185,129,0.1)', borderRadius: 8, display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: 10, color: c.textMuted, fontWeight: 600 }}>TOTAL FEE</span>
+                        <span style={{ fontWeight: 700, color: c.emerald, fontSize: 14 }}>{platform.total}%{platform.extra && ` ${platform.extra}`}</span>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
-              {platform.checkbox && (
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, fontSize: 12, color: 'rgba(255,255,255,0.6)', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={settings[platform.checkbox.key]} onChange={e => setSettings({ ...settings, [platform.checkbox.key]: e.target.checked })} style={{ accentColor: c.emerald, width: 16, height: 16 }} />
-                  {platform.checkbox.label}
-                </label>
-              )}
-              {platform.total !== undefined && (
-                <div style={{ marginTop: 14, padding: 12, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 10, display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: 11, color: c.textMuted, fontWeight: 700, letterSpacing: '0.1em' }}>TOTAL FEE</span>
-                  <span style={{ fontWeight: 800, color: c.emerald, fontStyle: 'italic', fontSize: 16 }}>{platform.total}%{platform.extra && ` ${platform.extra}`}</span>
-                </div>
-              )}
-            </div>
-          ))}
+            )}
+          </div>
         </div>}
       </main>
 
@@ -1093,14 +1418,38 @@ export default function App() {
         <div style={{ background: 'linear-gradient(180deg, #111 0%, #0a0a0a 100%)', border: `1px solid ${c.border}`, borderRadius: 20, width: 420, maxHeight: '90vh', overflow: 'auto' }}>
           <div style={{ padding: '18px 22px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#111' }}>
             <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>
-              {modal === 'purchase' ? 'ADD PURCHASE' : modal === 'bulkAdd' ? 'BULK ADD ITEMS' : modal === 'sale' ? 'RECORD SALE' : modal === 'expense' ? 'ADD EXPENSE' : modal === 'storage' ? 'ADD STORAGE FEE' : 'LOG MILEAGE'}
+              {modal === 'purchase' ? 'ADD PURCHASE' : modal === 'bulkAdd' ? 'BULK ADD ITEMS' : modal === 'sale' ? 'RECORD SALE' : modal === 'editSale' ? 'EDIT SALE' : modal === 'expense' ? 'ADD EXPENSE' : modal === 'storage' ? 'ADD STORAGE FEE' : 'LOG MILEAGE'}
             </h3>
             <button onClick={() => setModal(null)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 8, width: 32, height: 32, color: '#fff', fontSize: 18, cursor: 'pointer' }}>×</button>
           </div>
           <div style={{ padding: 22 }}>
             {modal === 'purchase' && <>
+              {formData.image && (
+                <div style={{ marginBottom: 16, padding: 16, background: '#1a1a1a', borderRadius: 12, textAlign: 'center' }}>
+                  <img src={formData.image} alt="" style={{ maxWidth: '100%', maxHeight: 120, objectFit: 'contain' }} />
+                </div>
+              )}
+              <input 
+                value={formData.sku || ''} 
+                onChange={async (e) => {
+                  const sku = e.target.value;
+                  setFormData({ ...formData, sku });
+                  if (sku.length >= 6) {
+                    const product = await lookupSku(sku);
+                    if (product) {
+                      setFormData(prev => ({ 
+                        ...prev, 
+                        sku,
+                        name: product.name || prev.name,
+                        image: product.image || prev.image
+                      }));
+                    }
+                  }
+                }} 
+                placeholder="Style Code (e.g., DH6927-111) *" 
+                style={{ ...inputStyle, marginBottom: 12 }} 
+              />
               <input value={formData.name || ''} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="Product name *" style={{ ...inputStyle, marginBottom: 12 }} />
-              <input value={formData.sku || ''} onChange={e => setFormData({ ...formData, sku: e.target.value })} placeholder="Style Code (e.g., DH6927-111)" style={{ ...inputStyle, marginBottom: 12 }} />
               <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
                 <input value={formData.size || ''} onChange={e => setFormData({ ...formData, size: e.target.value })} placeholder="Size *" style={{ ...inputStyle, flex: 1 }} />
                 <input type="number" value={formData.cost || ''} onChange={e => setFormData({ ...formData, cost: e.target.value })} placeholder="Cost *" style={{ ...inputStyle, flex: 1 }} />
@@ -1165,23 +1514,59 @@ export default function App() {
               </div>
             </>}
             {modal === 'sale' && <>
+              {formData.saleImage && (
+                <div style={{ marginBottom: 16, padding: 16, background: '#1a1a1a', borderRadius: 12, textAlign: 'center' }}>
+                  <img src={formData.saleImage} alt="" style={{ maxWidth: '100%', maxHeight: 120, objectFit: 'contain' }} />
+                </div>
+              )}
+              <input 
+                value={formData.saleSku || ''} 
+                onChange={async (e) => {
+                  const sku = e.target.value;
+                  setFormData({ ...formData, saleSku: sku });
+                  if (sku.length >= 6) {
+                    const product = await lookupSku(sku);
+                    if (product) {
+                      setFormData(prev => ({ 
+                        ...prev, 
+                        saleSku: sku,
+                        saleName: product.name || prev.saleName,
+                        saleImage: product.image || prev.saleImage
+                      }));
+                    }
+                  }
+                }} 
+                placeholder="Style Code (e.g., DH6927-111) *" 
+                style={{ ...inputStyle, marginBottom: 12 }} 
+              />
               <input value={formData.saleName || ''} onChange={e => setFormData({ ...formData, saleName: e.target.value })} placeholder="Product name *" style={{ ...inputStyle, marginBottom: 12 }} />
               <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
-                <input value={formData.saleSku || ''} onChange={e => setFormData({ ...formData, saleSku: e.target.value })} placeholder="Style Code" style={{ ...inputStyle, flex: 1 }} />
                 <input value={formData.saleSize || ''} onChange={e => setFormData({ ...formData, saleSize: e.target.value })} placeholder="Size *" style={{ ...inputStyle, flex: 1 }} />
+                <input type="number" value={formData.saleCost || ''} onChange={e => setFormData({ ...formData, saleCost: e.target.value })} placeholder="Your cost *" style={{ ...inputStyle, flex: 1 }} />
               </div>
               <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
-                <input type="number" value={formData.saleCost || ''} onChange={e => setFormData({ ...formData, saleCost: e.target.value })} placeholder="Your cost *" style={{ ...inputStyle, flex: 1 }} />
                 <input type="number" value={formData.salePrice || ''} onChange={e => setFormData({ ...formData, salePrice: e.target.value })} placeholder="Sale price *" style={{ ...inputStyle, flex: 1 }} />
+                <select value={formData.platform || 'StockX Standard'} onChange={e => setFormData({ ...formData, platform: e.target.value })} style={{ ...inputStyle, flex: 1, cursor: 'pointer' }}>
+                  <option>StockX Standard</option>
+                  <option>StockX Direct</option>
+                  <option>StockX Flex</option>
+                  <option>GOAT</option>
+                  <option>eBay</option>
+                  <option>Local</option>
+                </select>
               </div>
-              <select value={formData.platform || 'StockX Standard'} onChange={e => setFormData({ ...formData, platform: e.target.value })} style={{ ...inputStyle, marginBottom: 12, cursor: 'pointer' }}>
-                <option>StockX Standard</option>
-                <option>StockX Direct</option>
-                <option>StockX Flex</option>
-                <option>GOAT</option>
-                <option>eBay</option>
-                <option>Local</option>
-              </select>
+              {(!formData.platform || formData.platform === 'StockX Standard') && (
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 10, color: c.textMuted, display: 'block', marginBottom: 4 }}>SELLER LEVEL</label>
+                  <select value={formData.sellerLevel || settings.stockxLevel} onChange={e => setFormData({ ...formData, sellerLevel: parseFloat(e.target.value) })} style={{ ...inputStyle, width: '100%', cursor: 'pointer' }}>
+                    <option value={9}>Level 1 (9%)</option>
+                    <option value={8.5}>Level 2 (8.5%)</option>
+                    <option value={8}>Level 3 (8%)</option>
+                    <option value={7.5}>Level 4 (7.5%)</option>
+                    <option value={7}>Level 5 (7%)</option>
+                  </select>
+                </div>
+              )}
               <input type="date" value={formData.saleDate || ''} onChange={e => setFormData({ ...formData, saleDate: e.target.value })} style={inputStyle} />
               {formData.saleCost && formData.salePrice && (
                 <div style={{ marginTop: 16, padding: 16, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1228,6 +1613,38 @@ export default function App() {
                 </div>
               )}
             </>}
+            {modal === 'editSale' && <>
+              <input value={formData.saleName || ''} onChange={e => setFormData({ ...formData, saleName: e.target.value })} placeholder="Product name *" style={{ ...inputStyle, marginBottom: 12 }} />
+              <input value={formData.saleSku || ''} onChange={e => setFormData({ ...formData, saleSku: e.target.value })} placeholder="SKU" style={{ ...inputStyle, marginBottom: 12 }} />
+              <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+                <input value={formData.saleSize || ''} onChange={e => setFormData({ ...formData, saleSize: e.target.value })} placeholder="Size *" style={{ ...inputStyle, flex: 1 }} />
+                <input type="number" value={formData.saleCost || ''} onChange={e => setFormData({ ...formData, saleCost: e.target.value })} placeholder="Your cost *" style={{ ...inputStyle, flex: 1 }} />
+              </div>
+              <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+                <input type="number" value={formData.salePrice || ''} onChange={e => setFormData({ ...formData, salePrice: e.target.value })} placeholder="Sale price *" style={{ ...inputStyle, flex: 1 }} />
+                <select value={formData.platform || 'StockX Standard'} onChange={e => setFormData({ ...formData, platform: e.target.value })} style={{ ...inputStyle, flex: 1, cursor: 'pointer' }}>
+                  <option>StockX Standard</option>
+                  <option>StockX Direct</option>
+                  <option>StockX Flex</option>
+                  <option>GOAT</option>
+                  <option>eBay</option>
+                  <option>Local</option>
+                </select>
+              </div>
+              {(!formData.platform || formData.platform === 'StockX Standard') && (
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 10, color: c.textMuted, display: 'block', marginBottom: 4 }}>SELLER LEVEL</label>
+                  <select value={formData.sellerLevel || settings.stockxLevel} onChange={e => setFormData({ ...formData, sellerLevel: parseFloat(e.target.value) })} style={{ ...inputStyle, width: '100%', cursor: 'pointer' }}>
+                    <option value={9}>Level 1 (9%)</option>
+                    <option value={8.5}>Level 2 (8.5%)</option>
+                    <option value={8}>Level 3 (8%)</option>
+                    <option value={7.5}>Level 4 (7.5%)</option>
+                    <option value={7}>Level 5 (7%)</option>
+                  </select>
+                </div>
+              )}
+              <input type="date" value={formData.saleDate || ''} onChange={e => setFormData({ ...formData, saleDate: e.target.value })} style={inputStyle} />
+            </>}
           </div>
           <div style={{ display: 'flex', gap: 12, padding: '16px 22px 22px' }}>
             <button onClick={() => setModal(null)} style={{ flex: 1, padding: 14, background: 'rgba(255,255,255,0.04)', border: `1px solid ${c.border}`, borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>CANCEL</button>
@@ -1250,11 +1667,32 @@ export default function App() {
                 setFormData({});
               }
               else if (modal === 'sale') addSale(); 
+              else if (modal === 'editSale') {
+                // Update existing sale
+                const price = parseFloat(formData.salePrice);
+                const cost = parseFloat(formData.saleCost);
+                const fees = calcFees(price, formData.platform || 'StockX Standard');
+                setSales(sales.map(s => s.id === formData.editSaleId ? {
+                  ...s,
+                  name: formData.saleName,
+                  sku: formData.saleSku,
+                  size: formData.saleSize,
+                  cost,
+                  salePrice: price,
+                  platform: formData.platform,
+                  saleDate: formData.saleDate,
+                  sellerLevel: formData.sellerLevel,
+                  fees,
+                  profit: price - cost - fees
+                } : s));
+                setModal(null);
+                setFormData({});
+              }
               else if (modal === 'expense') addExpense(); 
               else if (modal === 'storage') addStorage(); 
               else if (modal === 'mileage') addMileage(); 
             }} style={{ flex: 1, padding: 14, ...btnPrimary, fontSize: 13 }}>
-              {modal === 'purchase' ? 'ADD ITEM' : modal === 'bulkAdd' ? `ADD ${(formData.bulkRows || []).filter(r => r.size && r.cost).length} ITEMS` : modal === 'sale' ? 'RECORD 💰' : modal === 'mileage' ? 'LOG TRIP' : 'ADD'}
+              {modal === 'purchase' ? 'ADD ITEM' : modal === 'bulkAdd' ? `ADD ${(formData.bulkRows || []).filter(r => r.size && r.cost).length} ITEMS` : modal === 'sale' ? 'RECORD 💰' : modal === 'editSale' ? 'SAVE CHANGES' : modal === 'mileage' ? 'LOG TRIP' : 'ADD'}
             </button>
           </div>
         </div>
@@ -1268,6 +1706,188 @@ export default function App() {
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(16,185,129,0.2); border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: rgba(16,185,129,0.3); }
+        
+        /* Premium Animations */
+        @keyframes float {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-4px); }
+        }
+        
+        @keyframes pulse-glow {
+          0%, 100% { box-shadow: 0 0 20px rgba(16,185,129,0.1); }
+          50% { box-shadow: 0 0 40px rgba(16,185,129,0.2); }
+        }
+        
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+        
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        
+        .card-hover {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .card-hover:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 20px 40px rgba(0,0,0,0.3), 0 0 60px rgba(16,185,129,0.08);
+          border-color: rgba(16,185,129,0.2) !important;
+        }
+        
+        .btn-hover {
+          transition: all 0.2s ease;
+        }
+        
+        .btn-hover:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 24px rgba(16,185,129,0.4);
+        }
+        
+        .btn-hover:active {
+          transform: translateY(0);
+        }
+        
+        .row-hover {
+          transition: all 0.2s ease;
+        }
+        
+        .row-hover:hover {
+          background: rgba(16,185,129,0.05) !important;
+          transform: translateX(4px);
+        }
+        
+        .nav-item {
+          transition: all 0.2s ease;
+        }
+        
+        .nav-item:hover {
+          transform: translateX(4px);
+        }
+        
+        .stat-card {
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          position: relative;
+          overflow: hidden;
+        }
+        
+        .stat-card::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 3px;
+          background: linear-gradient(90deg, #10b981, #059669);
+          opacity: 0;
+          transition: opacity 0.3s ease;
+        }
+        
+        .stat-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 20px 40px rgba(0,0,0,0.3), 0 0 60px rgba(16,185,129,0.1);
+          border-color: rgba(16,185,129,0.3) !important;
+        }
+        
+        .stat-card:hover::before {
+          opacity: 1;
+        }
+        
+        .progress-shimmer {
+          background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+          background-size: 200% 100%;
+          animation: shimmer 2s infinite;
+        }
+        
+        .pending-pulse {
+          animation: pulse-glow 2s ease-in-out infinite;
+        }
+        
+        .spin-icon {
+          animation: spin 1s linear infinite;
+        }
+        
+        .fade-in {
+          animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* PRINT STYLES */
+        @media print {
+          /* Force everything white */
+          *, *::before, *::after {
+            background: white !important;
+            background-color: white !important;
+            background-image: none !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          
+          body, html {
+            background: white !important;
+          }
+          
+          /* Hide sidebar, navigation, buttons */
+          aside, .no-print, button, nav {
+            display: none !important;
+          }
+          
+          /* Hide the background gradient overlay */
+          div[style*="radial-gradient"], 
+          div[style*="linear-gradient"] {
+            background: white !important;
+            background-image: none !important;
+          }
+          
+          /* Make main content full width */
+          main {
+            margin: 0 !important;
+            padding: 20px !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            background: white !important;
+          }
+          
+          /* White background for all divs */
+          div {
+            background: white !important;
+            background-color: white !important;
+            box-shadow: none !important;
+          }
+          
+          /* Cards get a subtle border */
+          .card-hover {
+            border: 1px solid #ccc !important;
+            break-inside: avoid;
+            margin-bottom: 20px !important;
+          }
+          
+          /* Black text everywhere */
+          * {
+            color: black !important;
+          }
+          
+          /* Page breaks */
+          h2, h3 {
+            page-break-after: avoid;
+          }
+          
+          table {
+            page-break-inside: avoid;
+          }
+          
+          /* Make sure text is readable */
+          p, span, td, th, div {
+            color: black !important;
+          }
+        }
       `}</style>
     </div>
   );
