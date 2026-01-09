@@ -218,6 +218,7 @@ export default function App() {
   const [invLookupSearch, setInvLookupSearch] = useState('');
   const [selectedPendingItem, setSelectedPendingItem] = useState(null);
   const [showInvCsvImport, setShowInvCsvImport] = useState(false);
+  const [selectedInvLookup, setSelectedInvLookup] = useState(new Set());
   const ITEMS_PER_PAGE = 50;
 
   // Check for StockX token in URL on load
@@ -2051,8 +2052,21 @@ export default function App() {
 
             {/* RIGHT SIDE - Inventory Lookup (ALWAYS VISIBLE) */}
             <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 20 }}>
-              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
+              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontWeight: 700, fontSize: 14 }}>📦 YOUR INVENTORY</span>
+                {selectedInvLookup.size > 0 && (
+                  <button 
+                    onClick={() => {
+                      if (confirm(`Mark ${selectedInvLookup.size} item${selectedInvLookup.size > 1 ? 's' : ''} as sold?`)) {
+                        setPurchases(prev => prev.map(p => selectedInvLookup.has(p.id) ? { ...p, sold: true } : p));
+                        setSelectedInvLookup(new Set());
+                      }
+                    }}
+                    style={{ padding: '6px 12px', background: 'rgba(251,191,36,0.2)', border: '1px solid rgba(251,191,36,0.4)', borderRadius: 6, color: c.gold, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Mark {selectedInvLookup.size} Sold
+                  </button>
+                )}
               </div>
               
               <div style={{ padding: 12, borderBottom: `1px solid ${c.border}` }}>
@@ -2080,6 +2094,46 @@ export default function App() {
                 </div>
               ) : (
                 <div style={{ maxHeight: 500, overflowY: 'auto' }}>
+                  {/* Select All Row */}
+                  {!selectedPendingItem && purchases.filter(p => !p.sold).filter(p => {
+                    if (!invLookupSearch) return true;
+                    const search = invLookupSearch.toLowerCase();
+                    return (p.name && p.name.toLowerCase().includes(search)) ||
+                           (p.sku && p.sku.toLowerCase().includes(search)) ||
+                           (p.size && p.size.toString().toLowerCase().includes(search));
+                  }).length > 0 && (
+                    <div style={{ padding: '8px 12px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input 
+                        type="checkbox"
+                        checked={(() => {
+                          const visible = purchases.filter(p => !p.sold).filter(p => {
+                            if (!invLookupSearch) return true;
+                            const search = invLookupSearch.toLowerCase();
+                            return (p.name && p.name.toLowerCase().includes(search)) ||
+                                   (p.sku && p.sku.toLowerCase().includes(search)) ||
+                                   (p.size && p.size.toString().toLowerCase().includes(search));
+                          }).slice(0, 50);
+                          return visible.length > 0 && visible.every(p => selectedInvLookup.has(p.id));
+                        })()}
+                        onChange={(e) => {
+                          const visible = purchases.filter(p => !p.sold).filter(p => {
+                            if (!invLookupSearch) return true;
+                            const search = invLookupSearch.toLowerCase();
+                            return (p.name && p.name.toLowerCase().includes(search)) ||
+                                   (p.sku && p.sku.toLowerCase().includes(search)) ||
+                                   (p.size && p.size.toString().toLowerCase().includes(search));
+                          }).slice(0, 50);
+                          if (e.target.checked) {
+                            setSelectedInvLookup(new Set(visible.map(p => p.id)));
+                          } else {
+                            setSelectedInvLookup(new Set());
+                          }
+                        }}
+                        style={{ width: 14, height: 14, cursor: 'pointer', accentColor: c.gold }}
+                      />
+                      <span style={{ fontSize: 10, color: c.textMuted }}>Select All</span>
+                    </div>
+                  )}
                   {purchases
                     .filter(p => !p.sold)
                     .filter(p => {
@@ -2094,11 +2148,11 @@ export default function App() {
                       <div 
                         key={p.id}
                         style={{ 
-                          padding: '12px 16px', 
+                          padding: '10px 12px', 
                           borderBottom: `1px solid ${c.border}`,
                           cursor: selectedPendingItem ? 'pointer' : 'default',
                           transition: 'background 0.15s',
-                          background: selectedPendingItem ? 'transparent' : 'transparent'
+                          background: selectedInvLookup.has(p.id) ? 'rgba(251,191,36,0.1)' : 'transparent'
                         }}
                         onClick={() => {
                           if (selectedPendingItem) {
@@ -2108,9 +2162,26 @@ export default function App() {
                           }
                         }}
                         onMouseEnter={e => { if (selectedPendingItem) e.currentTarget.style.background = 'rgba(16,185,129,0.1)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = selectedInvLookup.has(p.id) ? 'rgba(251,191,36,0.1)' : 'transparent'; }}
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                          {!selectedPendingItem && (
+                            <input 
+                              type="checkbox"
+                              checked={selectedInvLookup.has(p.id)}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                setSelectedInvLookup(prev => {
+                                  const newSet = new Set(prev);
+                                  if (e.target.checked) newSet.add(p.id);
+                                  else newSet.delete(p.id);
+                                  return newSet;
+                                });
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ width: 14, height: 14, cursor: 'pointer', accentColor: c.gold, marginTop: 2 }}
+                            />
+                          )}
                           <div style={{ flex: 1 }}>
                             <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 2 }}>{p.name}</div>
                             <div style={{ fontSize: 10, color: c.emerald, marginBottom: 4 }}>{p.sku} · Size {p.size}</div>
@@ -2119,29 +2190,6 @@ export default function App() {
                               <span style={{ color: c.textMuted }}>{p.date}</span>
                             </div>
                           </div>
-                          {!selectedPendingItem && (
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (confirm(`Mark "${p.name}" as sold?`)) {
-                                  setPurchases(prev => prev.map(x => x.id === p.id ? { ...x, sold: true } : x));
-                                }
-                              }}
-                              style={{ 
-                                padding: '4px 8px', 
-                                background: 'rgba(239,68,68,0.1)', 
-                                border: '1px solid rgba(239,68,68,0.3)', 
-                                borderRadius: 6, 
-                                color: c.red, 
-                                fontSize: 10, 
-                                cursor: 'pointer',
-                                marginLeft: 8,
-                                whiteSpace: 'nowrap'
-                              }}
-                            >
-                              Mark Sold
-                            </button>
-                          )}
                         </div>
                       </div>
                     ))
