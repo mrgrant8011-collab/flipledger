@@ -295,7 +295,7 @@ export default function App() {
 
   const filterByYear = (items, dateField = 'date') => year === 'all' ? items : items.filter(item => item[dateField]?.startsWith(year));
   const inventory = purchases.filter(p => !sales.find(s => s.purchaseId === p.id));
-  const filteredInventory = filterByYear(inventory);
+  const filteredInventory = purchases; // Inventory shows ALL items regardless of year
   const filteredSales = filterByYear(sales, 'saleDate');
   const filteredExpenses = filterByYear(expenses);
   const filteredMileage = filterByYear(mileage);
@@ -319,7 +319,7 @@ export default function App() {
   const totalMileageDeduction = totalMiles * settings.mileageRate;
   const totalDeductions = totalFees + totalExp + totalStor + totalMileageDeduction;
   const netProfit = totalRevenue - totalCOGS - totalDeductions;
-  const inventoryVal = filteredInventory.reduce((s, x) => s + (x.cost || 0), 0);
+  const inventoryVal = purchases.filter(p => !p.sold).reduce((s, x) => s + (x.cost || 0), 0);
   const grossProfit = totalRevenue - totalCOGS;
   const selfEmploymentTax = netProfit > 0 ? netProfit * 0.153 : 0;
   const federalTax = netProfit > 0 ? netProfit * 0.22 : 0;
@@ -809,7 +809,7 @@ export default function App() {
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '⬡' },
-    { id: 'inventory', label: 'Inventory', icon: '◫', count: filteredInventory.length },
+    { id: 'inventory', label: 'Inventory', icon: '◫', count: purchases.length },
     { id: 'sales', label: 'Sales', icon: '◈', count: filteredSales.length },
     { type: 'divider' },
     { id: 'expenses', label: 'Expenses', icon: '◧' },
