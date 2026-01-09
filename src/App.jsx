@@ -93,14 +93,47 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
       <button onClick={() => { setFormData({}); setModal('sale'); }} style={{ padding: '14px 24px', ...btnPrimary, fontSize: 13 }}>+ RECORD SALE</button>
     </div>
 
+    {/* QUICK ACTIONS BAR */}
+    <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${c.border}`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <button 
+          onClick={() => {
+            const ids = pageItems.map(s => s.id);
+            setSelectedSales(new Set(ids));
+          }}
+          style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.15)', border: `1px solid rgba(16,185,129,0.3)`, borderRadius: 8, color: c.emerald, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
+        >
+          ✓ Select All on Page ({pageItems.length})
+        </button>
+        {selectedSales.size > 0 && (
+          <button 
+            onClick={() => setSelectedSales(new Set())}
+            style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}
+          >
+            ✗ Clear Selection
+          </button>
+        )}
+      </div>
+      <span style={{ fontSize: 13, color: selectedSales.size > 0 ? c.emerald : c.textMuted, fontWeight: selectedSales.size > 0 ? 700 : 400 }}>
+        {selectedSales.size > 0 ? `${selectedSales.size} selected` : 'None selected'}
+      </span>
+    </div>
+
     {/* BULK DELETE BAR */}
     {selectedSales.size > 0 && (
       <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontWeight: 700, color: c.red, fontSize: 14 }}>{selectedSales.size} sale{selectedSales.size > 1 ? 's' : ''} selected</span>
-        <div style={{ display: 'flex', gap: 12 }}>
-          <button onClick={() => setSelectedSales(new Set())} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>Clear Selection</button>
-          <button onClick={() => { if (confirm(`Delete ${selectedSales.size} sale${selectedSales.size > 1 ? 's' : ''}?`)) { setSales(prev => prev.filter(s => !selectedSales.has(s.id))); setSelectedSales(new Set()); }}} style={{ padding: '8px 20px', background: c.red, border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>🗑️ Delete {selectedSales.size} Sale{selectedSales.size > 1 ? 's' : ''}</button>
-        </div>
+        <span style={{ fontWeight: 700, color: c.red, fontSize: 14 }}>🗑️ {selectedSales.size} sale{selectedSales.size > 1 ? 's' : ''} ready to delete</span>
+        <button 
+          onClick={() => { 
+            if (confirm(`DELETE ${selectedSales.size} SALES?\n\nThis cannot be undone!`)) { 
+              setSales(prev => prev.filter(s => !selectedSales.has(s.id))); 
+              setSelectedSales(new Set()); 
+            }
+          }} 
+          style={{ padding: '10px 24px', background: c.red, border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700 }}
+        >
+          🗑️ DELETE {selectedSales.size} SALES
+        </button>
       </div>
     )}
 
@@ -168,7 +201,7 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
 export default function App() {
   const [page, setPage] = useState('dashboard');
   const [modal, setModal] = useState(null);
-  const [year, setYear] = useState('2025');
+  const [year, setYear] = useState('2024');
   const [csvImport, setCsvImport] = useState({ show: false, data: [], filteredData: [], year: 'all', month: 'all', preview: false, headers: [] });
   const [purchases, setPurchases] = useState(() => {
     const saved = localStorage.getItem('flipledger_purchases');
