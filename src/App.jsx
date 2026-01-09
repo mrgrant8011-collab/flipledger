@@ -216,6 +216,7 @@ export default function App() {
   const [inventoryPage, setInventoryPage] = useState(1);
   const [invLookupSearch, setInvLookupSearch] = useState('');
   const [selectedPendingItem, setSelectedPendingItem] = useState(null);
+  const [showInvCsvImport, setShowInvCsvImport] = useState(false);
   const ITEMS_PER_PAGE = 50;
 
   // Check for StockX token in URL on load
@@ -407,6 +408,84 @@ export default function App() {
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+  };
+
+  // Download inventory template CSV
+  const downloadInventoryTemplate = () => {
+    const template = 'Date,Name,SKU,Size,Cost\n1/15/2024,Jordan 4 Retro Example,AB1234-001,10,150\n';
+    const blob = new Blob([template], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'flipledger-inventory-template.csv';
+    a.click();
+  };
+
+  // Import inventory from CSV
+  const handleInventoryCsvUpload = (e) => {
+    const file = e.target?.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target.result;
+      const lines = text.split('\n');
+      
+      // Parse header row
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
+      
+      // Find column indexes
+      const dateIdx = headers.findIndex(h => h === 'date');
+      const nameIdx = headers.findIndex(h => h === 'name');
+      const skuIdx = headers.findIndex(h => h === 'sku');
+      const sizeIdx = headers.findIndex(h => h === 'size');
+      const costIdx = headers.findIndex(h => h === 'cost');
+      
+      const newItems = [];
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        
+        // Parse CSV line (handle commas in quotes)
+        const values = [];
+        let current = '';
+        let inQuotes = false;
+        for (const char of lines[i]) {
+          if (char === '"') inQuotes = !inQuotes;
+          else if (char === ',' && !inQuotes) { values.push(current.trim()); current = ''; }
+          else current += char;
+        }
+        values.push(current.trim());
+        
+        // Extract values
+        const rawDate = dateIdx >= 0 ? values[dateIdx]?.replace(/"/g, '') : '';
+        const name = nameIdx >= 0 ? values[nameIdx]?.replace(/"/g, '') : '';
+        const sku = skuIdx >= 0 ? values[skuIdx]?.replace(/"/g, '') : '';
+        const size = sizeIdx >= 0 ? values[sizeIdx]?.replace(/"/g, '') : '';
+        const cost = costIdx >= 0 ? parseFloat(values[costIdx]?.replace(/[$",]/g, '')) || 0 : 0;
+        
+        if (name || sku) {
+          newItems.push({
+            id: Date.now() + Math.random() + i,
+            date: parseDate(rawDate) || new Date().toISOString().split('T')[0],
+            name: name || 'Unknown Item',
+            sku: sku || '',
+            size: size || '',
+            cost: cost
+          });
+        }
+      }
+      
+      if (newItems.length > 0) {
+        setPurchases(prev => [...prev, ...newItems]);
+        alert(`Imported ${newItems.length} items to inventory!`);
+      } else {
+        alert('No items found. Make sure your CSV has headers: Date, Name, SKU, Size, Cost');
+      }
+      
+      setShowInvCsvImport(false);
+      e.target.value = ''; // Reset file input
+    };
+    reader.readAsText(file);
   };
 
   // Parse date from various formats to YYYY-MM-DD
@@ -1099,22 +1178,48 @@ export default function App() {
           </div>
 
           {/* SEARCH & ACTIONS */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
             <input 
               type="text" 
               placeholder="🔍 Search by name, SKU, or size..." 
               value={formData.inventorySearch || ''} 
               onChange={e => { setFormData(prev => ({ ...prev, inventorySearch: e.target.value })); setInventoryPage(1); }}
-              style={{ flex: 1, padding: 14, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 14 }} 
+              style={{ flex: 1, minWidth: 200, padding: 14, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 14 }} 
             />
             <select value={formData.inventoryFilter || 'all'} onChange={e => { setFormData(prev => ({ ...prev, inventoryFilter: e.target.value })); setInventoryPage(1); }} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
               <option value="all">All ({purchases.length})</option>
               <option value="instock">In Stock ({purchases.filter(p => !p.sold).length})</option>
               <option value="sold">Sold ({purchases.filter(p => p.sold).length})</option>
             </select>
+            <button onClick={() => setShowInvCsvImport(true)} style={{ padding: '14px 20px', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 12, color: c.gold, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>📥 IMPORT CSV</button>
             <button onClick={() => { setFormData(prev => ({ ...prev, bulkRows: [{ size: '', cost: '' }] })); setModal('bulkAdd'); }} style={{ padding: '14px 24px', ...btnPrimary, fontSize: 13 }}>+ BULK ADD</button>
             <button onClick={() => { setFormData({}); setModal('purchase'); }} style={{ padding: '14px 20px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>+ SINGLE</button>
           </div>
+
+          {/* CSV IMPORT PANEL */}
+          {showInvCsvImport && (
+            <div style={{ marginBottom: 16, padding: 20, background: 'rgba(251,191,36,0.05)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: c.gold }}>📥 Import Inventory CSV</h3>
+                <button onClick={() => setShowInvCsvImport(false)} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 20 }}>×</button>
+              </div>
+              
+              <p style={{ margin: '0 0 16px', fontSize: 13, color: c.textMuted }}>
+                CSV must have these columns: <strong style={{ color: '#fff' }}>Date, Name, SKU, Size, Cost</strong>
+              </p>
+              
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                <button onClick={downloadInventoryTemplate} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#fff', fontSize: 12, cursor: 'pointer' }}>
+                  📄 Download Template
+                </button>
+                
+                <label style={{ padding: '10px 20px', ...btnPrimary, fontSize: 12, cursor: 'pointer' }}>
+                  📤 Upload CSV
+                  <input type="file" accept=".csv" onChange={handleInventoryCsvUpload} style={{ display: 'none' }} />
+                </label>
+              </div>
+            </div>
+          )}
 
           {/* BULK DELETE BAR */}
           {selectedInventory.size > 0 && (
