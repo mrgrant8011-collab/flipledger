@@ -1,5 +1,170 @@
 import { useState, useEffect } from 'react';
 
+// SalesPage Component - extracted for proper state handling
+function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPage, selectedSales, setSelectedSales, sales, setSales, settings, setModal, ITEMS_PER_PAGE, cardStyle, btnPrimary, c, fmt, exportCSV }) {
+  // Get search term
+  const searchTerm = (formData.salesSearch || '').toLowerCase().trim();
+  const platformFilter = formData.salesFilter || 'all';
+  const monthFilter = formData.salesMonth || 'all';
+  const sortBy = formData.salesSort || 'newest';
+  
+  // Step 1: Filter sales
+  const filteredDisplaySales = filteredSales.filter(s => {
+    if (searchTerm) {
+      const inName = s.name && s.name.toLowerCase().includes(searchTerm);
+      const inSku = s.sku && s.sku.toLowerCase().includes(searchTerm);
+      const inSize = s.size && s.size.toString().toLowerCase().includes(searchTerm);
+      if (!inName && !inSku && !inSize) return false;
+    }
+    if (platformFilter !== 'all' && s.platform !== platformFilter) return false;
+    if (monthFilter !== 'all') {
+      if (!s.saleDate || s.saleDate.substring(5, 7) !== monthFilter) return false;
+    }
+    return true;
+  });
+  
+  // Step 2: Sort sales
+  const sortedSales = [...filteredDisplaySales].sort((a, b) => {
+    switch(sortBy) {
+      case 'oldest': return new Date(a.saleDate || 0) - new Date(b.saleDate || 0);
+      case 'newest': return new Date(b.saleDate || 0) - new Date(a.saleDate || 0);
+      case 'nameAZ': return (a.name || '').localeCompare(b.name || '');
+      case 'nameZA': return (b.name || '').localeCompare(a.name || '');
+      case 'skuAZ': return (a.sku || '').localeCompare(b.sku || '');
+      case 'skuZA': return (b.sku || '').localeCompare(a.sku || '');
+      case 'sizeAsc': return parseFloat(a.size || 0) - parseFloat(b.size || 0);
+      case 'sizeDesc': return parseFloat(b.size || 0) - parseFloat(a.size || 0);
+      case 'platformAZ': return (a.platform || '').localeCompare(b.platform || '');
+      case 'costLow': return (a.cost || 0) - (b.cost || 0);
+      case 'costHigh': return (b.cost || 0) - (a.cost || 0);
+      case 'priceLow': return (a.salePrice || 0) - (b.salePrice || 0);
+      case 'priceHigh': return (b.salePrice || 0) - (a.salePrice || 0);
+      case 'feesLow': return (a.fees || 0) - (b.fees || 0);
+      case 'feesHigh': return (b.fees || 0) - (a.fees || 0);
+      case 'profitLow': return (a.profit || 0) - (b.profit || 0);
+      case 'profitHigh': return (b.profit || 0) - (a.profit || 0);
+      default: return new Date(b.saleDate || 0) - new Date(a.saleDate || 0);
+    }
+  });
+  
+  // Step 3: Pagination
+  const totalItems = sortedSales.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / ITEMS_PER_PAGE));
+  const currentPage = Math.min(salesPage, totalPages);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, totalItems);
+  const pageItems = sortedSales.slice(startIndex, endIndex);
+  
+  // Step 4: Selection helpers
+  const pageItemIds = pageItems.map(s => s.id);
+  const allOnPageSelected = pageItems.length > 0 && pageItemIds.every(id => selectedSales.has(id));
+  const totalProfit = sortedSales.reduce((sum, s) => sum + (s.profit || 0), 0);
+  
+  return <div>
+    {/* STATS BAR */}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 20 }}>
+      <div style={{ ...cardStyle, padding: 16 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL SALES</span>
+        <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: '#fff' }}>{totalItems}</p>
+      </div>
+      <div style={{ ...cardStyle, padding: 16 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL PROFIT</span>
+        <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: totalProfit >= 0 ? c.emerald : c.red }}>{fmt(totalProfit)}</p>
+      </div>
+    </div>
+
+    {/* SEARCH & FILTERS */}
+    <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+      <input 
+        type="text" 
+        placeholder="🔍 Search by name, SKU, or size..." 
+        value={formData.salesSearch || ''} 
+        onChange={e => { setFormData(prev => ({ ...prev, salesSearch: e.target.value })); setSalesPage(1); }}
+        style={{ flex: 1, minWidth: 200, padding: 14, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 14 }} 
+      />
+      <select value={formData.salesMonth || 'all'} onChange={e => { setFormData(prev => ({ ...prev, salesMonth: e.target.value })); setSalesPage(1); }} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
+        <option value="all">All Months</option>
+        <option value="01">January</option><option value="02">February</option><option value="03">March</option><option value="04">April</option><option value="05">May</option><option value="06">June</option><option value="07">July</option><option value="08">August</option><option value="09">September</option><option value="10">October</option><option value="11">November</option><option value="12">December</option>
+      </select>
+      <select value={formData.salesFilter || 'all'} onChange={e => { setFormData(prev => ({ ...prev, salesFilter: e.target.value })); setSalesPage(1); }} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
+        <option value="all">All Platforms</option>
+        <option value="StockX Standard">StockX Standard</option><option value="StockX Direct">StockX Direct</option><option value="StockX Flex">StockX Flex</option><option value="GOAT">GOAT</option><option value="eBay">eBay</option><option value="Local">Local</option>
+      </select>
+      <button onClick={() => { setFormData({}); setModal('sale'); }} style={{ padding: '14px 24px', ...btnPrimary, fontSize: 13 }}>+ RECORD SALE</button>
+    </div>
+
+    {/* BULK DELETE BAR */}
+    {selectedSales.size > 0 && (
+      <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontWeight: 700, color: c.red, fontSize: 14 }}>{selectedSales.size} sale{selectedSales.size > 1 ? 's' : ''} selected</span>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button onClick={() => setSelectedSales(new Set())} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>Clear Selection</button>
+          <button onClick={() => { if (confirm(`Delete ${selectedSales.size} sale${selectedSales.size > 1 ? 's' : ''}?`)) { setSales(prev => prev.filter(s => !selectedSales.has(s.id))); setSelectedSales(new Set()); }}} style={{ padding: '8px 20px', background: c.red, border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>🗑️ Delete {selectedSales.size} Sale{selectedSales.size > 1 ? 's' : ''}</button>
+        </div>
+      </div>
+    )}
+
+    {/* SALES TABLE */}
+    <div style={cardStyle}>
+      <div style={{ padding: '14px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 13, color: c.textMuted }}>{totalItems > 0 ? `Showing ${startIndex + 1}-${endIndex} of ${totalItems} sales` : 'No sales found'}</span>
+        <button onClick={() => exportCSV(sortedSales, 'sales.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
+      </div>
+      
+      {/* TABLE HEADER */}
+      <div style={{ display: 'grid', gridTemplateColumns: '40px 85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
+        <div><input type="checkbox" checked={allOnPageSelected} onChange={e => { if (e.target.checked) { setSelectedSales(new Set(pageItemIds)); } else { setSelectedSales(new Set()); }}} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }} /></div>
+        <span onClick={() => { setFormData(prev => ({ ...prev, salesSort: sortBy === 'oldest' ? 'newest' : 'oldest' })); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'oldest' || sortBy === 'newest') ? c.emerald : c.textMuted, cursor: 'pointer' }}>DATE {sortBy === 'oldest' ? '▲' : sortBy === 'newest' ? '▼' : ''}</span>
+        <span onClick={() => { setFormData(prev => ({ ...prev, salesSort: sortBy === 'nameAZ' ? 'nameZA' : 'nameAZ' })); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'nameAZ' || sortBy === 'nameZA') ? c.emerald : c.textMuted, cursor: 'pointer' }}>NAME {sortBy === 'nameAZ' ? '▲' : sortBy === 'nameZA' ? '▼' : ''}</span>
+        <span onClick={() => { setFormData(prev => ({ ...prev, salesSort: sortBy === 'skuAZ' ? 'skuZA' : 'skuAZ' })); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'skuAZ' || sortBy === 'skuZA') ? c.emerald : c.textMuted, cursor: 'pointer' }}>SKU {sortBy === 'skuAZ' ? '▲' : sortBy === 'skuZA' ? '▼' : ''}</span>
+        <span onClick={() => { setFormData(prev => ({ ...prev, salesSort: sortBy === 'sizeAsc' ? 'sizeDesc' : 'sizeAsc' })); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'sizeAsc' || sortBy === 'sizeDesc') ? c.emerald : c.textMuted, cursor: 'pointer' }}>SIZE {sortBy === 'sizeAsc' ? '▲' : sortBy === 'sizeDesc' ? '▼' : ''}</span>
+        <span onClick={() => { setFormData(prev => ({ ...prev, salesSort: 'platformAZ' })); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: sortBy === 'platformAZ' ? c.emerald : c.textMuted, cursor: 'pointer' }}>PLATFORM</span>
+        <span onClick={() => { setFormData(prev => ({ ...prev, salesSort: sortBy === 'costLow' ? 'costHigh' : 'costLow' })); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'costLow' || sortBy === 'costHigh') ? c.emerald : c.textMuted, cursor: 'pointer', textAlign: 'right' }}>COST {sortBy === 'costLow' ? '▲' : sortBy === 'costHigh' ? '▼' : ''}</span>
+        <span onClick={() => { setFormData(prev => ({ ...prev, salesSort: sortBy === 'priceLow' ? 'priceHigh' : 'priceLow' })); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'priceLow' || sortBy === 'priceHigh') ? c.emerald : c.textMuted, cursor: 'pointer', textAlign: 'right' }}>PRICE {sortBy === 'priceLow' ? '▲' : sortBy === 'priceHigh' ? '▼' : ''}</span>
+        <span onClick={() => { setFormData(prev => ({ ...prev, salesSort: sortBy === 'feesLow' ? 'feesHigh' : 'feesLow' })); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'feesLow' || sortBy === 'feesHigh') ? c.emerald : c.textMuted, cursor: 'pointer', textAlign: 'right' }}>FEES {sortBy === 'feesLow' ? '▲' : sortBy === 'feesHigh' ? '▼' : ''}</span>
+        <span onClick={() => { setFormData(prev => ({ ...prev, salesSort: sortBy === 'profitLow' ? 'profitHigh' : 'profitLow' })); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'profitLow' || sortBy === 'profitHigh') ? c.emerald : c.textMuted, cursor: 'pointer', textAlign: 'right' }}>PROFIT {sortBy === 'profitLow' ? '▲' : sortBy === 'profitHigh' ? '▼' : ''}</span>
+        <span></span><span></span>
+      </div>
+
+      {/* TABLE ROWS */}
+      {pageItems.length > 0 ? pageItems.map(s => (
+        <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '40px 85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : 'transparent' }}>
+          <div><input type="checkbox" checked={selectedSales.has(s.id)} onChange={e => { const newSet = new Set(selectedSales); if (e.target.checked) newSet.add(s.id); else newSet.delete(s.id); setSelectedSales(newSet); }} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }} /></div>
+          <span style={{ fontSize: 12, color: c.textMuted }}>{s.saleDate}</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</span>
+          <span style={{ fontSize: 11, color: c.emerald }}>{s.sku || '-'}</span>
+          <span style={{ fontSize: 13 }}>{s.size || '-'}</span>
+          <span style={{ fontSize: 11, color: c.textMuted }}>{s.platform}</span>
+          <span style={{ fontSize: 12, textAlign: 'right', color: c.textMuted }}>{fmt(s.cost)}</span>
+          <span style={{ fontSize: 12, textAlign: 'right' }}>{fmt(s.salePrice)}</span>
+          <span style={{ fontSize: 12, textAlign: 'right', color: c.red }}>{fmt(s.fees)}</span>
+          <span style={{ fontSize: 13, fontWeight: 700, textAlign: 'right', color: s.profit >= 0 ? c.emerald : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</span>
+          <button onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14 }}>✏️</button>
+          <button onClick={() => { setSales(sales.filter(x => x.id !== s.id)); setSelectedSales(prev => { const n = new Set(prev); n.delete(s.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16 }}>×</button>
+        </div>
+      )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💵</div><p style={{ color: c.textMuted }}>No sales match your filters</p><button onClick={() => { setFormData({}); setModal('sale'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Record Sale</button></div>}
+      
+      {/* PAGINATION */}
+      {totalPages > 1 && (
+        <div style={{ padding: '16px 20px', borderTop: `1px solid ${c.border}`, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => setSalesPage(1)} disabled={currentPage === 1} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: currentPage === 1 ? c.textMuted : '#fff', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}>«</button>
+          <button onClick={() => setSalesPage(currentPage - 1)} disabled={currentPage === 1} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: currentPage === 1 ? c.textMuted : '#fff', cursor: currentPage === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}>‹</button>
+          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+            let pageNum;
+            if (totalPages <= 5) pageNum = i + 1;
+            else if (currentPage <= 3) pageNum = i + 1;
+            else if (currentPage >= totalPages - 2) pageNum = totalPages - 4 + i;
+            else pageNum = currentPage - 2 + i;
+            return <button key={pageNum} onClick={() => setSalesPage(pageNum)} style={{ padding: '8px 14px', background: currentPage === pageNum ? c.emerald : 'rgba(255,255,255,0.05)', border: `1px solid ${currentPage === pageNum ? c.emerald : c.border}`, borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: currentPage === pageNum ? 700 : 400 }}>{pageNum}</button>;
+          })}
+          <button onClick={() => setSalesPage(currentPage + 1)} disabled={currentPage === totalPages} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: currentPage === totalPages ? c.textMuted : '#fff', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', fontSize: 12 }}>›</button>
+          <button onClick={() => setSalesPage(totalPages)} disabled={currentPage === totalPages} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: currentPage === totalPages ? c.textMuted : '#fff', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer', fontSize: 12 }}>»</button>
+        </div>
+      )}
+    </div>
+  </div>;
+}
+
 export default function App() {
   const [page, setPage] = useState('dashboard');
   const [modal, setModal] = useState(null);
@@ -1049,279 +1214,25 @@ export default function App() {
         })()}
 
         {/* SALES */}
-        {page === 'sales' && (() => {
-          // Get current sort setting
-          const currentSort = formData.salesSort || 'newest';
-          
-          // Filter sales based on search, platform, month
-          const filteredDisplaySales = filteredSales.filter(s => {
-            const search = (formData.salesSearch || '').toLowerCase().trim();
-            const filter = formData.salesFilter || 'all';
-            const monthFilter = formData.salesMonth || 'all';
-            
-            let matchesSearch = true;
-            if (search) {
-              const nameMatch = s.name?.toLowerCase().includes(search);
-              const skuMatch = s.sku?.toLowerCase().includes(search);
-              const sizeMatch = s.size?.toString().toLowerCase().includes(search);
-              matchesSearch = nameMatch || skuMatch || sizeMatch;
-            }
-            
-            const matchesFilter = filter === 'all' || s.platform === filter;
-            const matchesMonth = monthFilter === 'all' || (s.saleDate && s.saleDate.substring(5, 7) === monthFilter);
-            return matchesSearch && matchesFilter && matchesMonth;
-          });
-          
-          // Sort the filtered sales
-          const displayedSales = [...filteredDisplaySales].sort((a, b) => {
-            switch(currentSort) {
-              case 'newest': return new Date(b.saleDate) - new Date(a.saleDate);
-              case 'oldest': return new Date(a.saleDate) - new Date(b.saleDate);
-              case 'profitHigh': return (b.profit || 0) - (a.profit || 0);
-              case 'profitLow': return (a.profit || 0) - (b.profit || 0);
-              case 'priceHigh': return (b.salePrice || 0) - (a.salePrice || 0);
-              case 'priceLow': return (a.salePrice || 0) - (b.salePrice || 0);
-              case 'costHigh': return (b.cost || 0) - (a.cost || 0);
-              case 'costLow': return (a.cost || 0) - (b.cost || 0);
-              case 'nameAZ': return (a.name || '').localeCompare(b.name || '');
-              case 'nameZA': return (b.name || '').localeCompare(a.name || '');
-              case 'skuAZ': return (a.sku || '').localeCompare(b.sku || '');
-              case 'skuZA': return (b.sku || '').localeCompare(a.sku || '');
-              case 'sizeAsc': return (parseFloat(a.size) || 0) - (parseFloat(b.size) || 0);
-              case 'sizeDesc': return (parseFloat(b.size) || 0) - (parseFloat(a.size) || 0);
-              case 'platformAZ': return (a.platform || '').localeCompare(b.platform || '');
-              case 'feesHigh': return (b.fees || 0) - (a.fees || 0);
-              case 'feesLow': return (a.fees || 0) - (b.fees || 0);
-              default: return 0;
-            }
-          });
-          
-          const displayedProfit = displayedSales.reduce((sum, s) => sum + (s.profit || 0), 0);
-          
-          // Pagination
-          const totalPages = Math.ceil(displayedSales.length / ITEMS_PER_PAGE);
-          const startIdx = (salesPage - 1) * ITEMS_PER_PAGE;
-          const paginatedSales = displayedSales.slice(startIdx, startIdx + ITEMS_PER_PAGE);
-          const allPageIds = paginatedSales.map(s => s.id);
-          const allSelected = paginatedSales.length > 0 && allPageIds.every(id => selectedSales.has(id));
-          
-          // Handle clicking a column header to sort
-          const handleSort = (sortKey, sortKeyAlt) => {
-            setSalesPage(1); // Reset to page 1 when sorting
-            if (currentSort === sortKey) {
-              setFormData(prev => ({ ...prev, salesSort: sortKeyAlt }));
-            } else {
-              setFormData(prev => ({ ...prev, salesSort: sortKey }));
-            }
-          };
-          
-          // Handle select all checkbox - selects current page
-          const handleSelectAll = (checked) => {
-            if (checked) {
-              setSelectedSales(new Set(allPageIds));
-            } else {
-              setSelectedSales(new Set());
-            }
-          };
-          
-          // Handle individual checkbox
-          const handleSelectOne = (id, checked) => {
-            setSelectedSales(prev => {
-              const newSet = new Set(prev);
-              if (checked) newSet.add(id);
-              else newSet.delete(id);
-              return newSet;
-            });
-          };
-          
-          // Check if a sort is active
-          const isActiveSort = (key1, key2) => currentSort === key1 || currentSort === key2;
-          const getSortArrow = (key1) => currentSort === key1 ? '▲' : '▼';
-          
-          return <div>
-          {/* STATS BAR */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 20 }}>
-            <div style={{ ...cardStyle, padding: 16 }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL SALES</span>
-              <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: '#fff' }}>{displayedSales.length}</p>
-            </div>
-            <div style={{ ...cardStyle, padding: 16 }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL PROFIT</span>
-              <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: displayedProfit >= 0 ? c.emerald : c.red }}>{fmt(displayedProfit)}</p>
-            </div>
-          </div>
-
-          {/* SEARCH & FILTERS */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-            <input 
-              type="text" 
-              placeholder="🔍 Search by name, SKU, or size..." 
-              value={formData.salesSearch || ''} 
-              onChange={e => { setFormData(prev => ({ ...prev, salesSearch: e.target.value })); setSalesPage(1); }}
-              style={{ flex: 1, minWidth: 200, padding: 14, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 14 }} 
-            />
-            <select value={formData.salesMonth || 'all'} onChange={e => { setFormData(prev => ({ ...prev, salesMonth: e.target.value })); setSalesPage(1); }} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
-              <option value="all">All Months</option>
-              <option value="01">January</option>
-              <option value="02">February</option>
-              <option value="03">March</option>
-              <option value="04">April</option>
-              <option value="05">May</option>
-              <option value="06">June</option>
-              <option value="07">July</option>
-              <option value="08">August</option>
-              <option value="09">September</option>
-              <option value="10">October</option>
-              <option value="11">November</option>
-              <option value="12">December</option>
-            </select>
-            <select value={formData.salesFilter || 'all'} onChange={e => { setFormData(prev => ({ ...prev, salesFilter: e.target.value })); setSalesPage(1); }} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
-              <option value="all">All Platforms</option>
-              <option value="StockX Standard">StockX Standard</option>
-              <option value="StockX Direct">StockX Direct</option>
-              <option value="StockX Flex">StockX Flex</option>
-              <option value="GOAT">GOAT</option>
-              <option value="eBay">eBay</option>
-              <option value="Local">Local</option>
-            </select>
-            <button onClick={() => { setFormData({}); setModal('sale'); }} style={{ padding: '14px 24px', ...btnPrimary, fontSize: 13 }}>+ RECORD SALE</button>
-          </div>
-
-          {/* BULK DELETE BAR */}
-          {selectedSales.size > 0 && (
-            <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(239,68,68,0.15)', border: `1px solid rgba(239,68,68,0.3)`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontWeight: 700, color: c.red, fontSize: 14 }}>
-                {selectedSales.size} sale{selectedSales.size > 1 ? 's' : ''} selected
-              </span>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <button 
-                  onClick={() => setSelectedSales(new Set())}
-                  style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}
-                >
-                  Clear Selection
-                </button>
-                <button 
-                  onClick={() => {
-                    if (confirm(`Delete ${selectedSales.size} sale${selectedSales.size > 1 ? 's' : ''}? This cannot be undone.`)) {
-                      setSales(prev => prev.filter(s => !selectedSales.has(s.id)));
-                      setSelectedSales(new Set());
-                    }
-                  }}
-                  style={{ padding: '8px 20px', background: c.red, border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
-                >
-                  🗑️ Delete {selectedSales.size} Sale{selectedSales.size > 1 ? 's' : ''}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* SALES TABLE */}
-          <div style={cardStyle}>
-            <div style={{ padding: '14px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, color: c.textMuted }}>Showing {startIdx + 1}-{Math.min(startIdx + ITEMS_PER_PAGE, displayedSales.length)} of {displayedSales.length} sales</span>
-              <button onClick={() => exportCSV(displayedSales, 'sales.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
-            </div>
-            
-            {/* TABLE HEADER - Clickable for sorting */}
-            <div style={{ display: 'grid', gridTemplateColumns: '40px 85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <input 
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={(e) => handleSelectAll(e.target.checked)}
-                  style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }}
-                />
-              </div>
-              <span onClick={() => handleSort('oldest', 'newest')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('oldest', 'newest') ? c.emerald : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
-                DATE {isActiveSort('oldest', 'newest') && getSortArrow('oldest')}
-              </span>
-              <span onClick={() => handleSort('nameAZ', 'nameZA')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('nameAZ', 'nameZA') ? c.emerald : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
-                NAME {isActiveSort('nameAZ', 'nameZA') && getSortArrow('nameAZ')}
-              </span>
-              <span onClick={() => handleSort('skuAZ', 'skuZA')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('skuAZ', 'skuZA') ? c.emerald : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
-                SKU {isActiveSort('skuAZ', 'skuZA') && getSortArrow('skuAZ')}
-              </span>
-              <span onClick={() => handleSort('sizeAsc', 'sizeDesc')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('sizeAsc', 'sizeDesc') ? c.emerald : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
-                SIZE {isActiveSort('sizeAsc', 'sizeDesc') && getSortArrow('sizeAsc')}
-              </span>
-              <span onClick={() => handleSort('platformAZ', 'platformAZ')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('platformAZ', 'platformAZ') ? c.emerald : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
-                PLATFORM
-              </span>
-              <span onClick={() => handleSort('costLow', 'costHigh')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('costLow', 'costHigh') ? c.emerald : c.textMuted, cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}>
-                COST {isActiveSort('costLow', 'costHigh') && getSortArrow('costLow')}
-              </span>
-              <span onClick={() => handleSort('priceLow', 'priceHigh')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('priceLow', 'priceHigh') ? c.emerald : c.textMuted, cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}>
-                PRICE {isActiveSort('priceLow', 'priceHigh') && getSortArrow('priceLow')}
-              </span>
-              <span onClick={() => handleSort('feesLow', 'feesHigh')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('feesLow', 'feesHigh') ? c.emerald : c.textMuted, cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}>
-                FEES {isActiveSort('feesLow', 'feesHigh') && getSortArrow('feesLow')}
-              </span>
-              <span onClick={() => handleSort('profitLow', 'profitHigh')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('profitLow', 'profitHigh') ? c.emerald : c.textMuted, cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}>
-                PROFIT {isActiveSort('profitLow', 'profitHigh') && getSortArrow('profitLow')}
-              </span>
-              <span></span>
-              <span></span>
-            </div>
-
-            {/* TABLE ROWS */}
-            {paginatedSales.length ? paginatedSales.map(s => (
-              <div 
-                key={s.id} 
-                style={{ 
-                  display: 'grid', 
-                  gridTemplateColumns: '40px 85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', 
-                  padding: '12px 20px', 
-                  borderBottom: `1px solid ${c.border}`, 
-                  alignItems: 'center',
-                  background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : 'transparent'
-                }}
-              >
-                <div>
-                  <input 
-                    type="checkbox"
-                    checked={selectedSales.has(s.id)}
-                    onChange={(e) => handleSelectOne(s.id, e.target.checked)}
-                    style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }}
-                  />
-                </div>
-                <span style={{ fontSize: 12, color: c.textMuted }}>{s.saleDate}</span>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</span>
-                <span style={{ fontSize: 11, color: c.emerald }}>{s.sku || '-'}</span>
-                <span style={{ fontSize: 13 }}>{s.size || '-'}</span>
-                <span style={{ fontSize: 11, color: c.textMuted }}>{s.platform}</span>
-                <span style={{ fontSize: 12, textAlign: 'right', color: c.textMuted }}>{fmt(s.cost)}</span>
-                <span style={{ fontSize: 12, textAlign: 'right' }}>{fmt(s.salePrice)}</span>
-                <span style={{ fontSize: 12, textAlign: 'right', color: c.red }}>{fmt(s.fees)}</span>
-                <span style={{ fontSize: 13, fontWeight: 700, textAlign: 'right', color: s.profit >= 0 ? c.emerald : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</span>
-                <button onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14 }}>✏️</button>
-                <button onClick={() => { setSales(sales.filter(x => x.id !== s.id)); setSelectedSales(prev => { const n = new Set(prev); n.delete(s.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16 }}>×</button>
-              </div>
-            )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💵</div><p style={{ color: c.textMuted }}>No sales match your filters</p><button onClick={() => { setFormData({}); setModal('sale'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Record Sale</button></div>}
-            
-            {/* PAGINATION */}
-            {totalPages > 1 && (
-              <div style={{ padding: '16px 20px', borderTop: `1px solid ${c.border}`, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-                <button onClick={() => setSalesPage(1)} disabled={salesPage === 1} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: salesPage === 1 ? c.textMuted : '#fff', cursor: salesPage === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}>«</button>
-                <button onClick={() => setSalesPage(p => Math.max(1, p - 1))} disabled={salesPage === 1} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: salesPage === 1 ? c.textMuted : '#fff', cursor: salesPage === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}>‹</button>
-                
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  let pageNum;
-                  if (totalPages <= 5) pageNum = i + 1;
-                  else if (salesPage <= 3) pageNum = i + 1;
-                  else if (salesPage >= totalPages - 2) pageNum = totalPages - 4 + i;
-                  else pageNum = salesPage - 2 + i;
-                  return (
-                    <button key={pageNum} onClick={() => setSalesPage(pageNum)} style={{ padding: '8px 14px', background: salesPage === pageNum ? c.emerald : 'rgba(255,255,255,0.05)', border: `1px solid ${salesPage === pageNum ? c.emerald : c.border}`, borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: salesPage === pageNum ? 700 : 400 }}>{pageNum}</button>
-                  );
-                })}
-                
-                <button onClick={() => setSalesPage(p => Math.min(totalPages, p + 1))} disabled={salesPage === totalPages} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: salesPage === totalPages ? c.textMuted : '#fff', cursor: salesPage === totalPages ? 'not-allowed' : 'pointer', fontSize: 12 }}>›</button>
-                <button onClick={() => setSalesPage(totalPages)} disabled={salesPage === totalPages} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: salesPage === totalPages ? c.textMuted : '#fff', cursor: salesPage === totalPages ? 'not-allowed' : 'pointer', fontSize: 12 }}>»</button>
-              </div>
-            )}
-          </div>
-        </div>;
-        })()}
+        {page === 'sales' && <SalesPage 
+          filteredSales={filteredSales}
+          formData={formData}
+          setFormData={setFormData}
+          salesPage={salesPage}
+          setSalesPage={setSalesPage}
+          selectedSales={selectedSales}
+          setSelectedSales={setSelectedSales}
+          sales={sales}
+          setSales={setSales}
+          settings={settings}
+          setModal={setModal}
+          ITEMS_PER_PAGE={ITEMS_PER_PAGE}
+          cardStyle={cardStyle}
+          btnPrimary={btnPrimary}
+          c={c}
+          fmt={fmt}
+          exportCSV={exportCSV}
+        />}
 
         {/* EXPENSES */}
         {page === 'expenses' && <div style={cardStyle}>
