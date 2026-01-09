@@ -75,15 +75,19 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
     <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${c.border}`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <div style={{ display: 'flex', gap: 12 }}>
         <button onClick={() => {
-          console.log('=== SELECT ALL DEBUG ===');
-          console.log('items array:', items);
-          console.log('items.length:', items.length);
-          console.log('itemIds:', itemIds);
-          console.log('itemIds.length:', itemIds.length);
-          const newSet = new Set(itemIds);
-          console.log('newSet size:', newSet.size);
-          console.log('newSet contents:', [...newSet]);
-          setSelectedSales(newSet);
+          // Get fresh IDs directly from the items currently showing
+          const freshIds = [];
+          for (let i = 0; i < items.length; i++) {
+            if (items[i] && items[i].id !== undefined && items[i].id !== null) {
+              freshIds.push(items[i].id);
+            }
+          }
+          console.log('Selecting', freshIds.length, 'items with IDs:', freshIds);
+          // Use array instead of Set initially
+          const selected = {};
+          freshIds.forEach(id => { selected[id] = true; });
+          // Convert to Set
+          setSelectedSales(new Set(Object.keys(selected).map(k => isNaN(Number(k)) ? k : Number(k))));
         }} style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, color: c.emerald, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>✓ Select Page ({items.length})</button>
         {selectedSales.size > 0 && <button onClick={() => setSelectedSales(new Set())} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>✗ Clear</button>}
       </div>
@@ -154,7 +158,20 @@ export default function App() {
   });
   const [sales, setSales] = useState(() => {
     const saved = localStorage.getItem('flipledger_sales');
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) return [];
+    const parsed = JSON.parse(saved);
+    // FIX: Regenerate unique IDs if duplicates exist
+    const ids = new Set();
+    let hasDupes = false;
+    parsed.forEach(s => {
+      if (ids.has(s.id)) hasDupes = true;
+      ids.add(s.id);
+    });
+    if (hasDupes) {
+      console.log('Fixing duplicate IDs in sales...');
+      return parsed.map((s, i) => ({ ...s, id: Date.now() + i }));
+    }
+    return parsed;
   });
   const [expenses, setExpenses] = useState(() => {
     const saved = localStorage.getItem('flipledger_expenses');
@@ -353,12 +370,21 @@ export default function App() {
   const confirmSaleWithCost = (saleId, cost, channel = 'StockX Standard') => {
     const sale = pendingCosts.find(s => s.id === saleId);
     if (!sale || !cost) return;
+    
+    // CHECK: Don't add if this order already exists in sales
+    const alreadyExists = sales.some(s => s.orderId === sale.id || s.id === sale.id);
+    if (alreadyExists) {
+      console.log('Sale already exists, skipping:', sale.id);
+      setPendingCosts(prev => prev.filter(s => s.id !== saleId)); // Remove from pending anyway
+      return;
+    }
+    
     const costNum = parseFloat(cost);
-    // Use actual payout from StockX, calculate profit
     const profit = sale.payout - costNum;
+    const uniqueId = Date.now() + Math.random();
     setSales(prev => [...prev, { 
       ...sale, 
-      id: Date.now(),
+      id: uniqueId,
       orderId: sale.id, // KEEP original order number for deduplication!
       cost: costNum, 
       platform: channel,
