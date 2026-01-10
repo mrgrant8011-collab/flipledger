@@ -1279,16 +1279,18 @@ export default function App() {
               </div>
               
               {!csvImport.show ? (
-                <div style={{ padding: 20, border: `2px dashed ${c.border}`, borderRadius: 16, textAlign: 'center' }}>
+                <div style={{ padding: 40, border: `2px dashed ${c.border}`, borderRadius: 16, textAlign: 'center' }}>
                   <div style={{ fontSize: 48, marginBottom: 12 }}>📤</div>
-                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Upload CSV</div>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Upload CSV</div>
                   <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 16 }}>StockX or eBay sales CSV</div>
                   <input 
                     type="file" 
                     accept=".csv" 
+                    id="stockx-csv-upload"
                     onChange={handleCsvUpload}
-                    style={{ padding: 10, background: c.emerald, borderRadius: 8, cursor: 'pointer' }}
+                    style={{ display: 'none' }}
                   />
+                  <button onClick={() => document.getElementById('stockx-csv-upload').click()} style={{ padding: '12px 24px', ...btnPrimary, cursor: 'pointer' }}>Choose File</button>
                 </div>
               ) : (
                 <div>
@@ -1455,6 +1457,7 @@ export default function App() {
               <input 
                 type="file" 
                 accept=".csv" 
+                id="ebay-csv-upload"
                 onChange={(e) => {
                   const file = e.target.files[0];
                   if (!file) return;
@@ -1490,8 +1493,33 @@ export default function App() {
                   };
                   reader.readAsText(file);
                 }}
-                style={{ padding: 10, background: '#e53238', borderRadius: 8, cursor: 'pointer', color: '#fff' }}
+                style={{ display: 'none' }}
               />
+              <button onClick={() => document.getElementById('ebay-csv-upload').click()} style={{ padding: '12px 22px', background: '#e53238', border: 'none', borderRadius: 12, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Upload CSV</button>
+            </div>
+          </div>
+
+          {/* GOAT */}
+          <div style={{ ...cardStyle, marginBottom: 16 }}>
+            <div style={{ padding: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ width: 54, height: 54, background: '#1a1a1a', border: '2px solid #333', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: '#fff' }}>GT</div>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>GOAT</h3>
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Auto-import your GOAT sales</p>
+              </div>
+              <button disabled style={{ padding: '12px 22px', ...btnPrimary, opacity: 0.5, cursor: 'not-allowed' }}>Connect</button>
+            </div>
+          </div>
+
+          {/* QuickBooks */}
+          <div style={{ ...cardStyle, marginBottom: 16 }}>
+            <div style={{ padding: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ width: 54, height: 54, background: '#2CA01C', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: '#fff' }}>QB</div>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>QUICKBOOKS</h3>
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Sync with QuickBooks</p>
+              </div>
+              <button disabled style={{ padding: '12px 22px', ...btnPrimary, opacity: 0.5, cursor: 'not-allowed' }}>Connect</button>
             </div>
           </div>
         </div>}
