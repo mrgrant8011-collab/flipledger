@@ -1495,7 +1495,7 @@ export default function App() {
                 }}
                 style={{ display: 'none' }}
               />
-              <button onClick={() => document.getElementById('ebay-csv-upload').click()} style={{ padding: '12px 22px', background: '#e53238', border: 'none', borderRadius: 12, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Upload CSV</button>
+              <button onClick={() => document.getElementById('ebay-csv-upload').click()} style={{ padding: '12px 22px', background: '#e53238', border: 'none', borderRadius: 12, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Import</button>
             </div>
           </div>
 
