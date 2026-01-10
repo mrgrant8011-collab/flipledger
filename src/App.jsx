@@ -806,6 +806,7 @@ export default function App() {
             />
             <select value={formData.salesFilter || 'all'} onChange={e => setFormData({ ...formData, salesFilter: e.target.value })} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
               <option value="all">All Platforms ({filteredSales.length})</option>
+              <option value="StockX">StockX - All ({filteredSales.filter(s => s.platform?.includes('StockX')).length})</option>
               <option value="StockX Standard">StockX Standard ({filteredSales.filter(s => s.platform === 'StockX Standard').length})</option>
               <option value="StockX Direct">StockX Direct ({filteredSales.filter(s => s.platform === 'StockX Direct').length})</option>
               <option value="StockX Flex">StockX Flex ({filteredSales.filter(s => s.platform === 'StockX Flex').length})</option>
@@ -830,7 +831,7 @@ export default function App() {
                 const search = (formData.salesSearch || '').toLowerCase();
                 const filter = formData.salesFilter || 'all';
                 const matchesSearch = !search || s.name?.toLowerCase().includes(search) || s.sku?.toLowerCase().includes(search) || s.size?.toLowerCase().includes(search);
-                const matchesFilter = filter === 'all' || s.platform === filter;
+                const matchesFilter = filter === 'all' || s.platform === filter || (filter === 'StockX' && s.platform?.includes('StockX'));
                 return matchesSearch && matchesFilter;
               }).length} sales</span>
               <button onClick={() => exportCSV(filteredSales, 'sales.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
@@ -856,7 +857,7 @@ export default function App() {
               const search = (formData.salesSearch || '').toLowerCase();
               const filter = formData.salesFilter || 'all';
               const matchesSearch = !search || s.name?.toLowerCase().includes(search) || s.sku?.toLowerCase().includes(search) || s.size?.toLowerCase().includes(search);
-              const matchesFilter = filter === 'all' || s.platform === filter;
+              const matchesFilter = filter === 'all' || s.platform === filter || (filter === 'StockX' && s.platform?.includes('StockX'));
               return matchesSearch && matchesFilter;
             }).sort((a, b) => {
               const sort = formData.salesSort || 'newest';
@@ -870,7 +871,7 @@ export default function App() {
               const search = (formData.salesSearch || '').toLowerCase();
               const filter = formData.salesFilter || 'all';
               const matchesSearch = !search || s.name?.toLowerCase().includes(search) || s.sku?.toLowerCase().includes(search) || s.size?.toLowerCase().includes(search);
-              const matchesFilter = filter === 'all' || s.platform === filter;
+              const matchesFilter = filter === 'all' || s.platform === filter || (filter === 'StockX' && s.platform?.includes('StockX'));
               return matchesSearch && matchesFilter;
             }).sort((a, b) => {
               const sort = formData.salesSort || 'newest';
