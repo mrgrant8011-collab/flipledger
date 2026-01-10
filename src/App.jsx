@@ -1287,7 +1287,7 @@ export default function App() {
                     id="csv-upload"
                     style={{ display: 'none' }}
                   />
-                  <label htmlFor="csv-upload" style={{ display: 'block', padding: 40, border: `2px dashed ${c.border}`, borderRadius: 16, textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s' }}>
+                  <label htmlFor="csv-upload" style={{ display: 'block', padding: 40, border: `2px dashed ${c.border}`, borderRadius: 16, textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s', position: 'relative', zIndex: 10 }}>
                     <div style={{ fontSize: 48, marginBottom: 12 }}>📤</div>
                     <div style={{ fontWeight: 600, marginBottom: 4 }}>Click to upload CSV</div>
                     <div style={{ fontSize: 12, color: c.textMuted }}>StockX: Seller Tools → Historical Sales</div>
