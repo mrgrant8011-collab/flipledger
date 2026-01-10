@@ -1279,23 +1279,16 @@ export default function App() {
               </div>
               
               {!csvImport.show ? (
-                <div>
+                <div style={{ padding: 20, border: `2px dashed ${c.border}`, borderRadius: 16, textAlign: 'center' }}>
+                  <div style={{ fontSize: 48, marginBottom: 12 }}>📤</div>
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>Upload CSV</div>
+                  <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 16 }}>StockX or eBay sales CSV</div>
                   <input 
                     type="file" 
                     accept=".csv" 
                     onChange={handleCsvUpload}
-                    id="csv-upload"
-                    style={{ display: 'none' }}
+                    style={{ padding: 10, background: c.emerald, borderRadius: 8, cursor: 'pointer' }}
                   />
-                  <div 
-                    onClick={() => document.getElementById('csv-upload').click()}
-                    style={{ display: 'block', padding: 40, border: `2px dashed ${c.border}`, borderRadius: 16, textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s' }}
-                  >
-                    <div style={{ fontSize: 48, marginBottom: 12 }}>📤</div>
-                    <div style={{ fontWeight: 600, marginBottom: 4 }}>Click to upload CSV</div>
-                    <div style={{ fontSize: 12, color: c.textMuted }}>StockX: Seller Tools → Historical Sales</div>
-                    <div style={{ fontSize: 12, color: c.textMuted }}>eBay: Seller Hub → Reports → Orders</div>
-                  </div>
                 </div>
               ) : (
                 <div>
