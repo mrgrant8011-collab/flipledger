@@ -63,18 +63,26 @@ export default async function handler(req, res) {
       const size = variant.size || variant.shoeSize || variant.sizeUS || product.size || order.size || order.variantSize || order.shoeSize || variant.value || '';
       const name = product.productName || product.title || product.name || order.productName || 'Unknown Product';
       
+      // Build image URL from SKU
+      const image = sku ? `https://images.stockx.com/images/${sku}.jpg?fit=fill&bg=FFFFFF&w=300&h=214&fm=webp&auto=compress&trim=color&q=90` : '';
+      
       const salePrice = order.amount || order.salePrice || order.price || payout.salePrice || 0;
       const payoutAmount = order.payoutAmount || payout.totalPayout || payout.payout || order.netPayout || 0;
+      const fees = order.feeAmount || order.fees || payout.totalFees || Math.abs(salePrice - payoutAmount) || 0;
       const saleDate = (order.createdAt || order.completedAt || '').split('T')[0] || '';
       
       return {
         id: order.orderNumber || order.id,
+        orderNumber: order.orderNumber || order.id || '',
         name,
         sku,
         size: String(size || ''),
+        image,
         salePrice: Number(salePrice) || 0,
-        payout: Number(payoutAmount) || 0,
-        saleDate
+        fees: Math.abs(Number(fees)) || 0,
+        saleDate,
+        platform: 'StockX',
+        payout: Number(payoutAmount) || 0
       };
     });
     
