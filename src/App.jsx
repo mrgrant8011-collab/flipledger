@@ -1241,7 +1241,7 @@ export default function App() {
             </div>
           )}
 
-          {/* StockX Integration - Real OAuth */}
+          {/* StockX Integration - Real OAuth + CSV */}
           <div style={{ ...cardStyle, marginBottom: 16 }}>
             <div style={{ padding: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
               <div style={{ width: 54, height: 54, background: '#00c165', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: '#fff' }}>SX</div>
@@ -1265,99 +1265,79 @@ export default function App() {
                 <span style={{ color: c.emerald, fontWeight: 600, fontSize: 12 }}>✓ Connected to StockX</span>
               </div>
             )}
-          </div>
-
-          {/* CSV Import Section */}
-          <div style={{ ...cardStyle, marginBottom: 16 }}>
-            <div style={{ padding: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
-                <div style={{ width: 54, height: 54, background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>📄</div>
-                <div style={{ flex: 1 }}>
-                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>IMPORT CSV</h3>
-                  <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Upload StockX or eBay sales CSV - auto-detects platform</p>
-                </div>
-              </div>
+            
+            {/* CSV Import Section */}
+            <div style={{ padding: 20, borderTop: `1px solid ${c.border}` }}>
+              <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 12, fontWeight: 600 }}>OR IMPORT VIA CSV</div>
               
-              {!csvImport.show ? (
+              {!csvImport.show || csvImport.platform !== 'StockX' ? (
                 <div style={{ padding: 40, border: `2px dashed ${c.border}`, borderRadius: 16, textAlign: 'center' }}>
                   <div style={{ fontSize: 48, marginBottom: 12 }}>📤</div>
                   <div style={{ fontWeight: 600, marginBottom: 4 }}>Upload CSV</div>
-                  <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 16 }}>StockX or eBay sales CSV</div>
+                  <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 16 }}>Seller Tools → Historical Sales</div>
                   <input 
                     type="file" 
                     accept=".csv" 
                     id="stockx-csv-upload"
-                    onChange={handleCsvUpload}
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        const text = event.target.result;
+                        const lines = text.split('\n');
+                        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+                        const parsed = [];
+                        for (let i = 1; i < lines.length; i++) {
+                          if (!lines[i].trim()) continue;
+                          const values = [];
+                          let current = '';
+                          let inQuotes = false;
+                          for (let char of lines[i]) {
+                            if (char === '"') inQuotes = !inQuotes;
+                            else if (char === ',' && !inQuotes) { values.push(current.trim()); current = ''; }
+                            else current += char;
+                          }
+                          values.push(current.trim());
+                          const row = {};
+                          headers.forEach((h, idx) => { row[h] = values[idx] ? values[idx].replace(/"/g, '').trim() : ''; });
+                          if (row['Sale Date']) parsed.push(row);
+                        }
+                        setCsvImport({ show: true, data: parsed, year: '2025', month: 'all', preview: true, platform: 'StockX' });
+                      };
+                      reader.readAsText(file);
+                    }}
                     style={{ display: 'none' }}
                   />
-                  <button onClick={() => document.getElementById('stockx-csv-upload').click()} style={{ padding: '12px 24px', ...btnPrimary, cursor: 'pointer' }}>Choose File</button>
+                  <button onClick={() => document.getElementById('stockx-csv-upload').click()} style={{ padding: '12px 24px', background: '#00c165', border: 'none', borderRadius: 12, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Choose File</button>
                 </div>
               ) : (
                 <div>
-                  {/* Platform Badge */}
-                  <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ fontSize: 12, color: c.textMuted }}>Detected Platform:</span>
-                    <span style={{ 
-                      padding: '6px 14px', 
-                      background: csvImport.platform === 'eBay' ? 'rgba(229,50,56,0.15)' : 'rgba(0,193,101,0.15)', 
-                      border: `1px solid ${csvImport.platform === 'eBay' ? 'rgba(229,50,56,0.3)' : 'rgba(0,193,101,0.3)'}`,
-                      borderRadius: 8, 
-                      fontWeight: 700, 
-                      fontSize: 13,
-                      color: csvImport.platform === 'eBay' ? '#e53238' : '#00c165'
-                    }}>
-                      {csvImport.platform}
-                    </span>
-                    <button 
-                      onClick={() => setCsvImport({ ...csvImport, platform: csvImport.platform === 'StockX' ? 'eBay' : 'StockX' })}
-                      style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: c.textMuted, fontSize: 11, cursor: 'pointer' }}
-                    >
-                      Switch
-                    </button>
-                  </div>
-
                   {/* Filter Controls */}
                   <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
                     <div style={{ flex: 1 }}>
                       <label style={{ fontSize: 11, color: c.textMuted, fontWeight: 600, display: 'block', marginBottom: 6 }}>YEAR</label>
-                      <select 
-                        value={csvImport.year} 
-                        onChange={e => setCsvImport({ ...csvImport, year: e.target.value })}
-                        style={{ ...inputStyle, padding: 12 }}
-                      >
+                      <select value={csvImport.year} onChange={e => setCsvImport({ ...csvImport, year: e.target.value })} style={{ ...inputStyle, padding: 12 }}>
                         <option value="2026">2026</option>
                         <option value="2025">2025</option>
                         <option value="2024">2024</option>
                         <option value="2023">2023</option>
-                        <option value="2022">2022</option>
                       </select>
                     </div>
                     <div style={{ flex: 1 }}>
                       <label style={{ fontSize: 11, color: c.textMuted, fontWeight: 600, display: 'block', marginBottom: 6 }}>MONTH</label>
-                      <select 
-                        value={csvImport.month} 
-                        onChange={e => setCsvImport({ ...csvImport, month: e.target.value })}
-                        style={{ ...inputStyle, padding: 12 }}
-                      >
+                      <select value={csvImport.month} onChange={e => setCsvImport({ ...csvImport, month: e.target.value })} style={{ ...inputStyle, padding: 12 }}>
                         <option value="all">All Months</option>
-                        <option value="01">January</option>
-                        <option value="02">February</option>
-                        <option value="03">March</option>
-                        <option value="04">April</option>
-                        <option value="05">May</option>
-                        <option value="06">June</option>
-                        <option value="07">July</option>
-                        <option value="08">August</option>
-                        <option value="09">September</option>
-                        <option value="10">October</option>
-                        <option value="11">November</option>
-                        <option value="12">December</option>
+                        <option value="01">January</option><option value="02">February</option><option value="03">March</option>
+                        <option value="04">April</option><option value="05">May</option><option value="06">June</option>
+                        <option value="07">July</option><option value="08">August</option><option value="09">September</option>
+                        <option value="10">October</option><option value="11">November</option><option value="12">December</option>
                       </select>
                     </div>
                   </div>
                   
                   {/* Preview Stats */}
-                  <div style={{ background: csvImport.platform === 'eBay' ? 'rgba(229,50,56,0.1)' : 'rgba(16,185,129,0.1)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
+                  <div style={{ background: 'rgba(0,193,101,0.1)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
                         <div style={{ fontSize: 13, color: c.textMuted, marginBottom: 4 }}>Total rows in CSV</div>
@@ -1365,144 +1345,143 @@ export default function App() {
                       </div>
                       <div style={{ fontSize: 32 }}>→</div>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 13, color: c.textMuted, marginBottom: 4 }}>Matching your filter</div>
-                        <div style={{ fontSize: 24, fontWeight: 800, color: csvImport.platform === 'eBay' ? '#e53238' : c.emerald }}>{filterCsvData().length.toLocaleString()}</div>
+                        <div style={{ fontSize: 13, color: c.textMuted, marginBottom: 4 }}>Matching filter</div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: '#00c165' }}>{filterCsvData().length.toLocaleString()}</div>
                       </div>
                     </div>
                   </div>
                   
-                  {/* Preview Table */}
-                  {filterCsvData().length > 0 && (
-                    <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 16, borderRadius: 12, border: `1px solid ${c.border}` }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                        <thead>
-                          <tr style={{ background: 'rgba(255,255,255,0.05)' }}>
-                            <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Item</th>
-                            <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Size</th>
-                            <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>Price</th>
-                            <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Date</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filterCsvData().slice(0, 5).map((row, i) => {
-                            // Get values based on platform
-                            let itemName, size, price, saleDate;
-                            
-                            if (csvImport.platform === 'eBay') {
-                              itemName = row['Item title'] || '-';
-                              size = '-'; // eBay doesn't have size field
-                              price = row['Gross transaction amount'] || row['Item subtotal'] || '-';
-                              // Parse eBay date
-                              const ebayDate = row['Transaction creation date'] || '';
-                              const months = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
-                              const match = ebayDate.match(/(\w+)\s+(\d+),\s+(\d{4})/);
-                              saleDate = match ? `${match[3]}-${months[match[1]]}-${match[2].padStart(2, '0')}` : ebayDate;
-                            } else {
-                              itemName = row['Item'] || row['Product Name'] || '-';
-                              size = row['Sku Size'] || row['Size'] || '-';
-                              price = row['Price'] || row['Sale Price'] || '-';
-                              saleDate = row['Sale Date'] || '-';
-                            }
-                            
-                            return (
-                              <tr key={i} style={{ borderTop: `1px solid ${c.border}` }}>
-                                <td style={{ padding: '10px 12px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{itemName}</td>
-                                <td style={{ padding: '10px 12px' }}>{size}</td>
-                                <td style={{ padding: '10px 12px', textAlign: 'right', color: csvImport.platform === 'eBay' ? '#e53238' : c.emerald }}>{typeof price === 'string' && !price.startsWith('$') ? `$${price}` : price}</td>
-                                <td style={{ padding: '10px 12px', color: c.textMuted }}>{saleDate?.substring(0, 10)}</td>
-                              </tr>
-                            );
-                          })}
-                          {filterCsvData().length > 5 && (
-                            <tr style={{ borderTop: `1px solid ${c.border}` }}>
-                              <td colSpan={4} style={{ padding: '10px 12px', textAlign: 'center', color: c.textMuted, fontStyle: 'italic' }}>
-                                ...and {filterCsvData().length - 5} more
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                  
                   {/* Action Buttons */}
                   <div style={{ display: 'flex', gap: 12 }}>
-                    <button 
-                      onClick={() => setCsvImport({ show: false, data: [], filteredData: [], year: '2025', month: 'all', preview: false, platform: 'StockX' })}
-                      style={{ flex: 1, padding: 14, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', cursor: 'pointer', fontWeight: 600 }}
-                    >
-                      Cancel
-                    </button>
-                    <button 
-                      onClick={importCsvSales}
-                      disabled={filterCsvData().length === 0}
-                      style={{ flex: 2, padding: 14, ...btnPrimary, opacity: filterCsvData().length === 0 ? 0.5 : 1 }}
-                    >
-                      Import {filterCsvData().length} {csvImport.platform} Sales
-                    </button>
+                    <button onClick={() => setCsvImport({ show: false, data: [], year: '2025', month: 'all', preview: false, platform: 'StockX' })} style={{ flex: 1, padding: 14, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
+                    <button onClick={importCsvSales} disabled={filterCsvData().length === 0} style={{ flex: 2, padding: 14, background: '#00c165', border: 'none', borderRadius: 12, color: '#fff', fontWeight: 700, cursor: filterCsvData().length === 0 ? 'not-allowed' : 'pointer', opacity: filterCsvData().length === 0 ? 0.5 : 1 }}>Import {filterCsvData().length} Sales</button>
                   </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* eBay - CSV Import with drop zone */}
+          {/* eBay CSV Import */}
           <div style={{ ...cardStyle, marginBottom: 16 }}>
-            <div style={{ padding: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
-                <div style={{ width: 54, height: 54, background: '#e53238', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: '#fff' }}>eB</div>
-                <div style={{ flex: 1 }}>
-                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>EBAY</h3>
-                  <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Import your eBay sales via CSV</p>
+            <div style={{ padding: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ width: 54, height: 54, background: '#e53238', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: '#fff' }}>eB</div>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>EBAY</h3>
+                <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Auto-import your eBay sales</p>
+              </div>
+              {ebayConnected ? (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => {}} disabled={syncing} style={{ padding: '10px 18px', background: '#e53238', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 12, opacity: syncing ? 0.6 : 1 }}>
+                    {syncing ? 'Syncing...' : 'Sync Sales'}
+                  </button>
+                  <button onClick={() => setEbayConnected(false)} style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 10, color: c.red, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Disconnect</button>
                 </div>
+              ) : (
+                <button disabled style={{ padding: '12px 22px', background: '#e53238', border: 'none', borderRadius: 12, color: '#fff', fontWeight: 700, cursor: 'not-allowed', opacity: 0.5 }}>Connect</button>
+              )}
+            </div>
+            {ebayConnected && (
+              <div style={{ padding: '12px 20px', borderTop: `1px solid ${c.border}`, background: 'rgba(229,50,56,0.1)' }}>
+                <span style={{ color: '#e53238', fontWeight: 600, fontSize: 12 }}>✓ Connected to eBay</span>
               </div>
-              <div style={{ padding: 40, border: `2px dashed ${c.border}`, borderRadius: 16, textAlign: 'center' }}>
-                <div style={{ fontSize: 48, marginBottom: 12 }}>📤</div>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>Upload CSV</div>
-                <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 16 }}>Seller Hub → Reports → Orders</div>
-                <input 
-                  type="file" 
-                  accept=".csv" 
-                  id="ebay-csv-upload"
-                  onChange={(e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                      const text = event.target.result;
-                      const lines = text.split('\n');
-                      let headerIndex = 0;
-                      for (let i = 0; i < Math.min(20, lines.length); i++) {
-                        if (lines[i].includes('Transaction creation date')) {
-                          headerIndex = i;
-                          break;
+            )}
+            
+            {/* CSV Import Section */}
+            <div style={{ padding: 20, borderTop: `1px solid ${c.border}` }}>
+              <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 12, fontWeight: 600 }}>OR IMPORT VIA CSV</div>
+              
+              {!csvImport.show || csvImport.platform !== 'eBay' ? (
+                <div style={{ padding: 40, border: `2px dashed ${c.border}`, borderRadius: 16, textAlign: 'center' }}>
+                  <div style={{ fontSize: 48, marginBottom: 12 }}>📤</div>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Upload CSV</div>
+                  <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 16 }}>Seller Hub → Reports → Orders</div>
+                  <input 
+                    type="file" 
+                    accept=".csv" 
+                    id="ebay-csv-upload"
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        const text = event.target.result;
+                        const lines = text.split('\n');
+                        let headerIndex = 0;
+                        for (let i = 0; i < Math.min(20, lines.length); i++) {
+                          if (lines[i].includes('Transaction creation date')) { headerIndex = i; break; }
                         }
-                      }
-                      const headers = lines[headerIndex].split(',').map(h => h.trim().replace(/"/g, '').replace(/^\uFEFF/, ''));
-                      const parsed = [];
-                      for (let i = headerIndex + 1; i < lines.length; i++) {
-                        if (!lines[i].trim()) continue;
-                        const values = [];
-                        let current = '';
-                        let inQuotes = false;
-                        for (let char of lines[i]) {
-                          if (char === '"') inQuotes = !inQuotes;
-                          else if (char === ',' && !inQuotes) { values.push(current.trim()); current = ''; }
-                          else current += char;
+                        const headers = lines[headerIndex].split(',').map(h => h.trim().replace(/"/g, '').replace(/^\uFEFF/, ''));
+                        const parsed = [];
+                        for (let i = headerIndex + 1; i < lines.length; i++) {
+                          if (!lines[i].trim()) continue;
+                          const values = [];
+                          let current = '';
+                          let inQuotes = false;
+                          for (let char of lines[i]) {
+                            if (char === '"') inQuotes = !inQuotes;
+                            else if (char === ',' && !inQuotes) { values.push(current.trim()); current = ''; }
+                            else current += char;
+                          }
+                          values.push(current.trim());
+                          const row = {};
+                          headers.forEach((h, idx) => { row[h] = values[idx] ? values[idx].replace(/"/g, '').trim() : ''; });
+                          if (row['Type'] === 'Order') parsed.push(row);
                         }
-                        values.push(current.trim());
-                        const row = {};
-                        headers.forEach((h, idx) => { row[h] = values[idx] ? values[idx].replace(/"/g, '').trim() : ''; });
-                        if (row['Type'] === 'Order') parsed.push(row);
-                      }
-                      setCsvImport({ ...csvImport, show: true, data: parsed, preview: true, platform: 'eBay' });
-                    };
-                    reader.readAsText(file);
-                  }}
-                  style={{ display: 'none' }}
-                />
-                <button onClick={() => document.getElementById('ebay-csv-upload').click()} style={{ padding: '12px 24px', background: '#e53238', border: 'none', borderRadius: 12, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Choose File</button>
-              </div>
+                        setCsvImport({ show: true, data: parsed, year: '2025', month: 'all', preview: true, platform: 'eBay' });
+                      };
+                      reader.readAsText(file);
+                    }}
+                    style={{ display: 'none' }}
+                  />
+                  <button onClick={() => document.getElementById('ebay-csv-upload').click()} style={{ padding: '12px 24px', background: '#e53238', border: 'none', borderRadius: 12, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Choose File</button>
+                </div>
+              ) : (
+                <div>
+                  {/* Filter Controls */}
+                  <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 11, color: c.textMuted, fontWeight: 600, display: 'block', marginBottom: 6 }}>YEAR</label>
+                      <select value={csvImport.year} onChange={e => setCsvImport({ ...csvImport, year: e.target.value })} style={{ ...inputStyle, padding: 12 }}>
+                        <option value="2026">2026</option>
+                        <option value="2025">2025</option>
+                        <option value="2024">2024</option>
+                        <option value="2023">2023</option>
+                      </select>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 11, color: c.textMuted, fontWeight: 600, display: 'block', marginBottom: 6 }}>MONTH</label>
+                      <select value={csvImport.month} onChange={e => setCsvImport({ ...csvImport, month: e.target.value })} style={{ ...inputStyle, padding: 12 }}>
+                        <option value="all">All Months</option>
+                        <option value="01">January</option><option value="02">February</option><option value="03">March</option>
+                        <option value="04">April</option><option value="05">May</option><option value="06">June</option>
+                        <option value="07">July</option><option value="08">August</option><option value="09">September</option>
+                        <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  {/* Preview Stats */}
+                  <div style={{ background: 'rgba(229,50,56,0.1)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: 13, color: c.textMuted, marginBottom: 4 }}>Total rows in CSV</div>
+                        <div style={{ fontSize: 24, fontWeight: 800 }}>{csvImport.data.length.toLocaleString()}</div>
+                      </div>
+                      <div style={{ fontSize: 32 }}>→</div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 13, color: c.textMuted, marginBottom: 4 }}>Matching filter</div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: '#e53238' }}>{filterCsvData().length.toLocaleString()}</div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Action Buttons */}
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <button onClick={() => setCsvImport({ show: false, data: [], year: '2025', month: 'all', preview: false, platform: 'StockX' })} style={{ flex: 1, padding: 14, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
+                    <button onClick={importCsvSales} disabled={filterCsvData().length === 0} style={{ flex: 2, padding: 14, background: '#e53238', border: 'none', borderRadius: 12, color: '#fff', fontWeight: 700, cursor: filterCsvData().length === 0 ? 'not-allowed' : 'pointer', opacity: filterCsvData().length === 0 ? 0.5 : 1 }}>Import {filterCsvData().length} Sales</button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
