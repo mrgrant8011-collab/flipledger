@@ -1272,9 +1272,44 @@ export default function App() {
               <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 12, fontWeight: 600 }}>OR IMPORT VIA CSV</div>
               
               {!csvImport.show || csvImport.platform !== 'StockX' ? (
-                <div style={{ padding: 40, border: `2px dashed ${c.border}`, borderRadius: 16, textAlign: 'center' }}>
+                <div 
+                  style={{ padding: 40, border: `2px dashed ${c.border}`, borderRadius: 16, textAlign: 'center', cursor: 'pointer' }}
+                  onClick={() => document.getElementById('stockx-csv-upload').click()}
+                  onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#00c165'; }}
+                  onDragLeave={(e) => { e.currentTarget.style.borderColor = c.border; }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.style.borderColor = c.border;
+                    const file = e.dataTransfer.files[0];
+                    if (!file || !file.name.endsWith('.csv')) return;
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                      const text = event.target.result;
+                      const lines = text.split('\n');
+                      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+                      const parsed = [];
+                      for (let i = 1; i < lines.length; i++) {
+                        if (!lines[i].trim()) continue;
+                        const values = [];
+                        let current = '';
+                        let inQuotes = false;
+                        for (let char of lines[i]) {
+                          if (char === '"') inQuotes = !inQuotes;
+                          else if (char === ',' && !inQuotes) { values.push(current.trim()); current = ''; }
+                          else current += char;
+                        }
+                        values.push(current.trim());
+                        const row = {};
+                        headers.forEach((h, idx) => { row[h] = values[idx] ? values[idx].replace(/"/g, '').trim() : ''; });
+                        if (row['Sale Date']) parsed.push(row);
+                      }
+                      setCsvImport({ show: true, data: parsed, year: '2025', month: 'all', preview: true, platform: 'StockX' });
+                    };
+                    reader.readAsText(file);
+                  }}
+                >
                   <div style={{ fontSize: 48, marginBottom: 12 }}>📤</div>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Upload CSV</div>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Drop CSV or Click</div>
                   <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 16 }}>Seller Tools → Historical Sales</div>
                   <input 
                     type="file" 
@@ -1310,7 +1345,7 @@ export default function App() {
                     }}
                     style={{ display: 'none' }}
                   />
-                  <button onClick={() => document.getElementById('stockx-csv-upload').click()} style={{ padding: '12px 24px', background: '#00c165', border: 'none', borderRadius: 12, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Choose File</button>
+                  <button onClick={(e) => { e.stopPropagation(); document.getElementById('stockx-csv-upload').click(); }} style={{ padding: '12px 24px', background: '#00c165', border: 'none', borderRadius: 12, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Choose File</button>
                 </div>
               ) : (
                 <div>
@@ -1392,9 +1427,48 @@ export default function App() {
               <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 12, fontWeight: 600 }}>OR IMPORT VIA CSV</div>
               
               {!csvImport.show || csvImport.platform !== 'eBay' ? (
-                <div style={{ padding: 40, border: `2px dashed ${c.border}`, borderRadius: 16, textAlign: 'center' }}>
+                <div 
+                  style={{ padding: 40, border: `2px dashed ${c.border}`, borderRadius: 16, textAlign: 'center', cursor: 'pointer' }}
+                  onClick={() => document.getElementById('ebay-csv-upload').click()}
+                  onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#e53238'; }}
+                  onDragLeave={(e) => { e.currentTarget.style.borderColor = c.border; }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.style.borderColor = c.border;
+                    const file = e.dataTransfer.files[0];
+                    if (!file || !file.name.endsWith('.csv')) return;
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                      const text = event.target.result;
+                      const lines = text.split('\n');
+                      let headerIndex = 0;
+                      for (let i = 0; i < Math.min(20, lines.length); i++) {
+                        if (lines[i].includes('Transaction creation date')) { headerIndex = i; break; }
+                      }
+                      const headers = lines[headerIndex].split(',').map(h => h.trim().replace(/"/g, '').replace(/^\uFEFF/, ''));
+                      const parsed = [];
+                      for (let i = headerIndex + 1; i < lines.length; i++) {
+                        if (!lines[i].trim()) continue;
+                        const values = [];
+                        let current = '';
+                        let inQuotes = false;
+                        for (let char of lines[i]) {
+                          if (char === '"') inQuotes = !inQuotes;
+                          else if (char === ',' && !inQuotes) { values.push(current.trim()); current = ''; }
+                          else current += char;
+                        }
+                        values.push(current.trim());
+                        const row = {};
+                        headers.forEach((h, idx) => { row[h] = values[idx] ? values[idx].replace(/"/g, '').trim() : ''; });
+                        if (row['Type'] === 'Order') parsed.push(row);
+                      }
+                      setCsvImport({ show: true, data: parsed, year: '2025', month: 'all', preview: true, platform: 'eBay' });
+                    };
+                    reader.readAsText(file);
+                  }}
+                >
                   <div style={{ fontSize: 48, marginBottom: 12 }}>📤</div>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Upload CSV</div>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Drop CSV or Click</div>
                   <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 16 }}>Seller Hub → Reports → Orders</div>
                   <input 
                     type="file" 
@@ -1434,7 +1508,7 @@ export default function App() {
                     }}
                     style={{ display: 'none' }}
                   />
-                  <button onClick={() => document.getElementById('ebay-csv-upload').click()} style={{ padding: '12px 24px', background: '#e53238', border: 'none', borderRadius: 12, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Choose File</button>
+                  <button onClick={(e) => { e.stopPropagation(); document.getElementById('ebay-csv-upload').click(); }} style={{ padding: '12px 24px', background: '#e53238', border: 'none', borderRadius: 12, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Choose File</button>
                 </div>
               ) : (
                 <div>
