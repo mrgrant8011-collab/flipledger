@@ -191,7 +191,7 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
 function App() {
   const [page, setPage] = useState('dashboard');
   const [modal, setModal] = useState(null);
-  const [year, setYear] = useState('2024');
+  const [year, setYear] = useState('2025');
   const [stockxImport, setStockxImport] = useState({ show: false, data: [], year: 'all', month: 'all', headers: [] });
   const [ebayImport, setEbayImport] = useState({ show: false, data: [], year: 'all', month: 'all', headers: [] });
   const [purchases, setPurchases] = useState(() => {
@@ -1113,7 +1113,7 @@ function App() {
                 </div>
                 
                 <div style={{ fontSize: 14, color: c.textMuted }}>
-                  <span style={{ color: c.green, fontWeight: 600 }}>↑ {totalSales > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0}%</span>
+                  <span style={{ color: c.green, fontWeight: 600 }}>↑ {filteredSales.length > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0}%</span>
                   <span style={{ margin: '0 8px' }}>·</span>
                   {filteredSales.length} transactions
                 </div>
