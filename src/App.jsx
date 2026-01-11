@@ -610,10 +610,29 @@ export default function App() {
     const file = e.target?.files?.[0] || e;
     if (!file) return;
     
+    // Helper to parse CSV line with quote handling
+    const parseCSVLine = (line) => {
+      const values = [];
+      let current = '';
+      let inQuotes = false;
+      for (const char of line) {
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          values.push(current.trim().replace(/"/g, ''));
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      values.push(current.trim().replace(/"/g, ''));
+      return values;
+    };
+    
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target.result;
-      const lines = text.split('\n');
+      const lines = text.split(/\r?\n/); // Handle both \n and \r\n
       
       // Find the header row (eBay has metadata rows at top)
       let headerIndex = 0;
@@ -624,7 +643,8 @@ export default function App() {
         }
       }
       
-      const headers = lines[headerIndex].split(',').map(h => h.trim().replace(/"/g, '').replace(/^\uFEFF/, ''));
+      // Parse headers with quote handling
+      const headers = parseCSVLine(lines[headerIndex]).map(h => h.replace(/^\uFEFF/, ''));
       
       // Auto-detect platform based on headers
       const headerStr = headers.join(' ').toLowerCase();
@@ -636,31 +656,19 @@ export default function App() {
       // Debug: log headers to console
       console.log('CSV Headers:', headers);
       console.log('Detected Platform:', detectedPlatform);
+      console.log('Header index:', headerIndex);
       
       const months = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
       
       const parsed = [];
       for (let i = headerIndex + 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
-        // Handle CSV with commas inside quotes - improved regex
-        const values = [];
-        let current = '';
-        let inQuotes = false;
-        for (const char of lines[i]) {
-          if (char === '"') {
-            inQuotes = !inQuotes;
-          } else if (char === ',' && !inQuotes) {
-            values.push(current.trim());
-            current = '';
-          } else {
-            current += char;
-          }
-        }
-        values.push(current.trim());
+        
+        const values = parseCSVLine(lines[i]);
         
         const row = {};
         headers.forEach((h, idx) => {
-          row[h] = values[idx] ? values[idx].replace(/"/g, '').trim() : '';
+          row[h] = values[idx] || '';
         });
         
         // For eBay, only include "Order" type rows
@@ -669,7 +677,7 @@ export default function App() {
             // Parse eBay date: "Dec 27, 2025" -> "2025-12-27"
             const ebayDate = row['Transaction creation date'] || '';
             if (ebayDate) {
-              const match = ebayDate.match(/(\w+)\s+(\d+),\s+(\d{4})/);
+              const match = ebayDate.match(/(\w+)\s+(\d+),?\s+(\d{4})/);
               if (match) {
                 row['_parsedDate'] = `${match[3]}-${months[match[1]] || '01'}-${match[2].padStart(2, '0')}`;
                 row['_originalDate'] = ebayDate;
@@ -689,8 +697,8 @@ export default function App() {
       }
       
       // Log sample data for debugging
+      console.log('Parsed rows count:', parsed.length);
       console.log('Sample parsed rows:', parsed.slice(0, 3));
-      console.log('Sample dates:', parsed.slice(0, 5).map(r => ({ original: r['_originalDate'], parsed: r['_parsedDate'] })));
       
       setCsvImport({ ...csvImport, show: true, data: parsed, headers: headers, preview: true, platform: detectedPlatform });
     };
