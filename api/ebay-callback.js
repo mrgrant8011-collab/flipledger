@@ -1,10 +1,11 @@
 // eBay OAuth Callback - Exchange code for access token
 export default async function handler(req, res) {
-  const { code, error } = req.query;
+  const { code, error, error_description } = req.query;
   
-  // User declined
+  // User declined or error occurred
   if (error) {
-    return res.redirect('/?ebay_error=declined');
+    console.log('eBay OAuth error:', error, error_description);
+    return res.redirect(`/?ebay_error=${encodeURIComponent(error_description || error)}`);
   }
   
   // No code received
@@ -15,6 +16,10 @@ export default async function handler(req, res) {
   const clientId = process.env.EBAY_CLIENT_ID;
   const clientSecret = process.env.EBAY_CLIENT_SECRET;
   const ruName = process.env.EBAY_RU_NAME;
+  
+  if (!clientId || !clientSecret || !ruName) {
+    return res.redirect('/?ebay_error=missing_config');
+  }
   
   // Base64 encode credentials
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
@@ -38,7 +43,7 @@ export default async function handler(req, res) {
     
     if (tokenData.error) {
       console.error('eBay token error:', tokenData);
-      return res.redirect(`/?ebay_error=${tokenData.error}`);
+      return res.redirect(`/?ebay_error=${encodeURIComponent(tokenData.error_description || tokenData.error)}`);
     }
     
     // Success! Redirect with token
@@ -48,10 +53,10 @@ export default async function handler(req, res) {
     const expiresIn = tokenData.expires_in;
     
     // Redirect back to app with tokens in URL (will be grabbed and stored by frontend)
-    res.redirect(`/?ebay_connected=true&ebay_token=${encodeURIComponent(accessToken)}&ebay_refresh=${encodeURIComponent(refreshToken)}&ebay_expires=${expiresIn}`);
+    res.redirect(`/?ebay_connected=true&ebay_token=${encodeURIComponent(accessToken)}&ebay_refresh=${encodeURIComponent(refreshToken || '')}&ebay_expires=${expiresIn}`);
     
   } catch (err) {
     console.error('eBay callback error:', err);
-    res.redirect('/?ebay_error=callback_failed');
+    res.redirect(`/?ebay_error=${encodeURIComponent(err.message)}`);
   }
 }

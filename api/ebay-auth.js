@@ -21,16 +21,11 @@ export default function handler(req, res) {
     });
   }
   
-  // OAuth scopes we need
-  const scopes = [
-    'https://api.ebay.com/oauth/api_scope',
-    'https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly',
-    'https://api.ebay.com/oauth/api_scope/sell.finances.readonly',
-    'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly'
-  ].join('%20');
+  // Simplified scope - just the basic one that's always available
+  const scopes = 'https://api.ebay.com/oauth/api_scope';
   
   // eBay OAuth URL
-  const authUrl = `https://auth.ebay.com/oauth2/authorize?client_id=${clientId}&response_type=code&redirect_uri=${ruName}&scope=${scopes}`;
+  const authUrl = `https://auth.ebay.com/oauth2/authorize?client_id=${clientId}&response_type=code&redirect_uri=${ruName}&scope=${encodeURIComponent(scopes)}`;
   
   res.redirect(authUrl);
 }
