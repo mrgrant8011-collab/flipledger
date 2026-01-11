@@ -17,7 +17,7 @@ export default async function handler(req, res) {
   const start = startDate || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   
   try {
-    // Step 1: Get orders from Fulfillment API (for images and details)
+    // Step 1: Get orders from Fulfillment API
     const ordersResponse = await fetch(
       `https://api.ebay.com/sell/fulfillment/v1/order?filter=creationdate:[${start}..${end}]&limit=200`,
       {
@@ -67,6 +67,8 @@ export default async function handler(req, res) {
       }
     }
     
+    console.log('Orders in salesMap:', Object.keys(salesMap));
+    
     // Step 2: Get ALL transactions
     const txResponse = await fetch(
       `https://api.ebay.com/sell/finances/v1/transaction?filter=transactionDate:[${start}..${end}]&limit=1000`,
@@ -83,18 +85,43 @@ export default async function handler(req, res) {
       const txData = await txResponse.json();
       const transactions = txData.transactions || [];
       
+      console.log('Total transactions:', transactions.length);
+      
       for (const tx of transactions) {
         let orderId = tx.orderId;
         const txType = tx.transactionType;
         const bookingEntry = tx.bookingEntry;
         const memo = tx.transactionMemo || '';
         
-        // For NON_SALE_CHARGE, orderId might be in memo like "for order 09-14015-15110"
+        // Try to find orderId from references array
+        if (!orderId && tx.references && tx.references.length > 0) {
+          for (const ref of tx.references) {
+            if (ref.referenceType === 'ORDER_ID' || ref.referenceType === 'ORDER') {
+              orderId = ref.referenceId;
+              break;
+            }
+          }
+        }
+        
+        // Try to extract from memo
         if (!orderId && memo) {
           const match = memo.match(/order\s+(\d{2}-\d{5}-\d{5})/i);
           if (match) {
             orderId = match[1];
           }
+        }
+        
+        // Log NON_SALE_CHARGE for debugging
+        if (txType === 'NON_SALE_CHARGE') {
+          console.log('NON_SALE_CHARGE:', {
+            orderId: tx.orderId,
+            extractedOrderId: orderId,
+            amount: tx.amount?.value,
+            memo: memo,
+            references: tx.references,
+            bookingEntry: bookingEntry,
+            inSalesMap: orderId ? !!salesMap[orderId] : false
+          });
         }
         
         if (!orderId || !salesMap[orderId]) continue;
@@ -103,15 +130,16 @@ export default async function handler(req, res) {
         const amount = parseFloat(tx.amount?.value || 0);
         const totalFee = Math.abs(parseFloat(tx.totalFeeAmount?.value || 0));
         
-        // SALE = gross amount, fees go to expenses
         if (txType === 'SALE') {
           sale.grossAmount = amount;
           sale.totalExpenses += totalFee;
+          console.log(`SALE ${orderId}: gross=${amount}, ebayFees=${totalFee}`);
         }
         
-        // NON_SALE_CHARGE (promoted listing, etc) = add to expenses
-        if (txType === 'NON_SALE_CHARGE' && bookingEntry === 'DEBIT') {
-          sale.totalExpenses += Math.abs(amount);
+        if (txType === 'NON_SALE_CHARGE') {
+          const feeAmount = Math.abs(amount);
+          sale.totalExpenses += feeAmount;
+          console.log(`NON_SALE_CHARGE ${orderId}: promotedFee=${feeAmount}, newTotalExpenses=${sale.totalExpenses}`);
         }
       }
     }
@@ -124,8 +152,8 @@ export default async function handler(req, res) {
         sale.payout = sale.grossAmount - sale.totalExpenses;
         sale.fees = sale.totalExpenses;
         sale.salePrice = sale.grossAmount;
+        console.log(`FINAL ${sale.orderId}: gross=${sale.grossAmount}, expenses=${sale.totalExpenses}, payout=${sale.payout}`);
       } else {
-        // Fallback estimate
         sale.fees = sale.salePrice * 0.15;
         sale.payout = sale.salePrice * 0.85;
       }
