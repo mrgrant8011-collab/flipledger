@@ -943,8 +943,6 @@ function App() {
     console.log('eBay CSV import starting:', filtered.length, 'rows');
     
     const newPending = filtered.map((row, idx) => {
-      // SIMPLE: Check which columns exist and use them
-      
       // SOLD: Use 'Gross amount' or 'Gross transaction amount'
       let salePrice = parseAmount(row['Gross amount']) || parseAmount(row['Gross transaction amount']) || parseAmount(row['Item subtotal']);
       
@@ -953,16 +951,14 @@ function App() {
       const rawOrderEarnings = row['Order earnings'];
       
       if (rawOrderEarnings && rawOrderEarnings !== '--' && rawOrderEarnings !== '0') {
-        // Order Earnings Report - use directly
         payout = parseAmount(rawOrderEarnings);
       } else {
-        // Transaction Report - Net amount minus ad fees
         const netAmount = parseAmount(row['Net amount']);
         const adFee = parseFloat(row['_adFee'] || 0);
         payout = netAmount - adFee;
       }
       
-      // FEES: Sum up all fee columns
+      // FEES
       const fees = Math.abs(parseAmount(row['Expenses'])) || 
         (Math.abs(parseAmount(row['Final Value Fee - fixed'])) + 
          Math.abs(parseAmount(row['Final Value Fee - variable'])) + 
@@ -984,14 +980,13 @@ function App() {
         saleDate: row['_parsedDate'] || '',
         platform: 'eBay',
         source: 'csv',
-        buyer: row['Buyer name'] || row['Buyer username'] || '',
-        image: '' // Will be filled by API
+        buyer: row['Buyer name'] || row['Buyer username'] || ''
       };
     });
     
     console.log('eBay import:', newPending.length, 'items processed');
     
-    // Instead of skipping duplicates, UPDATE them with new payout values
+    // Update existing or add new
     const existingMap = new Map();
     pendingCosts.forEach(s => {
       if (s.orderNumber) existingMap.set(s.orderNumber, s);
@@ -1002,7 +997,6 @@ function App() {
       if (s.orderId) existingMap.set(s.orderId, s);
     });
     
-    // Separate into updates and new items
     const updates = [];
     const newItems = [];
     
@@ -1014,66 +1008,19 @@ function App() {
       }
     }
     
-    // Update existing pendingCosts with new payout values
     const updatedPending = pendingCosts.map(existing => {
       const update = newPending.find(n => n.orderNumber === existing.orderNumber || n.orderId === existing.orderId);
       if (update) {
-        console.log('UPDATING:', existing.name.substring(0, 30), '| old payout:', existing.payout, '-> new payout:', update.payout);
         return { ...existing, payout: update.payout, salePrice: update.salePrice, fees: update.fees };
       }
       return existing;
     });
     
-    // Add truly new items
-    let finalPending = [...updatedPending, ...newItems];
+    const finalPending = [...updatedPending, ...newItems];
     
-    // Save first (so user has data even if image fetch fails)
     localStorage.setItem('flipledger_pending', JSON.stringify(finalPending));
     setPendingCosts(finalPending);
     setEbayImport({ show: false, data: [], year: 'all', month: 'all', headers: [] });
-    
-    console.log('Import complete:', updates.length, 'updated,', newItems.length, 'new');
-    
-    // Now try to fetch images from API (silently in background)
-    const token = localStorage.getItem('flipledger_ebay_token');
-    if (token) {
-      console.log('Fetching images from eBay API...');
-      try {
-        const res = await fetch('/api/ebay-sales', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.sales && data.sales.length > 0) {
-            // Build image map by order number
-            const imageMap = new Map();
-            data.sales.forEach(s => {
-              if (s.image && s.orderId) {
-                imageMap.set(s.orderId, s.image);
-              }
-            });
-            
-            // Update items with images
-            let imagesAdded = 0;
-            finalPending = finalPending.map(item => {
-              if (!item.image && imageMap.has(item.orderNumber)) {
-                imagesAdded++;
-                return { ...item, image: imageMap.get(item.orderNumber) };
-              }
-              return item;
-            });
-            
-            if (imagesAdded > 0) {
-              console.log('Added images to', imagesAdded, 'items');
-              localStorage.setItem('flipledger_pending', JSON.stringify(finalPending));
-              setPendingCosts([...finalPending]); // Force re-render
-            }
-          }
-        }
-      } catch (err) {
-        console.log('Image fetch failed (non-critical):', err.message);
-      }
-    }
     
     alert(`eBay Import: ${updates.length} updated, ${newItems.length} new items added.`);
   };
@@ -2310,9 +2257,8 @@ function App() {
                 <div style={{ width: 54, height: 54, background: 'linear-gradient(135deg, #e53238 0%, #c62828 100%)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, color: '#fff' }}>eB</div>
                 <div style={{ flex: 1 }}>
                   <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>EBAY IMPORT</h3>
-                  <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Upload Order Earnings Report CSV</p>
+                  <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Upload Order Earnings Report</p>
                 </div>
-                {ebayConnected && <div style={{ fontSize: 11, color: c.green }}>✓ Connected</div>}
               </div>
               
               {!ebayImport.show ? (
@@ -2331,23 +2277,7 @@ function App() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
                       <span style={{ color: c.green }}>✓</span> All fees included
                     </div>
-                    {ebayConnected && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
-                        <span style={{ color: c.green }}>✓</span> Auto-fetches images
-                      </div>
-                    )}
                   </div>
-                  {!ebayConnected && (
-                    <div style={{ marginTop: 16, padding: 12, background: 'rgba(201,169,98,0.1)', borderRadius: 10, border: '1px solid rgba(201,169,98,0.2)' }}>
-                      <div style={{ fontSize: 12, color: c.gold, marginBottom: 8 }}>💡 Want product images?</div>
-                      <button 
-                        onClick={() => window.location.href = '/api/ebay-auth'}
-                        style={{ padding: '8px 16px', background: 'transparent', border: `1px solid ${c.gold}`, borderRadius: 8, color: c.gold, fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
-                      >
-                        Connect eBay Account
-                      </button>
-                    </div>
-                  )}
                 </div>
               ) : (
                 <div>
