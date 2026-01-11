@@ -52,9 +52,9 @@ export default async function handler(req, res) {
       };
     }
     
-    // Test Finances API - try without filter first
+    // Test Finances API - use apiz.ebay.com (not api.ebay.com!)
     const txResponse = await fetch(
-      `https://api.ebay.com/sell/finances/v1/transaction?limit=5`,
+      `https://apiz.ebay.com/sell/finances/v1/transaction?limit=5`,
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -70,9 +70,9 @@ export default async function handler(req, res) {
       response: await txResponse.text()
     };
     
-    // Try seller_funds_summary endpoint
+    // Try payout endpoint with apiz
     const fundsResponse = await fetch(
-      `https://api.ebay.com/sell/finances/v1/seller_funds_summary`,
+      `https://apiz.ebay.com/sell/finances/v1/payout`,
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,

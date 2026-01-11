@@ -2278,6 +2278,107 @@ function App() {
                       <span style={{ color: c.green }}>✓</span> All fees included
                     </div>
                   </div>
+                  
+                  {/* API Sync Section */}
+                  <div style={{ marginTop: 20, padding: 16, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: `1px solid ${c.border}` }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      🔄 eBay API Sync
+                      <span style={{ fontSize: 10, color: c.textMuted, fontWeight: 400 }}>Get images + payouts automatically</span>
+                    </div>
+                    {ebayConnected ? (
+                      <div style={{ display: 'flex', gap: 10 }}>
+                        <button
+                          onClick={async () => {
+                            setSyncing(true);
+                            try {
+                              let token = localStorage.getItem('flipledger_ebay_token');
+                              let res = await fetch('/api/ebay-sales', {
+                                headers: { 'Authorization': `Bearer ${token}` }
+                              });
+                              
+                              // Try refresh if failed
+                              if (!res.ok) {
+                                const refreshToken = localStorage.getItem('flipledger_ebay_refresh');
+                                if (refreshToken) {
+                                  const refreshRes = await fetch('/api/ebay-refresh', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ refresh_token: refreshToken })
+                                  });
+                                  const refreshData = await refreshRes.json();
+                                  if (refreshData.access_token) {
+                                    token = refreshData.access_token;
+                                    localStorage.setItem('flipledger_ebay_token', token);
+                                    res = await fetch('/api/ebay-sales', {
+                                      headers: { 'Authorization': `Bearer ${token}` }
+                                    });
+                                  }
+                                }
+                              }
+                              
+                              const data = await res.json();
+                              if (data.success && data.sales?.length > 0) {
+                                const newPending = data.sales.map(s => ({
+                                  ...s,
+                                  id: s.id || 'ebay_' + s.orderId,
+                                  platform: 'eBay',
+                                  source: 'api'
+                                }));
+                                
+                                // Check for duplicates
+                                const existingIds = new Set();
+                                [...sales, ...pendingCosts].forEach(s => {
+                                  if (s.id) existingIds.add(s.id);
+                                  if (s.orderId) existingIds.add(s.orderId);
+                                  if (s.orderNumber) existingIds.add(s.orderNumber);
+                                });
+                                
+                                const fresh = newPending.filter(s => !existingIds.has(s.id) && !existingIds.has(s.orderId));
+                                
+                                if (fresh.length > 0) {
+                                  setPendingCosts(prev => [...prev, ...fresh]);
+                                  localStorage.setItem('flipledger_pending', JSON.stringify([...pendingCosts, ...fresh]));
+                                  alert(`✓ Imported ${fresh.length} sales!${data.financesApiWorked ? ' (Exact payouts from Finances API)' : ' (Payouts may exclude promoted fees)'}`);
+                                } else {
+                                  alert('All caught up! No new sales to import.');
+                                }
+                              } else {
+                                alert('No sales found or error: ' + JSON.stringify(data));
+                              }
+                            } catch (err) {
+                              alert('Sync failed: ' + err.message);
+                            }
+                            setSyncing(false);
+                          }}
+                          disabled={syncing}
+                          style={{ flex: 1, padding: '12px', background: 'linear-gradient(135deg, #e53238 0%, #c62828 100%)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, cursor: syncing ? 'wait' : 'pointer', fontWeight: 600, opacity: syncing ? 0.7 : 1 }}
+                        >
+                          {syncing ? '⏳ Syncing...' : '🔄 Sync eBay Sales'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            localStorage.removeItem('flipledger_ebay_token');
+                            localStorage.removeItem('flipledger_ebay_refresh');
+                            setEbayToken(null);
+                            setEbayConnected(false);
+                          }}
+                          style={{ padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, color: c.red, fontSize: 11, cursor: 'pointer' }}
+                        >
+                          Disconnect
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => window.location.href = '/api/ebay-auth'}
+                        style={{ width: '100%', padding: '12px', background: '#e53238', border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
+                      >
+                        Connect eBay Account
+                      </button>
+                    )}
+                    <div style={{ fontSize: 10, color: c.textMuted, marginTop: 10 }}>
+                      Pulls last 90 days of orders with images. Uses new apiz.ebay.com endpoint.
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div>
@@ -2523,6 +2624,41 @@ function App() {
               🔗 Platform Connections
             </h3>
             
+            {/* eBay Connection */}
+            <div style={{ padding: 20, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: `1px solid ${c.border}`, marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 44, height: 44, background: '#e53238', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, color: '#fff' }}>eBay</div>
+                  <div>
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>eBay</div>
+                    <div style={{ fontSize: 12, color: c.textMuted }}>
+                      {ebayConnected ? '✓ Connected' : 'Sync your sold items with images'}
+                    </div>
+                  </div>
+                </div>
+                {ebayConnected ? (
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem('flipledger_ebay_token');
+                      localStorage.removeItem('flipledger_ebay_refresh');
+                      setEbayToken(null);
+                      setEbayConnected(false);
+                    }}
+                    style={{ padding: '10px 20px', background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 8, color: c.red, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+                  >
+                    Disconnect
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => window.location.href = '/api/ebay-auth'}
+                    style={{ padding: '10px 20px', background: '#e53238', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+                  >
+                    Connect eBay
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* StockX Connection */}
             <div style={{ padding: 20, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: `1px solid ${c.border}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
