@@ -2350,10 +2350,42 @@ function App() {
                     onClick={async () => {
                       setSyncing(true);
                       try {
-                        const token = localStorage.getItem('flipledger_ebay_token');
-                        const res = await fetch('/api/ebay-sales', {
+                        let token = localStorage.getItem('flipledger_ebay_token');
+                        let res = await fetch('/api/ebay-sales', {
                           headers: { 'Authorization': `Bearer ${token}` }
                         });
+                        
+                        // If failed, try to refresh token
+                        if (!res.ok) {
+                          console.log('Token may be expired, attempting refresh...');
+                          const refreshToken = localStorage.getItem('flipledger_ebay_refresh');
+                          if (refreshToken) {
+                            const refreshRes = await fetch('/api/ebay-refresh', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ refresh_token: refreshToken })
+                            });
+                            const refreshData = await refreshRes.json();
+                            if (refreshData.access_token) {
+                              token = refreshData.access_token;
+                              localStorage.setItem('flipledger_ebay_token', token);
+                              console.log('Token refreshed successfully');
+                              // Retry with new token
+                              res = await fetch('/api/ebay-sales', {
+                                headers: { 'Authorization': `Bearer ${token}` }
+                              });
+                            } else {
+                              // Refresh failed, need to reconnect
+                              localStorage.removeItem('flipledger_ebay_token');
+                              localStorage.removeItem('flipledger_ebay_refresh');
+                              setEbayConnected(false);
+                              alert('eBay session expired. Please reconnect your account.');
+                              setSyncing(false);
+                              return;
+                            }
+                          }
+                        }
+                        
                         const data = await res.json();
                         if (data.success && data.sales && data.sales.length > 0) {
                           const newPending = data.sales.map(s => ({
