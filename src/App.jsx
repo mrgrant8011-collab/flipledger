@@ -805,10 +805,13 @@ function App() {
         // Capture Promoted Listing fees - match to order number
         if (row['Type'] === 'Fee' || row['Type'] === 'Other fee') {
           const desc = (row['Description'] || '').toLowerCase();
+          console.log('Found fee row:', row['Type'], '| Order:', row['Order number'], '| Desc:', desc.substring(0, 40), '| Net:', row['Net amount']);
+          
           if (desc.includes('promoted') || desc.includes('ad fee') || desc.includes('advertising')) {
             const orderNum = row['Order number'] || '';
             if (orderNum) {
               const feeAmount = Math.abs(parseFloat((row['Net amount'] || row['Gross transaction amount'] || '0').toString().replace(/[$,]/g, ''))) || 0;
+              console.log('>>> Captured ad fee:', orderNum, '=', feeAmount);
               adFees[orderNum] = (adFees[orderNum] || 0) + feeAmount;
             }
           }
@@ -819,10 +822,13 @@ function App() {
       orders.forEach(order => {
         const orderNum = order['Order number'] || '';
         order['_adFee'] = adFees[orderNum] || 0;
+        if (order['_adFee'] > 0) {
+          console.log('Attached ad fee to order:', orderNum, '| AdFee:', order['_adFee']);
+        }
       });
       
       console.log('eBay CSV - Parsed orders:', orders.length);
-      console.log('eBay CSV - Ad fees found:', adFees);
+      console.log('eBay CSV - Ad fees found:', JSON.stringify(adFees));
       console.log('eBay CSV - Sample order:', orders[0] ? { name: orders[0]['Item title'], net: orders[0]['Net amount'], adFee: orders[0]['_adFee'] } : 'none');
       
       setEbayImport({ show: true, data: orders, headers, year: 'all', month: 'all' });
