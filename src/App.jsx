@@ -152,7 +152,7 @@ export default function App() {
   const [page, setPage] = useState('dashboard');
   const [modal, setModal] = useState(null);
   const [year, setYear] = useState('2024');
-  const [csvImport, setCsvImport] = useState({ show: false, data: [], filteredData: [], year: 'all', month: 'all', preview: false, headers: [] });
+  const [csvImport, setCsvImport] = useState({ show: false, data: [], filteredData: [], year: 'all', month: 'all', preview: false, headers: [], platform: '' });
   const [purchases, setPurchases] = useState(() => {
     const saved = localStorage.getItem('flipledger_purchases');
     return saved ? JSON.parse(saved) : [];
@@ -605,7 +605,7 @@ export default function App() {
     return str.substring(0, 10);
   };
 
-  // CSV Import for StockX
+  // CSV Import for StockX and eBay
   const handleCsvUpload = (e) => {
     const file = e.target?.files?.[0] || e;
     if (!file) return;
@@ -614,13 +614,33 @@ export default function App() {
     reader.onload = (event) => {
       const text = event.target.result;
       const lines = text.split('\n');
-      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+      
+      // Find the header row (eBay has metadata rows at top)
+      let headerIndex = 0;
+      for (let i = 0; i < Math.min(20, lines.length); i++) {
+        if (lines[i].includes('Transaction creation date') || lines[i].includes('Sale Date') || lines[i].includes('Order Number')) {
+          headerIndex = i;
+          break;
+        }
+      }
+      
+      const headers = lines[headerIndex].split(',').map(h => h.trim().replace(/"/g, '').replace(/^\uFEFF/, ''));
+      
+      // Auto-detect platform based on headers
+      const headerStr = headers.join(' ').toLowerCase();
+      let detectedPlatform = 'StockX';
+      if (headerStr.includes('transaction creation date') || headerStr.includes('buyer username') || headerStr.includes('final value fee')) {
+        detectedPlatform = 'eBay';
+      }
       
       // Debug: log headers to console
       console.log('CSV Headers:', headers);
+      console.log('Detected Platform:', detectedPlatform);
+      
+      const months = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
       
       const parsed = [];
-      for (let i = 1; i < lines.length; i++) {
+      for (let i = headerIndex + 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
         // Handle CSV with commas inside quotes - improved regex
         const values = [];
@@ -643,12 +663,28 @@ export default function App() {
           row[h] = values[idx] ? values[idx].replace(/"/g, '').trim() : '';
         });
         
-        // Find the date field (try multiple possible names)
-        const dateField = row['Sale Date'] || row['SaleDate'] || row['Date'] || row['Order Date'] || row['Sold Date'] || '';
-        if (dateField) {
-          row['_parsedDate'] = parseDate(dateField);
-          row['_originalDate'] = dateField;
-          parsed.push(row);
+        // For eBay, only include "Order" type rows
+        if (detectedPlatform === 'eBay') {
+          if (row['Type'] === 'Order') {
+            // Parse eBay date: "Dec 27, 2025" -> "2025-12-27"
+            const ebayDate = row['Transaction creation date'] || '';
+            if (ebayDate) {
+              const match = ebayDate.match(/(\w+)\s+(\d+),\s+(\d{4})/);
+              if (match) {
+                row['_parsedDate'] = `${match[3]}-${months[match[1]] || '01'}-${match[2].padStart(2, '0')}`;
+                row['_originalDate'] = ebayDate;
+              }
+            }
+            parsed.push(row);
+          }
+        } else {
+          // StockX - include rows with Sale Date
+          const dateField = row['Sale Date'] || row['SaleDate'] || row['Date'] || row['Order Date'] || row['Sold Date'] || '';
+          if (dateField) {
+            row['_parsedDate'] = parseDate(dateField);
+            row['_originalDate'] = dateField;
+            parsed.push(row);
+          }
         }
       }
       
@@ -656,7 +692,7 @@ export default function App() {
       console.log('Sample parsed rows:', parsed.slice(0, 3));
       console.log('Sample dates:', parsed.slice(0, 5).map(r => ({ original: r['_originalDate'], parsed: r['_parsedDate'] })));
       
-      setCsvImport({ ...csvImport, show: true, data: parsed, headers: headers, preview: true });
+      setCsvImport({ ...csvImport, show: true, data: parsed, headers: headers, preview: true, platform: detectedPlatform });
     };
     reader.readAsText(file);
   };
@@ -694,21 +730,55 @@ export default function App() {
 
   const importCsvSales = () => {
     const filtered = filterCsvData();
-    // Only grab what we actually USE - nothing extra
+    const platform = csvImport.platform || 'StockX';
+    
+    const months = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
+    const parseAmount = (val) => parseFloat((val || '0').toString().replace(/[$,]/g, '')) || 0;
+    
     const newPending = filtered.map(row => {
-      const orderNum = row['Order Number'] || row['Order Id'] || row['Order #'] || '';
-      const salePrice = parseFloat((row['Price'] || row['Sale Price'] || row['Order Total'] || '0').replace(/[$,]/g, '')) || 0;
-      const payout = parseFloat((row['Final Payout Amount'] || row['Payout'] || row['Total Payout'] || '0').replace(/[$,]/g, '')) || 0;
-      
-      return {
-        id: orderNum || Date.now() + Math.random(),
-        name: row['Item'] || row['Product Name'] || 'Unknown Item',
-        sku: row['Style'] || row['SKU'] || row['Style Code'] || '',
-        size: String(row['Sku Size'] || row['Size'] || row['Product Size'] || ''),
-        salePrice,
-        payout,
-        saleDate: row['_parsedDate'] || ''
-      };
+      if (platform === 'eBay') {
+        // eBay specific parsing
+        const itemSubtotal = parseAmount(row['Item subtotal']);
+        const grossAmount = parseAmount(row['Gross transaction amount']) || itemSubtotal;
+        const netAmount = parseAmount(row['Net amount']);
+        const feeFixed = Math.abs(parseAmount(row['Final Value Fee - fixed']));
+        const feeVariable = Math.abs(parseAmount(row['Final Value Fee - variable']));
+        const regFee = Math.abs(parseAmount(row['Regulatory operating fee']));
+        const intlFee = Math.abs(parseAmount(row['International fee']));
+        const totalFees = feeFixed + feeVariable + regFee + intlFee;
+        
+        return {
+          id: 'ebay_csv_' + (row['Order number'] || Date.now() + Math.random()),
+          orderNumber: row['Order number'] || '',
+          name: row['Item title'] || 'Unknown Item',
+          sku: row['Custom label'] || '',
+          size: '', // eBay doesn't have a dedicated size field
+          salePrice: grossAmount,
+          payout: netAmount,
+          fees: totalFees,
+          saleDate: row['_parsedDate'] || '',
+          platform: 'eBay',
+          source: 'csv',
+          buyer: row['Buyer username'] || ''
+        };
+      } else {
+        // StockX parsing
+        const orderNum = row['Order Number'] || row['Order Id'] || row['Order #'] || '';
+        const salePrice = parseFloat((row['Price'] || row['Sale Price'] || row['Order Total'] || '0').replace(/[$,]/g, '')) || 0;
+        const payout = parseFloat((row['Final Payout Amount'] || row['Payout'] || row['Total Payout'] || '0').replace(/[$,]/g, '')) || 0;
+        
+        return {
+          id: orderNum || Date.now() + Math.random(),
+          name: row['Item'] || row['Product Name'] || 'Unknown Item',
+          sku: row['Style'] || row['SKU'] || row['Style Code'] || '',
+          size: String(row['Sku Size'] || row['Size'] || row['Product Size'] || ''),
+          salePrice,
+          payout,
+          saleDate: row['_parsedDate'] || '',
+          platform: 'StockX',
+          source: 'csv'
+        };
+      }
     });
     
     // Avoid duplicates - check pending (by id) AND confirmed sales (by orderId)
@@ -719,15 +789,15 @@ export default function App() {
     const uniqueNew = newPending.filter(p => !existingIds.has(p.id));
     
     setPendingCosts([...pendingCosts, ...uniqueNew]);
-    setCsvImport({ show: false, data: [], filteredData: [], year: 'all', month: 'all', preview: false, headers: [] });
+    setCsvImport({ show: false, data: [], filteredData: [], year: 'all', month: 'all', preview: false, headers: [], platform: '' });
     
     // Clear message based on what happened
     if (uniqueNew.length === 0) {
       alert(`All ${newPending.length} sales already imported - nothing new to add.`);
     } else if (newPending.length - uniqueNew.length > 0) {
-      alert(`Imported ${uniqueNew.length} NEW sales! (${newPending.length - uniqueNew.length} already existed)`);
+      alert(`Imported ${uniqueNew.length} NEW ${platform} sales! (${newPending.length - uniqueNew.length} already existed)`);
     } else {
-      alert(`Imported ${uniqueNew.length} sales!`);
+      alert(`Imported ${uniqueNew.length} ${platform} sales!`);
     }
   };
 
@@ -1880,7 +1950,7 @@ export default function App() {
                 <div style={{ width: 54, height: 54, background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>📄</div>
                 <div style={{ flex: 1 }}>
                   <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>IMPORT CSV</h3>
-                  <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Upload StockX historical sales CSV - filter by year & month</p>
+                  <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Upload StockX or eBay CSV - auto-detects platform</p>
                 </div>
               </div>
               
@@ -1901,11 +1971,29 @@ export default function App() {
                   >
                     <div style={{ fontSize: 48, marginBottom: 12 }}>📤</div>
                     <div style={{ fontWeight: 600, marginBottom: 4 }}>Click or drag CSV file here</div>
-                    <div style={{ fontSize: 12, color: c.textMuted }}>Download from StockX → Seller Tools → Historical Sales</div>
+                    <div style={{ fontSize: 12, color: c.textMuted }}>StockX or eBay sales CSV - auto-detects platform</div>
                   </label>
                 </div>
               ) : (
                 <div>
+                  {/* Platform Indicator */}
+                  {csvImport.platform && (
+                    <div style={{ 
+                      display: 'inline-flex', 
+                      alignItems: 'center', 
+                      gap: 8, 
+                      padding: '8px 16px', 
+                      marginBottom: 16,
+                      background: csvImport.platform === 'eBay' ? 'rgba(229,50,56,0.15)' : 'rgba(0,193,101,0.15)', 
+                      border: `1px solid ${csvImport.platform === 'eBay' ? 'rgba(229,50,56,0.3)' : 'rgba(0,193,101,0.3)'}`,
+                      borderRadius: 8
+                    }}>
+                      <span style={{ fontWeight: 700, color: csvImport.platform === 'eBay' ? '#e53238' : '#00c165' }}>
+                        {csvImport.platform === 'eBay' ? '🏪' : '📦'} {csvImport.platform} Detected
+                      </span>
+                    </div>
+                  )}
+                  
                   {/* Filter Controls */}
                   <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
                     <div style={{ flex: 1 }}>
@@ -1950,7 +2038,7 @@ export default function App() {
                   </div>
                   
                   {/* Preview Stats */}
-                  <div style={{ background: 'rgba(16,185,129,0.1)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
+                  <div style={{ background: csvImport.platform === 'eBay' ? 'rgba(229,50,56,0.1)' : 'rgba(16,185,129,0.1)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
                         <div style={{ fontSize: 13, color: c.textMuted, marginBottom: 4 }}>Total rows in CSV</div>
@@ -1959,7 +2047,7 @@ export default function App() {
                       <div style={{ fontSize: 32 }}>→</div>
                       <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: 13, color: c.textMuted, marginBottom: 4 }}>Matching your filter</div>
-                        <div style={{ fontSize: 24, fontWeight: 800, color: c.emerald }}>{filterCsvData().length.toLocaleString()}</div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: csvImport.platform === 'eBay' ? '#e53238' : c.emerald }}>{filterCsvData().length.toLocaleString()}</div>
                       </div>
                     </div>
                   </div>
@@ -1977,14 +2065,20 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {filterCsvData().slice(0, 5).map((row, i) => (
-                            <tr key={i} style={{ borderTop: `1px solid ${c.border}` }}>
-                              <td style={{ padding: '10px 12px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row['Item'] || row['Product Name'] || row['Product'] || 'Unknown'}</td>
-                              <td style={{ padding: '10px 12px' }}>{row['Sku Size'] || row['Size'] || '-'}</td>
-                              <td style={{ padding: '10px 12px', textAlign: 'right', color: c.emerald }}>${row['Price'] || row['Sale Price'] || '0'}</td>
-                              <td style={{ padding: '10px 12px', color: c.textMuted }}>{row['_parsedDate'] || '-'}</td>
-                            </tr>
-                          ))}
+                          {filterCsvData().slice(0, 5).map((row, i) => {
+                            const isEbay = csvImport.platform === 'eBay';
+                            const itemName = isEbay ? (row['Item title'] || 'Unknown') : (row['Item'] || row['Product Name'] || row['Product'] || 'Unknown');
+                            const size = isEbay ? '-' : (row['Sku Size'] || row['Size'] || '-');
+                            const price = isEbay ? (row['Gross transaction amount'] || row['Item subtotal'] || '0') : (row['Price'] || row['Sale Price'] || '0');
+                            return (
+                              <tr key={i} style={{ borderTop: `1px solid ${c.border}` }}>
+                                <td style={{ padding: '10px 12px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{itemName}</td>
+                                <td style={{ padding: '10px 12px' }}>{size}</td>
+                                <td style={{ padding: '10px 12px', textAlign: 'right', color: isEbay ? '#e53238' : c.emerald }}>${String(price).replace(/[$,]/g, '')}</td>
+                                <td style={{ padding: '10px 12px', color: c.textMuted }}>{row['_parsedDate'] || '-'}</td>
+                              </tr>
+                            );
+                          })}
                           {filterCsvData().length > 5 && (
                             <tr style={{ borderTop: `1px solid ${c.border}` }}>
                               <td colSpan={4} style={{ padding: '10px 12px', textAlign: 'center', color: c.textMuted, fontStyle: 'italic' }}>
@@ -2000,7 +2094,7 @@ export default function App() {
                   {/* Action Buttons */}
                   <div style={{ display: 'flex', gap: 12 }}>
                     <button 
-                      onClick={() => setCsvImport({ show: false, data: [], filteredData: [], year: 'all', month: 'all', preview: false, headers: [] })}
+                      onClick={() => setCsvImport({ show: false, data: [], filteredData: [], year: 'all', month: 'all', preview: false, headers: [], platform: '' })}
                       style={{ flex: 1, padding: 14, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', cursor: 'pointer', fontWeight: 600 }}
                     >
                       Cancel
@@ -2008,9 +2102,9 @@ export default function App() {
                     <button 
                       onClick={importCsvSales}
                       disabled={filterCsvData().length === 0}
-                      style={{ flex: 2, padding: 14, ...btnPrimary, opacity: filterCsvData().length === 0 ? 0.5 : 1 }}
+                      style={{ flex: 2, padding: 14, ...btnPrimary, opacity: filterCsvData().length === 0 ? 0.5 : 1, background: csvImport.platform === 'eBay' ? 'linear-gradient(135deg, #e53238 0%, #c62828 100%)' : btnPrimary.background }}
                     >
-                      Import {filterCsvData().length} Sales
+                      Import {filterCsvData().length} {csvImport.platform || ''} Sales
                     </button>
                   </div>
                 </div>
