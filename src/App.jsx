@@ -940,7 +940,7 @@ function App() {
       return parseFloat(val.toString().replace(/[$,]/g, '')) || 0;
     };
     
-    console.log('%c FLIPLEDGER v92 - IMPORT STARTING ', 'background: #00ff00; color: black; font-size: 16px;');
+    console.log('%c FLIPLEDGER v94 - IMPORT STARTING ', 'background: #00ff00; color: black; font-size: 16px;');
     console.log('Rows to import:', filtered.length);
     
     const newPending = filtered.map((row, idx) => {
@@ -1030,11 +1030,20 @@ function App() {
     // Add truly new items
     const finalPending = [...updatedPending, ...newItems];
     
+    // FORCE SAVE TO LOCALSTORAGE IMMEDIATELY
+    localStorage.setItem('flipledger_pending', JSON.stringify(finalPending));
+    
     setPendingCosts(finalPending);
     setEbayImport({ show: false, data: [], year: 'all', month: 'all', headers: [] });
     
     console.log('%c IMPORT COMPLETE ', 'background: green; color: white;');
     console.log('Updated:', updates.length, '| New:', newItems.length);
+    
+    // Log what was saved
+    const pandaCheck = finalPending.find(p => p.name && p.name.toLowerCase().includes('panda'));
+    if (pandaCheck) {
+      console.log('%c PANDA IN FINAL DATA: payout = ' + pandaCheck.payout, 'background: yellow; color: black; font-size: 14px;');
+    }
     
     alert(`eBay Import: ${updates.length} updated, ${newItems.length} new items added.`);
   };
@@ -1142,7 +1151,7 @@ function App() {
             <div style={{ width: 44, height: 44, background: `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18, color: '#000' }}>FL</div>
             <div>
               <div style={{ fontWeight: 700, fontSize: 18, letterSpacing: '1px', color: c.gold }}>FLIPLEDGER</div>
-              <div style={{ fontSize: 10, color: c.textDim, letterSpacing: '2px', fontWeight: 500 }}>WEALTH INTELLIGENCE <span style={{ color: c.green }}>v92</span></div>
+              <div style={{ fontSize: 10, color: c.textDim, letterSpacing: '2px', fontWeight: 500 }}>WEALTH INTELLIGENCE <span style={{ color: c.green }}>v94</span></div>
             </div>
           </div>
         </div>
@@ -2032,9 +2041,11 @@ function App() {
                     <option value="price">Sort: Price</option>
                   </select>
                   <button onClick={() => { 
-                    if (confirm(`Delete all pending sales?`)) {
+                    if (confirm(`Delete all pending sales and clear cache?`)) {
                       setPendingCosts([]);
                       setSelectedPending(new Set());
+                      localStorage.removeItem('flipledger_pending');
+                      console.log('%c CLEARED ALL PENDING DATA ', 'background: red; color: white; font-size: 16px;');
                     }
                   }} style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 10, color: c.red, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
                     🗑️ Clear All
@@ -2317,6 +2328,13 @@ function App() {
                   )}
                   <div style={{ display: 'flex', gap: 10 }}>
                     <button onClick={() => setEbayImport({ show: false, data: [], year: 'all', month: 'all', headers: [] })} style={{ flex: 1, padding: 12, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 10, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
+                    <button onClick={() => {
+                      if (confirm('This will CLEAR all pending sales and do a fresh import. Continue?')) {
+                        setPendingCosts([]);
+                        localStorage.removeItem('flipledger_pending');
+                        setTimeout(() => importEbaySales(), 100);
+                      }
+                    }} disabled={filterEbayData().length === 0} style={{ flex: 1, padding: 12, background: 'rgba(239,68,68,0.2)', border: `1px solid ${c.red}`, borderRadius: 10, color: c.red, fontWeight: 700, cursor: 'pointer', opacity: filterEbayData().length === 0 ? 0.5 : 1 }}>🔄 Fresh Import</button>
                     <button onClick={importEbaySales} disabled={filterEbayData().length === 0} style={{ flex: 2, padding: 12, background: 'linear-gradient(135deg, #e53238 0%, #c62828 100%)', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: filterEbayData().length === 0 ? 0.5 : 1 }}>Import {filterEbayData().length} eBay Sales</button>
                   </div>
                 </div>
