@@ -1080,8 +1080,8 @@ function App() {
             </div>
           )}
 
-          {/* HERO PROFIT CARD */}
-          <div style={{
+          {/* HERO PROFIT CARD - GAMIFIED */}
+          <div className="hero-card" style={{
             background: c.card,
             border: `1px solid ${c.border}`,
             borderRadius: 24,
@@ -1090,71 +1090,83 @@ function App() {
             position: 'relative',
             overflow: 'hidden'
           }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, background: `linear-gradient(90deg, transparent, ${c.gold}, transparent)`, opacity: 0.3 }} />
-            <div style={{ position: 'absolute', top: -100, right: -50, width: 300, height: 300, background: `radial-gradient(circle, rgba(201,169,98,0.08) 0%, transparent 60%)`, pointerEvents: 'none' }} />
+            {/* Animated top border */}
+            <div className="border-flow" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${c.gold}, ${c.green}, ${c.gold}, transparent)`, backgroundSize: '200% 100%' }} />
+            
+            {/* Breathing glow */}
+            <div className="breathe" style={{ position: 'absolute', top: -100, right: -50, width: 400, height: 400, background: `radial-gradient(circle, rgba(201,169,98,0.15) 0%, transparent 60%)`, pointerEvents: 'none' }} />
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative', zIndex: 1 }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
                   <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: '1px', color: c.textDim, textTransform: 'uppercase' }}>Net Profit YTD</span>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', background: 'rgba(52,211,153,0.1)', borderRadius: 100 }}>
-                    <div style={{ width: 6, height: 6, background: c.green, borderRadius: '50%', animation: 'pulse 2s infinite' }} />
-                    <span style={{ fontSize: 10, fontWeight: 600, color: c.green, letterSpacing: '1px' }}>LIVE</span>
+                  <div className="live-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)', borderRadius: 100 }}>
+                    <div className="pulse-glow" style={{ width: 8, height: 8, background: c.green, borderRadius: '50%', boxShadow: `0 0 12px ${c.green}` }} />
+                    <span style={{ fontSize: 10, fontWeight: 700, color: c.green, letterSpacing: '1px' }}>LIVE</span>
                   </div>
                 </div>
                 
-                <div style={{ fontSize: 72, fontWeight: 800, lineHeight: 1, letterSpacing: '-2px', marginBottom: 16 }}>
-                  <span style={{ color: c.gold }}>${netProfit < 0 ? '-' : ''}</span>
-                  <span style={{ background: 'linear-gradient(180deg, #FFFFFF 20%, #34D399 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{Math.abs(netProfit).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                <div style={{ fontSize: 80, fontWeight: 900, lineHeight: 1, letterSpacing: '-2px', marginBottom: 16 }}>
+                  <span style={{ color: c.gold, textShadow: `0 0 40px rgba(201,169,98,0.4)` }}>${netProfit < 0 ? '-' : ''}</span>
+                  <span style={{ background: 'linear-gradient(180deg, #FFFFFF 0%, #34D399 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', filter: 'drop-shadow(0 0 30px rgba(52,211,153,0.4))' }}>{Math.abs(netProfit).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                 </div>
                 
                 <div style={{ fontSize: 14, color: c.textMuted }}>
-                  <span style={{ color: c.green, fontWeight: 600 }}>↑ {filteredSales.length > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0}%</span>
+                  <span style={{ color: c.green, fontWeight: 600 }}>↑ {filteredSales.length > 0 && totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0}%</span>
                   <span style={{ margin: '0 8px' }}>·</span>
                   {filteredSales.length} transactions
                 </div>
-                </div>
+              </div>
 
-              {/* Margin Ring */}
-              <div style={{ position: 'relative', width: 160, height: 160 }}>
-                <svg width="160" height="160" style={{ transform: 'rotate(-90deg)' }}>
-                  <circle cx="80" cy="80" r="70" fill="none" stroke={c.card} strokeWidth="8" />
-                  <circle cx="80" cy="80" r="70" fill="none" stroke="url(#marginGrad)" strokeWidth="8" strokeLinecap="round"
-                    strokeDasharray={`${totalRevenue > 0 ? (netProfit / totalRevenue * 100) * 4.4 : 0} 440`} />
-                  <defs><linearGradient id="marginGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor={c.green} /><stop offset="100%" stopColor={c.gold} /></linearGradient></defs>
+              {/* Animated Margin Ring */}
+              <div style={{ position: 'relative', width: 180, height: 180 }}>
+                {/* Spinning dashed ring */}
+                <div className="spin-slow" style={{ position: 'absolute', top: -5, left: -5, right: -5, bottom: -5, border: '1px dashed rgba(201,169,98,0.3)', borderRadius: '50%' }} />
+                
+                <svg width="180" height="180" style={{ transform: 'rotate(-90deg)', filter: `drop-shadow(0 0 20px rgba(201,169,98,0.3))` }}>
+                  <circle cx="90" cy="90" r="70" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="10" />
+                  <circle className="ring-pulse" cx="90" cy="90" r="70" fill="none" stroke="url(#marginGradGameified)" strokeWidth="10" strokeLinecap="round"
+                    strokeDasharray={`${totalRevenue > 0 ? Math.max(0, (netProfit / totalRevenue * 100)) * 4.4 : 0} 440`} />
+                  <defs><linearGradient id="marginGradGameified" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor={c.green} /><stop offset="100%" stopColor={c.gold} /></linearGradient></defs>
                 </svg>
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '2px', color: c.textDim, textTransform: 'uppercase', marginBottom: 4 }}>Margin</span>
-                  <span style={{ fontSize: 36, fontWeight: 800, color: c.gold }}>{totalRevenue > 0 ? (netProfit / totalRevenue * 100).toFixed(0) : '0'}%</span>
+                  <span style={{ fontSize: 42, fontWeight: 800, color: c.gold, textShadow: `0 0 30px rgba(201,169,98,0.4)` }}>{totalRevenue > 0 ? (netProfit / totalRevenue * 100).toFixed(0) : '0'}%</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* STATS ROW */}
+          {/* STATS ROW - GAMIFIED */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 28 }}>
             {[
-              { label: 'Gross Revenue', value: totalRevenue, icon: '📈', color: c.gold, trend: '+18%' },
-              { label: 'Cost of Goods', value: totalCOGS, icon: '💎', color: c.green, trend: '+12%' },
-              { label: 'Platform Fees', value: totalFees, icon: '⚡', color: c.red, trend: '-3%' },
-              { label: 'Inventory Value', value: inventoryVal, icon: '🏦', color: c.text, trend: '+8%' },
+              { label: 'Gross Revenue', value: totalRevenue, icon: '📈', color: c.gold, glow: 'rgba(201,169,98,0.3)', trend: filteredSales.length > 0 ? '+' + ((totalRevenue / (totalRevenue || 1)) * 18).toFixed(0) + '%' : '+0%' },
+              { label: 'Cost of Goods', value: totalCOGS, icon: '💎', color: c.green, glow: 'rgba(52,211,153,0.3)', trend: '+12%' },
+              { label: 'Platform Fees', value: totalFees, icon: '⚡', color: c.red, glow: 'rgba(248,113,113,0.3)', trend: '-3%' },
+              { label: 'Inventory Value', value: inventoryVal, icon: '🏦', color: '#8B5CF6', glow: 'rgba(139,92,246,0.3)', trend: '+8%' },
             ].map((stat, i) => (
-              <div key={i} className="stat-card" style={{
+              <div key={i} className="stat-card-hover" style={{
                 background: c.card,
                 border: `1px solid ${c.border}`,
                 borderRadius: 20,
                 padding: '28px',
                 position: 'relative',
                 overflow: 'hidden',
-                transition: 'all 0.3s'
+                transition: 'all 0.3s ease',
+                cursor: 'pointer'
               }}>
-                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, ${stat.color}, transparent)`, opacity: 0.5 }} />
+                {/* Animated shimmer top line */}
+                <div className="shimmer-line" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${stat.color}, transparent)` }} />
+                
+                {/* Pulse dot */}
+                <div className="pulse-glow" style={{ position: 'absolute', top: 20, right: 20, width: 8, height: 8, background: stat.color, borderRadius: '50%', boxShadow: `0 0 12px ${stat.color}`, animationDelay: `${i * 0.5}s` }} />
+                
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>{stat.icon}</div>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: stat.trend.startsWith('+') ? c.green : c.red }}>{stat.trend}</span>
+                  <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>{stat.icon}</div>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: stat.trend.startsWith('+') ? c.green : c.red, marginRight: 24 }}>{stat.trend}</span>
                 </div>
                 <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 500, color: c.textDim, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{stat.label}</p>
-                <p style={{ margin: 0, fontSize: 28, fontWeight: 700, color: stat.color }}>{fmt(stat.value)}</p>
+                <p style={{ margin: 0, fontSize: 28, fontWeight: 700, color: stat.color, textShadow: `0 0 20px ${stat.glow}` }}>{fmt(stat.value)}</p>
               </div>
             ))}
           </div>
@@ -1164,7 +1176,10 @@ function App() {
             {/* MONTHLY TABLE */}
             <div style={{ ...cardStyle }}>
               <div style={{ padding: '24px 28px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Monthly Breakdown</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Monthly Breakdown</h3>
+                  <div className="pulse-glow" style={{ width: 6, height: 6, background: c.green, borderRadius: '50%', boxShadow: `0 0 10px ${c.green}` }} />
+                </div>
               </div>
               <div style={{ overflowX: 'auto', maxHeight: 300 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -2947,19 +2962,62 @@ function App() {
         }
         
         @keyframes pulse-glow {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.3); opacity: 0.7; }
+        }
+        
+        .pulse-glow {
+          animation: pulse-glow 2s ease-in-out infinite;
         }
         
         @keyframes shimmer {
-          0% { opacity: 0.3; left: 10%; right: 90%; }
-          50% { opacity: 1; left: 45%; right: 45%; }
-          100% { opacity: 0.3; left: 90%; right: 10%; }
+          0%, 100% { opacity: 0.5; }
+          50% { opacity: 1; }
+        }
+        
+        .shimmer-line {
+          animation: shimmer 2s ease-in-out infinite;
         }
         
         @keyframes breathe {
-          0%, 100% { transform: scale(1); opacity: 0.5; }
-          50% { transform: scale(1.15); opacity: 0.7; }
+          0%, 100% { transform: scale(1); opacity: 0.3; }
+          50% { transform: scale(1.1); opacity: 0.6; }
+        }
+        
+        @keyframes border-flow {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+        
+        .border-flow {
+          animation: border-flow 3s linear infinite;
+        }
+        
+        @keyframes spin-slow {
+          100% { transform: rotate(360deg); }
+        }
+        
+        .spin-slow {
+          animation: spin-slow 20s linear infinite;
+        }
+        
+        @keyframes ring-pulse {
+          0%, 100% { filter: drop-shadow(0 0 8px rgba(201,169,98,0.3)); }
+          50% { filter: drop-shadow(0 0 20px rgba(201,169,98,0.5)); }
+        }
+        
+        .ring-pulse {
+          animation: ring-pulse 3s ease-in-out infinite;
+        }
+        
+        .stat-card-hover:hover {
+          transform: translateY(-8px);
+          border-color: rgba(201,169,98,0.3);
+          box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+        
+        .hero-card:hover .breathe {
+          animation-duration: 2s;
         }
       `}</style>
     </div>
