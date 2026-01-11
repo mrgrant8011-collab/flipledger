@@ -940,8 +940,7 @@ function App() {
       return parseFloat(val.toString().replace(/[$,]/g, '')) || 0;
     };
     
-    console.log('%c FLIPLEDGER v96 - IMPORT STARTING ', 'background: #00ff00; color: black; font-size: 16px;');
-    console.log('Rows to import:', filtered.length);
+    console.log('eBay CSV import starting:', filtered.length, 'rows');
     
     const newPending = filtered.map((row, idx) => {
       // SIMPLE: Check which columns exist and use them
@@ -972,9 +971,6 @@ function App() {
          Math.abs(parseAmount(row['Promoted Listing Standard fee'])) +
          parseFloat(row['_adFee'] || 0));
       
-      // Log each item
-      console.log(`[${idx + 1}] ${row['Item title']?.substring(0, 35)} | Gross: ${row['Gross amount']} | OrderEarnings: ${rawOrderEarnings} | PAYOUT=${payout}`);
-      
       return {
         id: 'ebay_' + (row['Order number'] || Date.now() + Math.random()),
         orderId: row['Order number'] || '',
@@ -992,7 +988,7 @@ function App() {
       };
     });
     
-    console.log('%c CREATED ' + newPending.length + ' SALE OBJECTS ', 'background: blue; color: white;');
+    console.log('eBay import:', newPending.length, 'items processed');
     
     // Instead of skipping duplicates, UPDATE them with new payout values
     const existingMap = new Map();
@@ -1036,14 +1032,7 @@ function App() {
     setPendingCosts(finalPending);
     setEbayImport({ show: false, data: [], year: 'all', month: 'all', headers: [] });
     
-    console.log('%c IMPORT COMPLETE ', 'background: green; color: white;');
-    console.log('Updated:', updates.length, '| New:', newItems.length);
-    
-    // Log what was saved
-    const pandaCheck = finalPending.find(p => p.name && p.name.toLowerCase().includes('panda'));
-    if (pandaCheck) {
-      console.log('%c PANDA IN FINAL DATA: payout = ' + pandaCheck.payout, 'background: yellow; color: black; font-size: 14px;');
-    }
+    console.log('Import complete:', updates.length, 'updated,', newItems.length, 'new');
     
     alert(`eBay Import: ${updates.length} updated, ${newItems.length} new items added.`);
   };
@@ -1151,7 +1140,7 @@ function App() {
             <div style={{ width: 44, height: 44, background: `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18, color: '#000' }}>FL</div>
             <div>
               <div style={{ fontWeight: 700, fontSize: 18, letterSpacing: '1px', color: c.gold }}>FLIPLEDGER</div>
-              <div style={{ fontSize: 10, color: c.textDim, letterSpacing: '2px', fontWeight: 500 }}>WEALTH INTELLIGENCE <span style={{ color: c.green }}>v96</span></div>
+              <div style={{ fontSize: 10, color: c.textDim, letterSpacing: '2px', fontWeight: 500 }}>WEALTH INTELLIGENCE</div>
             </div>
           </div>
         </div>
@@ -2013,23 +2002,6 @@ function App() {
 
           {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length > 0 && (
             <div style={{ marginBottom: 20 }}>
-              {/* DEBUG PANEL - Remove after fixing */}
-              {(() => {
-                const panda = pendingCosts.find(p => p.name && p.name.toLowerCase().includes('panda'));
-                if (panda) {
-                  return (
-                    <div style={{ padding: 12, marginBottom: 12, background: '#ff0', color: '#000', borderRadius: 8, fontSize: 14, fontFamily: 'monospace' }}>
-                      <strong>🐼 DEBUG - PANDA FOUND:</strong><br/>
-                      name: {panda.name}<br/>
-                      salePrice: {panda.salePrice} (SOLD column)<br/>
-                      payout: {panda.payout} (PAYOUT column - should be 73.65)<br/>
-                      fees: {panda.fees}<br/>
-                      orderNumber: {panda.orderNumber}
-                    </div>
-                  );
-                }
-                return null;
-              })()}
               {/* Header */}
               <div style={{ padding: '16px 20px', background: 'rgba(251,191,36,0.1)', border: `1px solid rgba(251,191,36,0.2)`, borderRadius: '12px 12px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
