@@ -243,7 +243,12 @@ function App() {
     return localStorage.getItem('flipledger_stockx_token') || null;
   });
   const [goatConnected, setGoatConnected] = useState(false);
-  const [ebayConnected, setEbayConnected] = useState(false);
+  const [ebayConnected, setEbayConnected] = useState(() => {
+    return !!localStorage.getItem('flipledger_ebay_token');
+  });
+  const [ebayToken, setEbayToken] = useState(() => {
+    return localStorage.getItem('flipledger_ebay_token') || null;
+  });
   const [qbConnected, setQbConnected] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [pendingCosts, setPendingCosts] = useState(() => {
@@ -272,6 +277,31 @@ function App() {
       setStockxConnected(true);
       // Clean up URL
       window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  // Check for eBay OAuth callback on load
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ebayConnectedParam = params.get('ebay_connected');
+    const ebayTokenParam = params.get('ebay_token');
+    const ebayRefreshParam = params.get('ebay_refresh');
+    const ebayError = params.get('ebay_error');
+    
+    if (ebayConnectedParam === 'true' && ebayTokenParam) {
+      // Store tokens
+      localStorage.setItem('flipledger_ebay_token', ebayTokenParam);
+      localStorage.setItem('flipledger_ebay_refresh', ebayRefreshParam || '');
+      setEbayToken(ebayTokenParam);
+      setEbayConnected(true);
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+      // Navigate to settings to show success
+      setPage('settings');
+    } else if (ebayError) {
+      console.error('eBay connection error:', ebayError);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      alert('eBay connection failed: ' + ebayError);
     }
   }, []);
 
@@ -2375,6 +2405,116 @@ function App() {
 
         {/* SETTINGS */}
         {page === 'settings' && <div style={{ maxWidth: 550 }}>
+          {/* Platform Connections */}
+          <div style={{ ...cardStyle, padding: 24, marginBottom: 16 }}>
+            <h3 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10 }}>
+              🔗 Platform Connections
+            </h3>
+            
+            {/* eBay Connection */}
+            <div style={{ padding: 20, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: `1px solid ${c.border}`, marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 44, height: 44, background: '#e53238', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, color: '#fff' }}>eBay</div>
+                  <div>
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>eBay</div>
+                    <div style={{ fontSize: 12, color: c.textMuted }}>
+                      {ebayConnected ? '✓ Connected' : 'Import your sold items automatically'}
+                    </div>
+                  </div>
+                </div>
+                {ebayConnected ? (
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem('flipledger_ebay_token');
+                      localStorage.removeItem('flipledger_ebay_refresh');
+                      setEbayToken(null);
+                      setEbayConnected(false);
+                    }}
+                    style={{ padding: '10px 20px', background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 8, color: c.red, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+                  >
+                    Disconnect
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => window.location.href = '/api/ebay-auth'}
+                    style={{ padding: '10px 20px', background: '#e53238', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+                  >
+                    Connect eBay
+                  </button>
+                )}
+              </div>
+              
+              {ebayConnected && (
+                <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${c.border}` }}>
+                  <button
+                    onClick={async () => {
+                      setSyncing(true);
+                      try {
+                        const token = localStorage.getItem('flipledger_ebay_token');
+                        const res = await fetch('/api/ebay-sales', {
+                          headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        const data = await res.json();
+                        if (data.success && data.sales && data.sales.length > 0) {
+                          // Add to pending costs for user to add cost basis
+                          const newPending = data.sales.map(s => ({
+                            ...s,
+                            id: s.id || Date.now() + Math.random(),
+                            platform: 'eBay',
+                            needsCost: true
+                          }));
+                          // Filter out already imported
+                          const existingIds = new Set([...sales.map(s => s.orderId), ...pendingCosts.map(p => p.orderId)]);
+                          const fresh = newPending.filter(s => !existingIds.has(s.orderId));
+                          if (fresh.length > 0) {
+                            setPendingCosts(prev => [...prev, ...fresh]);
+                            localStorage.setItem('flipledger_pending', JSON.stringify([...pendingCosts, ...fresh]));
+                            alert(`Imported ${fresh.length} new sales from eBay! Go to Import page to add cost basis.`);
+                            setPage('import');
+                          } else {
+                            alert('No new sales to import.');
+                          }
+                        } else {
+                          alert('No sales found or error: ' + (data.error || 'Unknown'));
+                        }
+                      } catch (err) {
+                        console.error('eBay sync error:', err);
+                        alert('Failed to sync: ' + err.message);
+                      }
+                      setSyncing(false);
+                    }}
+                    disabled={syncing}
+                    style={{ width: '100%', padding: '12px', background: `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)`, border: 'none', borderRadius: 8, color: '#000', fontWeight: 600, fontSize: 13, cursor: syncing ? 'wait' : 'pointer', opacity: syncing ? 0.7 : 1 }}
+                  >
+                    {syncing ? '⏳ Syncing...' : '🔄 Sync eBay Sales'}
+                  </button>
+                  <p style={{ margin: '10px 0 0', fontSize: 11, color: c.textMuted, textAlign: 'center' }}>
+                    Pulls last 90 days of sold items. You'll add cost basis on Import page.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* StockX Connection */}
+            <div style={{ padding: 20, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: `1px solid ${c.border}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 44, height: 44, background: '#00c165', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 10, color: '#fff' }}>StockX</div>
+                  <div>
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>StockX</div>
+                    <div style={{ fontSize: 12, color: c.textMuted }}>
+                      {stockxConnected ? '✓ Connected' : 'Coming soon - use CSV import for now'}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, fontWeight: 600, fontSize: 13 }}>
+                  {stockxConnected ? 'Connected' : 'CSV Import'}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Simple explanation */}
           <div style={{ ...cardStyle, padding: 24, marginBottom: 16, background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.1)' }}>
             <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700 }}>💡 Fee Settings</h3>
