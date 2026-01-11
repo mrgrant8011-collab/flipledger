@@ -30,7 +30,12 @@ export default async function handler(req, res) {
     
     if (!txResponse.ok) {
       const errorText = await txResponse.text();
-      return res.status(txResponse.status).json({ error: 'Failed', details: errorText });
+      return res.status(txResponse.status).json({ 
+        error: 'eBay API Failed', 
+        status: txResponse.status,
+        details: errorText,
+        tokenPreview: accessToken.substring(0, 20) + '...'
+      });
     }
     
     const txData = await txResponse.json();
@@ -50,6 +55,6 @@ export default async function handler(req, res) {
     });
     
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Server error', message: err.message, stack: err.stack });
   }
 }
