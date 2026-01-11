@@ -2215,6 +2215,75 @@ function App() {
             </div>
           </div>
 
+          {/* eBay API Sync Section */}
+          <div style={{ ...cardStyle, marginBottom: 16 }}>
+            <div style={{ padding: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
+                <div style={{ width: 54, height: 54, background: 'linear-gradient(135deg, #e53238 0%, #c62828 100%)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, color: '#fff' }}>eBay</div>
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>EBAY API SYNC</h3>
+                  <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>
+                    {ebayConnected ? '✓ Connected - Pull your sold items automatically' : 'Connect your eBay account to sync sales'}
+                  </p>
+                </div>
+              </div>
+              
+              {ebayConnected ? (
+                <div>
+                  <button
+                    onClick={async () => {
+                      setSyncing(true);
+                      try {
+                        const token = localStorage.getItem('flipledger_ebay_token');
+                        const res = await fetch('/api/ebay-sales', {
+                          headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        const data = await res.json();
+                        if (data.success && data.sales && data.sales.length > 0) {
+                          const newPending = data.sales.map(s => ({
+                            ...s,
+                            id: s.id || Date.now() + Math.random(),
+                            platform: 'eBay',
+                            needsCost: true
+                          }));
+                          const existingIds = new Set([...sales.map(s => s.orderId), ...pendingCosts.map(p => p.orderId)]);
+                          const fresh = newPending.filter(s => !existingIds.has(s.orderId));
+                          if (fresh.length > 0) {
+                            setPendingCosts(prev => [...prev, ...fresh]);
+                            localStorage.setItem('flipledger_pending', JSON.stringify([...pendingCosts, ...fresh]));
+                            alert(`Imported ${fresh.length} new sales from eBay! Add cost basis below.`);
+                          } else {
+                            alert('No new sales to import. All caught up!');
+                          }
+                        } else {
+                          alert('No sales found or error: ' + (data.error || 'Failed to fetch orders'));
+                        }
+                      } catch (err) {
+                        console.error('eBay sync error:', err);
+                        alert('Failed to sync: ' + err.message);
+                      }
+                      setSyncing(false);
+                    }}
+                    disabled={syncing}
+                    style={{ width: '100%', padding: '14px', background: `linear-gradient(135deg, #e53238 0%, #c62828 100%)`, border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, fontSize: 14, cursor: syncing ? 'wait' : 'pointer', opacity: syncing ? 0.7 : 1 }}
+                  >
+                    {syncing ? '⏳ Syncing...' : '🔄 Sync eBay Sales (Last 90 Days)'}
+                  </button>
+                  <p style={{ margin: '10px 0 0', fontSize: 11, color: c.textMuted, textAlign: 'center' }}>
+                    Pulls your sold items. You'll add cost basis to calculate profit.
+                  </p>
+                </div>
+              ) : (
+                <button
+                  onClick={() => window.location.href = '/api/ebay-auth'}
+                  style={{ width: '100%', padding: '14px', background: '#e53238', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}
+                >
+                  🔗 Connect eBay Account
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Other Platforms */}
           {[
             { name: 'GOAT', code: 'GT', color: '#1a1a1a', border: '#333', connected: goatConnected, setConnected: setGoatConnected, desc: 'Auto-import your GOAT sales' },
@@ -2446,52 +2515,9 @@ function App() {
               </div>
               
               {ebayConnected && (
-                <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${c.border}` }}>
-                  <button
-                    onClick={async () => {
-                      setSyncing(true);
-                      try {
-                        const token = localStorage.getItem('flipledger_ebay_token');
-                        const res = await fetch('/api/ebay-sales', {
-                          headers: { 'Authorization': `Bearer ${token}` }
-                        });
-                        const data = await res.json();
-                        if (data.success && data.sales && data.sales.length > 0) {
-                          // Add to pending costs for user to add cost basis
-                          const newPending = data.sales.map(s => ({
-                            ...s,
-                            id: s.id || Date.now() + Math.random(),
-                            platform: 'eBay',
-                            needsCost: true
-                          }));
-                          // Filter out already imported
-                          const existingIds = new Set([...sales.map(s => s.orderId), ...pendingCosts.map(p => p.orderId)]);
-                          const fresh = newPending.filter(s => !existingIds.has(s.orderId));
-                          if (fresh.length > 0) {
-                            setPendingCosts(prev => [...prev, ...fresh]);
-                            localStorage.setItem('flipledger_pending', JSON.stringify([...pendingCosts, ...fresh]));
-                            alert(`Imported ${fresh.length} new sales from eBay! Go to Import page to add cost basis.`);
-                            setPage('import');
-                          } else {
-                            alert('No new sales to import.');
-                          }
-                        } else {
-                          alert('No sales found or error: ' + (data.error || 'Unknown'));
-                        }
-                      } catch (err) {
-                        console.error('eBay sync error:', err);
-                        alert('Failed to sync: ' + err.message);
-                      }
-                      setSyncing(false);
-                    }}
-                    disabled={syncing}
-                    style={{ width: '100%', padding: '12px', background: `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)`, border: 'none', borderRadius: 8, color: '#000', fontWeight: 600, fontSize: 13, cursor: syncing ? 'wait' : 'pointer', opacity: syncing ? 0.7 : 1 }}
-                  >
-                    {syncing ? '⏳ Syncing...' : '🔄 Sync eBay Sales'}
-                  </button>
-                  <p style={{ margin: '10px 0 0', fontSize: 11, color: c.textMuted, textAlign: 'center' }}>
-                    Pulls last 90 days of sold items. You'll add cost basis on Import page.
-                  </p>
+                <div style={{ marginTop: 12, padding: '10px 12px', background: 'rgba(16,185,129,0.1)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ color: c.green, fontSize: 12 }}>✓ Connected</span>
+                  <span style={{ color: c.textMuted, fontSize: 11 }}>• Go to Import page to sync sales</span>
                 </div>
               )}
             </div>
