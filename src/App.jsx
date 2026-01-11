@@ -767,20 +767,27 @@ function App() {
       const text = event.target.result;
       const lines = text.split(/\r?\n/);
       
-      // Find header row (eBay has metadata rows at top)
+      // Detect which report type: Order Earnings Report or Transaction Report
+      const isOrderEarningsReport = text.includes('Order earnings report') || text.includes('Order creation date,Order number');
+      console.log('eBay CSV Type:', isOrderEarningsReport ? 'ORDER EARNINGS REPORT ✓' : 'Transaction Report');
+      
+      // Find header row
       let headerIndex = 0;
-      for (let i = 0; i < Math.min(20, lines.length); i++) {
-        if (lines[i].includes('Transaction creation date')) {
+      for (let i = 0; i < Math.min(25, lines.length); i++) {
+        if (isOrderEarningsReport && lines[i].includes('Order creation date')) {
+          headerIndex = i;
+          break;
+        } else if (!isOrderEarningsReport && lines[i].includes('Transaction creation date')) {
           headerIndex = i;
           break;
         }
       }
       
       const headers = parseCSVLine(lines[headerIndex]).map(h => h.replace(/^\uFEFF/, ''));
-      console.log('eBay CSV - Header index:', headerIndex, 'Headers:', headers.slice(0, 10));
+      console.log('eBay CSV - Headers:', headers.slice(0, 8));
       
       const orders = [];
-      const adFees = {}; // Map order number -> ad fee amount
+      const adFees = {}; // Only used for Transaction Report format
       
       for (let i = headerIndex + 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
@@ -790,46 +797,64 @@ function App() {
           row[h] = values[idx] || '';
         });
         
-        // Capture "Order" type rows
-        if (row['Type'] === 'Order') {
-          const ebayDate = row['Transaction creation date'] || '';
-          if (ebayDate) {
-            const match = ebayDate.match(/(\w+)\s+(\d+),?\s+(\d{4})/);
+        if (isOrderEarningsReport) {
+          // ORDER EARNINGS REPORT - has "Order earnings" column directly!
+          const dateField = row['Order creation date'] || '';
+          if (dateField && dateField !== '--') {
+            const match = dateField.match(/(\w+)\s+(\d+),?\s+(\d{4})/);
             if (match) {
               row['_parsedDate'] = `${match[3]}-${months[match[1]] || '01'}-${match[2].padStart(2, '0')}`;
             }
+            row['_reportType'] = 'orderEarnings';
+            orders.push(row);
           }
-          orders.push(row);
-        }
-        
-        // Capture Promoted Listing fees - match to order number
-        if (row['Type'] === 'Fee' || row['Type'] === 'Other fee') {
-          const desc = (row['Description'] || '').toLowerCase();
-          console.log('Found fee row:', row['Type'], '| Order:', row['Order number'], '| Desc:', desc.substring(0, 40), '| Net:', row['Net amount']);
+        } else {
+          // TRANSACTION REPORT - need to calculate from Net amount - ad fees
+          if (row['Type'] === 'Order') {
+            const ebayDate = row['Transaction creation date'] || '';
+            if (ebayDate) {
+              const match = ebayDate.match(/(\w+)\s+(\d+),?\s+(\d{4})/);
+              if (match) {
+                row['_parsedDate'] = `${match[3]}-${months[match[1]] || '01'}-${match[2].padStart(2, '0')}`;
+              }
+            }
+            row['_reportType'] = 'transaction';
+            orders.push(row);
+          }
           
-          if (desc.includes('promoted') || desc.includes('ad fee') || desc.includes('advertising')) {
-            const orderNum = row['Order number'] || '';
-            if (orderNum) {
-              const feeAmount = Math.abs(parseFloat((row['Net amount'] || row['Gross transaction amount'] || '0').toString().replace(/[$,]/g, ''))) || 0;
-              console.log('>>> Captured ad fee:', orderNum, '=', feeAmount);
-              adFees[orderNum] = (adFees[orderNum] || 0) + feeAmount;
+          // Capture Promoted Listing fees from fee rows
+          const rowType = (row['Type'] || '').trim().toLowerCase();
+          if (rowType === 'fee' || rowType === 'other fee') {
+            const desc = (row['Description'] || '').toLowerCase();
+            if (desc.includes('promoted')) {
+              const orderNum = row['Order number'] || '';
+              if (orderNum && orderNum !== '--') {
+                const feeAmount = Math.abs(parseFloat((row['Net amount'] || '0').toString().replace(/[$,]/g, ''))) || 0;
+                adFees[orderNum] = (adFees[orderNum] || 0) + feeAmount;
+              }
             }
           }
         }
       }
       
-      // Attach ad fees to their orders
-      orders.forEach(order => {
-        const orderNum = order['Order number'] || '';
-        order['_adFee'] = adFees[orderNum] || 0;
-        if (order['_adFee'] > 0) {
-          console.log('Attached ad fee to order:', orderNum, '| AdFee:', order['_adFee']);
-        }
-      });
+      // For Transaction Report, attach ad fees to orders
+      if (!isOrderEarningsReport) {
+        orders.forEach(order => {
+          const orderNum = order['Order number'] || '';
+          order['_adFee'] = adFees[orderNum] || 0;
+        });
+        console.log('Transaction Report - Ad fees captured:', Object.keys(adFees).length);
+      }
       
       console.log('eBay CSV - Parsed orders:', orders.length);
-      console.log('eBay CSV - Ad fees found:', JSON.stringify(adFees));
-      console.log('eBay CSV - Sample order:', orders[0] ? { name: orders[0]['Item title'], net: orders[0]['Net amount'], adFee: orders[0]['_adFee'] } : 'none');
+      if (orders.length > 0) {
+        const sample = orders[0];
+        if (isOrderEarningsReport) {
+          console.log('Sample:', sample['Item title']?.substring(0, 30), '| Gross:', sample['Gross amount'], '| OrderEarnings:', sample['Order earnings']);
+        } else {
+          console.log('Sample:', sample['Item title']?.substring(0, 30), '| Gross:', sample['Gross transaction amount'], '| Net:', sample['Net amount'], '| AdFee:', sample['_adFee']);
+        }
+      }
       
       setEbayImport({ show: true, data: orders, headers, year: 'all', month: 'all' });
     };
@@ -920,38 +945,33 @@ function App() {
     const filtered = filterEbayData();
     const parseAmount = (val) => parseFloat((val || '0').toString().replace(/[$,]/g, '')) || 0;
     
-    // Debug first item
-    if (filtered.length > 0) {
-      const first = filtered[0];
-      console.log('eBay Import - First item raw:', {
-        name: first['Item title'],
-        gross: first['Gross transaction amount'],
-        net: first['Net amount'],
-        adFee: first['_adFee']
-      });
-    }
-    
     const newPending = filtered.map(row => {
-      // SOLD = Gross transaction amount (what buyer paid)
-      const grossAmount = parseAmount(row['Gross transaction amount']);
+      const isOrderEarningsReport = row['_reportType'] === 'orderEarnings';
       
-      // PAYOUT = Net amount (what seller receives - already calculated by eBay)
-      const netAmount = parseAmount(row['Net amount']);
+      let salePrice, payout, totalFees;
       
-      // Ad fees from separate "Other fee" rows
-      const adFee = parseFloat(row['_adFee'] || 0);
-      
-      // TRUE PAYOUT = Net amount minus promoted listing fees
-      const truePayout = netAmount - adFee;
-      
-      // Fees from the fee columns (for display only)
-      const feeFixed = Math.abs(parseAmount(row['Final Value Fee - fixed']));
-      const feeVariable = Math.abs(parseAmount(row['Final Value Fee - variable']));
-      const regFee = Math.abs(parseAmount(row['Regulatory operating fee']));
-      const intlFee = Math.abs(parseAmount(row['International fee']));
-      const totalFees = feeFixed + feeVariable + regFee + intlFee + adFee;
-      
-      console.log('eBay Import - Processing:', row['Item title']?.substring(0, 30), '| Gross:', grossAmount, '| Net:', netAmount, '| AdFee:', adFee, '| TruePayout:', truePayout);
+      if (isOrderEarningsReport) {
+        // ORDER EARNINGS REPORT - use columns directly!
+        salePrice = parseAmount(row['Gross amount']);
+        payout = parseAmount(row['Order earnings']); // TRUE PAYOUT - already calculated by eBay!
+        totalFees = Math.abs(parseAmount(row['Expenses']));
+        
+        console.log('Order Earnings Import:', row['Item title']?.substring(0, 25), '| Gross:', salePrice, '| OrderEarnings:', payout);
+      } else {
+        // TRANSACTION REPORT - calculate payout
+        salePrice = parseAmount(row['Gross transaction amount']);
+        const netAmount = parseAmount(row['Net amount']);
+        const adFee = parseFloat(row['_adFee'] || 0);
+        payout = netAmount - adFee; // Net minus ad fees
+        
+        const feeFixed = Math.abs(parseAmount(row['Final Value Fee - fixed']));
+        const feeVariable = Math.abs(parseAmount(row['Final Value Fee - variable']));
+        const regFee = Math.abs(parseAmount(row['Regulatory operating fee']));
+        const intlFee = Math.abs(parseAmount(row['International fee']));
+        totalFees = feeFixed + feeVariable + regFee + intlFee + adFee;
+        
+        console.log('Transaction Import:', row['Item title']?.substring(0, 25), '| Gross:', salePrice, '| Net:', netAmount, '| AdFee:', adFee, '| Payout:', payout);
+      }
       
       return {
         id: 'ebay_' + (row['Order number'] || Date.now() + Math.random()),
@@ -960,13 +980,13 @@ function App() {
         name: row['Item title'] || 'Unknown Item',
         sku: row['Custom label'] || '',
         size: '',
-        salePrice: grossAmount,           // SOLD
-        payout: truePayout,               // TRUE PAYOUT (Net minus ad fees)
+        salePrice: salePrice,  // SOLD
+        payout: payout,        // TRUE PAYOUT
         fees: totalFees,
         saleDate: row['_parsedDate'] || '',
         platform: 'eBay',
         source: 'csv',
-        buyer: row['Buyer username'] || ''
+        buyer: row['Buyer name'] || row['Buyer username'] || ''
       };
     });
     
