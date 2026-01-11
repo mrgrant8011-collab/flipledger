@@ -8,16 +8,22 @@ export default async function handler(req, res) {
   
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.log('No auth header provided');
     return res.status(401).json({ error: 'No token provided' });
   }
   
   const accessToken = authHeader.replace('Bearer ', '');
+  console.log('Token received, length:', accessToken.length);
+  
   const { startDate, endDate } = req.query;
   const end = endDate || new Date().toISOString();
   const start = startDate || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   
+  console.log('Date range:', start, 'to', end);
+  
   try {
     // Step 1: Get orders from Fulfillment API
+    console.log('Fetching orders from Fulfillment API...');
     const ordersResponse = await fetch(
       `https://api.ebay.com/sell/fulfillment/v1/order?filter=creationdate:[${start}..${end}]&limit=200`,
       {
@@ -29,9 +35,12 @@ export default async function handler(req, res) {
       }
     );
     
+    console.log('Orders response status:', ordersResponse.status);
+    
     if (!ordersResponse.ok) {
       const errorText = await ordersResponse.text();
-      return res.status(ordersResponse.status).json({ error: 'Failed to fetch orders', details: errorText });
+      console.log('Orders API error:', errorText);
+      return res.status(ordersResponse.status).json({ error: 'Failed to fetch orders', details: errorText, status: ordersResponse.status });
     }
     
     const ordersData = await ordersResponse.json();

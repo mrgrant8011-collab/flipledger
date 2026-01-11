@@ -2351,29 +2351,36 @@ function App() {
                       setSyncing(true);
                       try {
                         let token = localStorage.getItem('flipledger_ebay_token');
+                        console.log('Starting eBay sync with token length:', token?.length);
+                        
                         let res = await fetch('/api/ebay-sales', {
                           headers: { 'Authorization': `Bearer ${token}` }
                         });
+                        
+                        console.log('Initial response status:', res.status);
                         
                         // If failed, try to refresh token
                         if (!res.ok) {
                           console.log('Token may be expired, attempting refresh...');
                           const refreshToken = localStorage.getItem('flipledger_ebay_refresh');
-                          if (refreshToken) {
+                          
+                          if (refreshToken && refreshToken.length > 10) {
                             const refreshRes = await fetch('/api/ebay-refresh', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ refresh_token: refreshToken })
                             });
                             const refreshData = await refreshRes.json();
+                            console.log('Refresh result:', refreshData.access_token ? 'success' : 'failed');
+                            
                             if (refreshData.access_token) {
                               token = refreshData.access_token;
                               localStorage.setItem('flipledger_ebay_token', token);
-                              console.log('Token refreshed successfully');
                               // Retry with new token
                               res = await fetch('/api/ebay-sales', {
                                 headers: { 'Authorization': `Bearer ${token}` }
                               });
+                              console.log('Retry response status:', res.status);
                             } else {
                               // Refresh failed, need to reconnect
                               localStorage.removeItem('flipledger_ebay_token');
@@ -2383,6 +2390,15 @@ function App() {
                               setSyncing(false);
                               return;
                             }
+                          } else {
+                            // No refresh token available, need to reconnect
+                            console.log('No refresh token available');
+                            localStorage.removeItem('flipledger_ebay_token');
+                            localStorage.removeItem('flipledger_ebay_refresh');
+                            setEbayConnected(false);
+                            alert('eBay session expired. Please reconnect your account.');
+                            setSyncing(false);
+                            return;
                           }
                         }
                         
@@ -2423,7 +2439,8 @@ function App() {
                             alert('No new sales to import. All caught up!');
                           }
                         } else {
-                          alert('No sales found or error: ' + (data.error || 'Failed to fetch orders'));
+                          console.log('Sync failed, response:', data);
+                          alert('Sync error: ' + JSON.stringify(data));
                         }
                       } catch (err) {
                         console.error('eBay sync error:', err);

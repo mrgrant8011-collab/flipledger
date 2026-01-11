@@ -25,12 +25,11 @@ export default async function handler(req, res) {
   // Base64 encode credentials
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
   
-  // Scopes to request
+  // Scopes to request (must match what was requested in auth)
   const scopes = [
     'https://api.ebay.com/oauth/api_scope',
     'https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly',
-    'https://api.ebay.com/oauth/api_scope/sell.finances.readonly',
-    'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly'
+    'https://api.ebay.com/oauth/api_scope/sell.finances'
   ].join(' ');
   
   try {

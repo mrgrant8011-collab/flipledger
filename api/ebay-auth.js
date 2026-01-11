@@ -21,8 +21,12 @@ export default function handler(req, res) {
     });
   }
   
-  // Simplified scope - just the basic one that's always available
-  const scopes = 'https://api.ebay.com/oauth/api_scope';
+  // Required scopes for accessing orders and financial data
+  const scopes = [
+    'https://api.ebay.com/oauth/api_scope',
+    'https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly',
+    'https://api.ebay.com/oauth/api_scope/sell.finances'
+  ].join(' ');
   
   // eBay OAuth URL
   const authUrl = `https://auth.ebay.com/oauth2/authorize?client_id=${clientId}&response_type=code&redirect_uri=${ruName}&scope=${encodeURIComponent(scopes)}`;
