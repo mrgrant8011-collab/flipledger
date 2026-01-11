@@ -2456,6 +2456,26 @@ function App() {
                   <p style={{ margin: '10px 0 0', fontSize: 11, color: c.textMuted, textAlign: 'center' }}>
                     Pulls your sold items. You'll add cost basis to calculate profit.
                   </p>
+                  <button
+                    onClick={async () => {
+                      const token = localStorage.getItem('flipledger_ebay_token');
+                      const res = await fetch('/api/ebay-debug', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                      });
+                      const data = await res.json();
+                      // Download as JSON file
+                      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = 'ebay-debug.json';
+                      a.click();
+                      alert('Debug data downloaded! Please share ebay-debug.json');
+                    }}
+                    style={{ width: '100%', marginTop: 10, padding: '10px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, fontSize: 12, cursor: 'pointer' }}
+                  >
+                    🔍 Download Debug Data
+                  </button>
                 </div>
               ) : (
                 <button
