@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   const accessToken = authHeader.replace('Bearer ', '');
   const { startDate, endDate } = req.query;
   const end = endDate || new Date().toISOString();
-  const start = startDate || new Date(Date.now() - 120 * 24 * 60 * 60 * 1000).toISOString();
+  const start = startDate || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   
   try {
     // 1. Get orders from Fulfillment API
