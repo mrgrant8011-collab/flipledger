@@ -1,17 +1,178 @@
 import { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
+
+// SalesPage as separate component for proper re-rendering
+function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPage, selectedSales, setSelectedSales, sales, setSales, settings, setModal, ITEMS_PER_PAGE, cardStyle, btnPrimary, c, fmt, exportCSV }) {
+  // Filter
+  const searchTerm = (formData.salesSearch || '').toLowerCase().trim();
+  const platformFilter = formData.salesFilter || 'all';
+  const monthFilter = formData.salesMonth || 'all';
+  const sortBy = formData.salesSort || 'newest';
+  
+  const filtered = filteredSales.filter(s => {
+    if (searchTerm) {
+      const inName = s.name && s.name.toLowerCase().includes(searchTerm);
+      const inSku = s.sku && s.sku.toLowerCase().includes(searchTerm);
+      const inSize = s.size && s.size.toString().toLowerCase().includes(searchTerm);
+      if (!inName && !inSku && !inSize) return false;
+    }
+    if (platformFilter !== 'all' && s.platform !== platformFilter) return false;
+    if (monthFilter !== 'all' && (!s.saleDate || s.saleDate.substring(5, 7) !== monthFilter)) return false;
+    return true;
+  });
+  
+  // Sort
+  const sorted = [...filtered].sort((a, b) => {
+    switch(sortBy) {
+      case 'oldest': return new Date(a.saleDate || 0) - new Date(b.saleDate || 0);
+      case 'newest': return new Date(b.saleDate || 0) - new Date(a.saleDate || 0);
+      case 'nameAZ': return (a.name || '').localeCompare(b.name || '');
+      case 'nameZA': return (b.name || '').localeCompare(a.name || '');
+      case 'skuAZ': return (a.sku || '').localeCompare(b.sku || '');
+      case 'skuZA': return (b.sku || '').localeCompare(a.sku || '');
+      case 'sizeAsc': return parseFloat(a.size || 0) - parseFloat(b.size || 0);
+      case 'sizeDesc': return parseFloat(b.size || 0) - parseFloat(a.size || 0);
+      case 'platformAZ': return (a.platform || '').localeCompare(b.platform || '');
+      case 'costLow': return (a.cost || 0) - (b.cost || 0);
+      case 'costHigh': return (b.cost || 0) - (a.cost || 0);
+      case 'priceLow': return (a.salePrice || 0) - (b.salePrice || 0);
+      case 'priceHigh': return (b.salePrice || 0) - (a.salePrice || 0);
+      case 'feesLow': return (a.fees || 0) - (b.fees || 0);
+      case 'feesHigh': return (b.fees || 0) - (a.fees || 0);
+      case 'profitLow': return (a.profit || 0) - (b.profit || 0);
+      case 'profitHigh': return (b.profit || 0) - (a.profit || 0);
+      default: return new Date(b.saleDate || 0) - new Date(a.saleDate || 0);
+    }
+  });
+  
+  // Paginate
+  const total = sorted.length;
+  const pages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE));
+  const page = Math.min(salesPage, pages);
+  const start = (page - 1) * ITEMS_PER_PAGE;
+  const end = Math.min(start + ITEMS_PER_PAGE, total);
+  const items = sorted.slice(start, end);
+  const itemIds = items.map(s => s.id);
+  const allSelected = items.length > 0 && itemIds.every(id => selectedSales.has(id));
+  const profit = sorted.reduce((sum, s) => sum + (s.profit || 0), 0);
+
+  return <div>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 20 }}>
+      <div style={{ ...cardStyle, padding: 16 }}><span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL SALES</span><p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: '#fff' }}>{total}</p></div>
+      <div style={{ ...cardStyle, padding: 16 }}><span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL PROFIT</span><p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: profit >= 0 ? c.emerald : c.red }}>{fmt(profit)}</p></div>
+    </div>
+
+    <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+      <input type="text" placeholder="🔍 Search by name, SKU, or size..." value={formData.salesSearch || ''} onChange={e => { setFormData({ ...formData, salesSearch: e.target.value }); setSalesPage(1); }} style={{ flex: 1, minWidth: 200, padding: 14, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 14 }} />
+      <select value={formData.salesMonth || 'all'} onChange={e => { setFormData({ ...formData, salesMonth: e.target.value }); setSalesPage(1); }} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13 }}>
+        <option value="all">All Months</option><option value="01">January</option><option value="02">February</option><option value="03">March</option><option value="04">April</option><option value="05">May</option><option value="06">June</option><option value="07">July</option><option value="08">August</option><option value="09">September</option><option value="10">October</option><option value="11">November</option><option value="12">December</option>
+      </select>
+      <select value={formData.salesFilter || 'all'} onChange={e => { setFormData({ ...formData, salesFilter: e.target.value }); setSalesPage(1); }} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13 }}>
+        <option value="all">All Platforms</option><option value="StockX Standard">StockX Standard</option><option value="StockX Direct">StockX Direct</option><option value="StockX Flex">StockX Flex</option><option value="GOAT">GOAT</option><option value="eBay">eBay</option><option value="Local">Local</option>
+      </select>
+      <button onClick={() => { setFormData({}); setModal('sale'); }} style={{ padding: '14px 24px', ...btnPrimary, fontSize: 13 }}>+ RECORD SALE</button>
+    </div>
+
+    <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${c.border}`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <button onClick={() => {
+          // Get fresh IDs directly from the items currently showing
+          const freshIds = [];
+          for (let i = 0; i < items.length; i++) {
+            if (items[i] && items[i].id !== undefined && items[i].id !== null) {
+              freshIds.push(items[i].id);
+            }
+          }
+          console.log('Selecting', freshIds.length, 'items with IDs:', freshIds);
+          // Use array instead of Set initially
+          const selected = {};
+          freshIds.forEach(id => { selected[id] = true; });
+          // Convert to Set
+          setSelectedSales(new Set(Object.keys(selected).map(k => isNaN(Number(k)) ? k : Number(k))));
+        }} style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, color: c.emerald, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>✓ Select Page ({items.length})</button>
+        {selectedSales.size > 0 && <button onClick={() => setSelectedSales(new Set())} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>✗ Clear</button>}
+      </div>
+      <span style={{ fontSize: 13, color: selectedSales.size > 0 ? c.emerald : c.textMuted, fontWeight: selectedSales.size > 0 ? 700 : 400 }}>{selectedSales.size > 0 ? `${selectedSales.size} selected` : 'None selected'}</span>
+    </div>
+
+    {selectedSales.size > 0 && <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <span style={{ fontWeight: 700, color: c.red, fontSize: 14 }}>🗑️ {selectedSales.size} ready to delete</span>
+      <button onClick={() => { if(confirm(`DELETE ${selectedSales.size} SALES?`)) { setSales(sales.filter(s => !selectedSales.has(s.id))); setSelectedSales(new Set()); }}} style={{ padding: '10px 24px', background: c.red, border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700 }}>🗑️ DELETE {selectedSales.size}</button>
+    </div>}
+
+    <div style={cardStyle}>
+      <div style={{ padding: '14px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 13, color: c.textMuted }}>{total > 0 ? `Showing ${start + 1}-${end} of ${total}` : 'No sales'}</span>
+        <button onClick={() => exportCSV(sorted, 'sales.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
+      </div>
+      
+      <div style={{ display: 'grid', gridTemplateColumns: '40px 85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
+        <div><input type="checkbox" checked={allSelected} onChange={e => setSelectedSales(e.target.checked ? new Set(itemIds) : new Set())} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }} /></div>
+        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'oldest' ? 'newest' : 'oldest' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'oldest' || sortBy === 'newest') ? c.emerald : c.textMuted, cursor: 'pointer' }}>DATE {sortBy === 'oldest' ? '▲' : sortBy === 'newest' ? '▼' : ''}</span>
+        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'nameAZ' ? 'nameZA' : 'nameAZ' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'nameAZ' || sortBy === 'nameZA') ? c.emerald : c.textMuted, cursor: 'pointer' }}>NAME {sortBy === 'nameAZ' ? '▲' : sortBy === 'nameZA' ? '▼' : ''}</span>
+        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'skuAZ' ? 'skuZA' : 'skuAZ' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'skuAZ' || sortBy === 'skuZA') ? c.emerald : c.textMuted, cursor: 'pointer' }}>SKU {sortBy === 'skuAZ' ? '▲' : sortBy === 'skuZA' ? '▼' : ''}</span>
+        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'sizeAsc' ? 'sizeDesc' : 'sizeAsc' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'sizeAsc' || sortBy === 'sizeDesc') ? c.emerald : c.textMuted, cursor: 'pointer' }}>SIZE {sortBy === 'sizeAsc' ? '▲' : sortBy === 'sizeDesc' ? '▼' : ''}</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>PLATFORM</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>COST</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>PRICE</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>FEES</span>
+        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'profitLow' ? 'profitHigh' : 'profitLow' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'profitLow' || sortBy === 'profitHigh') ? c.emerald : c.textMuted, cursor: 'pointer', textAlign: 'right' }}>PROFIT {sortBy === 'profitLow' ? '▲' : sortBy === 'profitHigh' ? '▼' : ''}</span>
+        <span></span><span></span>
+      </div>
+
+      {items.length > 0 ? items.map(s => (
+        <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '40px 85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : 'transparent' }}>
+          <div><input type="checkbox" checked={selectedSales.has(s.id)} onChange={e => { const n = new Set(selectedSales); e.target.checked ? n.add(s.id) : n.delete(s.id); setSelectedSales(n); }} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }} /></div>
+          <span style={{ fontSize: 12, color: c.textMuted }}>{s.saleDate}</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</span>
+          <span style={{ fontSize: 11, color: c.emerald }}>{s.sku || '-'}</span>
+          <span style={{ fontSize: 13 }}>{s.size || '-'}</span>
+          <span style={{ fontSize: 11, color: c.textMuted }}>{s.platform}</span>
+          <span style={{ fontSize: 12, textAlign: 'right', color: c.textMuted }}>{fmt(s.cost)}</span>
+          <span style={{ fontSize: 12, textAlign: 'right' }}>{fmt(s.salePrice)}</span>
+          <span style={{ fontSize: 12, textAlign: 'right', color: c.red }}>{fmt(s.fees)}</span>
+          <span style={{ fontSize: 13, fontWeight: 700, textAlign: 'right', color: s.profit >= 0 ? c.emerald : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</span>
+          <button onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14 }}>✏️</button>
+          <button onClick={() => { setSales(sales.filter(x => x.id !== s.id)); setSelectedSales(prev => { const n = new Set(prev); n.delete(s.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16 }}>×</button>
+        </div>
+      )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💵</div><p style={{ color: c.textMuted }}>No sales</p></div>}
+      
+      {pages > 1 && <div style={{ padding: '16px 20px', borderTop: `1px solid ${c.border}`, display: 'flex', justifyContent: 'center', gap: 8 }}>
+        <button onClick={() => setSalesPage(1)} disabled={page === 1} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: page === 1 ? c.textMuted : '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}>«</button>
+        <button onClick={() => setSalesPage(page - 1)} disabled={page === 1} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: page === 1 ? c.textMuted : '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}>‹</button>
+        {[...Array(Math.min(5, pages))].map((_, i) => { let n = pages <= 5 ? i + 1 : page <= 3 ? i + 1 : page >= pages - 2 ? pages - 4 + i : page - 2 + i; return <button key={n} onClick={() => setSalesPage(n)} style={{ padding: '8px 14px', background: page === n ? c.emerald : 'rgba(255,255,255,0.05)', border: `1px solid ${page === n ? c.emerald : c.border}`, borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: page === n ? 700 : 400 }}>{n}</button>; })}
+        <button onClick={() => setSalesPage(page + 1)} disabled={page === pages} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: page === pages ? c.textMuted : '#fff', cursor: page === pages ? 'not-allowed' : 'pointer', fontSize: 12 }}>›</button>
+        <button onClick={() => setSalesPage(pages)} disabled={page === pages} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: page === pages ? c.textMuted : '#fff', cursor: page === pages ? 'not-allowed' : 'pointer', fontSize: 12 }}>»</button>
+      </div>}
+    </div>
+  </div>;
+}
 
 export default function App() {
   const [page, setPage] = useState('dashboard');
   const [modal, setModal] = useState(null);
-  const [year, setYear] = useState('2025');
-  const [csvImport, setCsvImport] = useState({ show: false, data: [], filteredData: [], year: '2025', month: 'all', preview: false, platform: 'StockX' });
+  const [year, setYear] = useState('2024');
+  const [csvImport, setCsvImport] = useState({ show: false, data: [], filteredData: [], year: 'all', month: 'all', preview: false, headers: [] });
   const [purchases, setPurchases] = useState(() => {
     const saved = localStorage.getItem('flipledger_purchases');
     return saved ? JSON.parse(saved) : [];
   });
   const [sales, setSales] = useState(() => {
     const saved = localStorage.getItem('flipledger_sales');
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) return [];
+    const parsed = JSON.parse(saved);
+    // FIX: Regenerate unique IDs if duplicates exist
+    const ids = new Set();
+    let hasDupes = false;
+    parsed.forEach(s => {
+      if (ids.has(s.id)) hasDupes = true;
+      ids.add(s.id);
+    });
+    if (hasDupes) {
+      console.log('Fixing duplicate IDs in sales...');
+      return parsed.map((s, i) => ({ ...s, id: Date.now() + i }));
+    }
+    return parsed;
   });
   const [expenses, setExpenses] = useState(() => {
     const saved = localStorage.getItem('flipledger_expenses');
@@ -48,9 +209,16 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem('flipledger_pending')) || []; }
     catch { return []; }
   });
+  const [selectedPending, setSelectedPending] = useState(new Set());
+  const [bulkCost, setBulkCost] = useState('');
   const [selectedSales, setSelectedSales] = useState(new Set());
+  const [selectedInventory, setSelectedInventory] = useState(new Set());
   const [salesPage, setSalesPage] = useState(1);
   const [inventoryPage, setInventoryPage] = useState(1);
+  const [invLookupSearch, setInvLookupSearch] = useState('');
+  const [selectedPendingItem, setSelectedPendingItem] = useState(null);
+  const [showInvCsvImport, setShowInvCsvImport] = useState(false);
+  const [selectedInvLookup, setSelectedInvLookup] = useState(new Set());
   const ITEMS_PER_PAGE = 50;
 
   // Check for StockX token in URL on load
@@ -88,28 +256,26 @@ export default function App() {
       });
       const data = await response.json();
       if (data.sales && data.sales.length > 0) {
-        // Filter out duplicates - check against existing sales AND pending costs
-        const existingOrderIds = new Set([
-          ...sales.filter(s => s.platform === 'StockX').map(s => s.orderNumber || s.sku + s.saleDate),
-          ...pendingCosts.map(s => s.orderNumber || s.sku + s.saleDate)
+        // Filter out duplicates - check pending (by id) AND confirmed sales (by orderId)
+        const existingIds = new Set([
+          ...pendingCosts.map(p => p.id),
+          ...sales.map(s => s.orderId || s.id) // orderId is the original order number
         ]);
         
-        const newSales = data.sales.filter(s => {
-          const orderId = s.orderNumber || s.sku + s.saleDate;
-          return !existingOrderIds.has(orderId);
-        });
+        const newSales = data.sales.filter(s => !existingIds.has(s.id));
         
         if (newSales.length > 0) {
-          setPendingCosts(prev => [...prev, ...newSales.map(s => ({
-            ...s,
-            id: 'stockx_' + (s.orderNumber || s.id) + '_' + Date.now()
-          }))]);
-          alert(`Synced ${newSales.length} NEW sales from ${year} (${data.sales.length - newSales.length} duplicates skipped)`);
+          setPendingCosts(prev => [...prev, ...newSales]);
+          if (data.sales.length - newSales.length > 0) {
+            alert(`Synced ${newSales.length} NEW sales from ${year}! (${data.sales.length - newSales.length} already existed)`);
+          } else {
+            alert(`Synced ${newSales.length} sales from ${year}!`);
+          }
         } else {
-          alert(`No new sales to sync. ${data.sales.length} sales already exist.`);
+          alert(`All ${data.sales.length} sales from ${year} already imported - nothing new to add.`);
         }
       } else {
-        alert(`No sales found for ${year}`);
+        alert(`No sales found on StockX for ${year}`);
       }
     } catch (error) {
       console.error('Failed to fetch StockX sales:', error);
@@ -129,7 +295,7 @@ export default function App() {
 
   const filterByYear = (items, dateField = 'date') => year === 'all' ? items : items.filter(item => item[dateField]?.startsWith(year));
   const inventory = purchases.filter(p => !sales.find(s => s.purchaseId === p.id));
-  const filteredInventory = filterByYear(inventory);
+  const filteredInventory = purchases; // Inventory shows ALL items regardless of year
   const filteredSales = filterByYear(sales, 'saleDate');
   const filteredExpenses = filterByYear(expenses);
   const filteredMileage = filterByYear(mileage);
@@ -153,7 +319,7 @@ export default function App() {
   const totalMileageDeduction = totalMiles * settings.mileageRate;
   const totalDeductions = totalFees + totalExp + totalStor + totalMileageDeduction;
   const netProfit = totalRevenue - totalCOGS - totalDeductions;
-  const inventoryVal = filteredInventory.reduce((s, x) => s + (x.cost || 0), 0);
+  const inventoryVal = purchases.filter(p => !p.sold).reduce((s, x) => s + (x.cost || 0), 0);
   const grossProfit = totalRevenue - totalCOGS;
   const selfEmploymentTax = netProfit > 0 ? netProfit * 0.153 : 0;
   const federalTax = netProfit > 0 ? netProfit * 0.22 : 0;
@@ -181,7 +347,7 @@ export default function App() {
     if (platform === 'StockX' && stockxToken) {
       await fetchStockXSales();
     } else {
-      // Mock data for other platforms (GOAT, eBay API when ready, etc)
+      // Mock data for other platforms
       await new Promise(r => setTimeout(r, 2000));
       const mockSales = [
         { id: platform + '_' + Date.now(), name: 'Jordan 4 Retro Military Black', size: '10', salePrice: 340, fees: 37.40, saleDate: '2025-01-05', platform, payout: 302.60 },
@@ -209,12 +375,22 @@ export default function App() {
   const confirmSaleWithCost = (saleId, cost, channel = 'StockX Standard') => {
     const sale = pendingCosts.find(s => s.id === saleId);
     if (!sale || !cost) return;
+    
+    // CHECK: Don't add if this order already exists in sales
+    const alreadyExists = sales.some(s => s.orderId === sale.id || s.id === sale.id);
+    if (alreadyExists) {
+      console.log('Sale already exists, skipping:', sale.id);
+      setPendingCosts(prev => prev.filter(s => s.id !== saleId)); // Remove from pending anyway
+      return;
+    }
+    
     const costNum = parseFloat(cost);
-    // Use actual payout from StockX, calculate profit
     const profit = sale.payout - costNum;
+    const uniqueId = Date.now() + Math.random();
     setSales(prev => [...prev, { 
       ...sale, 
-      id: Date.now(), 
+      id: uniqueId,
+      orderId: sale.id, // KEEP original order number for deduplication!
       cost: costNum, 
       platform: channel,
       fees: sale.fees || (sale.salePrice - sale.payout),
@@ -236,42 +412,221 @@ export default function App() {
     const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
   };
 
-  // CSV Import for StockX and eBay
+  // Download inventory template CSV
+  const downloadInventoryTemplate = () => {
+    const template = 'Date,Name,SKU,Size,Cost\n1/15/2024,Jordan 4 Retro Example,AB1234-001,10,150\n';
+    const blob = new Blob([template], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'flipledger-inventory-template.csv';
+    a.click();
+  };
+
+  // Import inventory from CSV or XLSX
+  const handleInventoryFileUpload = (e) => {
+    const file = e.target?.files?.[0];
+    if (!file) return;
+    
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+    
+    if (isExcel) {
+      // Handle Excel file
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const data = new Uint8Array(event.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheetName = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+          
+          if (rows.length < 2) {
+            alert('Excel file is empty or has no data rows');
+            return;
+          }
+          
+          // Parse headers (first row)
+          const headers = rows[0].map(h => String(h || '').trim().toLowerCase());
+          
+          // Find column indexes
+          const dateIdx = headers.findIndex(h => h === 'date');
+          const nameIdx = headers.findIndex(h => h === 'name');
+          const skuIdx = headers.findIndex(h => h === 'sku');
+          const sizeIdx = headers.findIndex(h => h === 'size');
+          const costIdx = headers.findIndex(h => h === 'cost');
+          
+          const newItems = [];
+          for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || row.length === 0) continue;
+            
+            // Excel dates might be numbers - convert them
+            let rawDate = dateIdx >= 0 ? row[dateIdx] : '';
+            if (typeof rawDate === 'number') {
+              // Excel date serial number to JS date
+              const excelDate = new Date((rawDate - 25569) * 86400 * 1000);
+              rawDate = excelDate.toISOString().split('T')[0];
+            }
+            
+            const name = nameIdx >= 0 ? String(row[nameIdx] || '') : '';
+            const sku = skuIdx >= 0 ? String(row[skuIdx] || '') : '';
+            const size = sizeIdx >= 0 ? String(row[sizeIdx] || '') : '';
+            const cost = costIdx >= 0 ? parseFloat(row[costIdx]) || 0 : 0;
+            
+            if (name || sku) {
+              newItems.push({
+                id: Date.now() + Math.random() + i,
+                date: parseDate(String(rawDate)) || new Date().toISOString().split('T')[0],
+                name: name || 'Unknown Item',
+                sku: sku,
+                size: size,
+                cost: cost
+              });
+            }
+          }
+          
+          if (newItems.length > 0) {
+            setPurchases(prev => [...prev, ...newItems]);
+            alert(`Imported ${newItems.length} items to inventory!`);
+          } else {
+            alert('No items found. Make sure your Excel file has headers: Date, Name, SKU, Size, Cost');
+          }
+          
+          setShowInvCsvImport(false);
+        } catch (err) {
+          console.error('Excel parse error:', err);
+          alert('Error reading Excel file. Please check the format.');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      // Handle CSV file
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const text = event.target.result;
+        const lines = text.split('\n');
+        
+        // Parse header row
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
+        
+        // Find column indexes
+        const dateIdx = headers.findIndex(h => h === 'date');
+        const nameIdx = headers.findIndex(h => h === 'name');
+        const skuIdx = headers.findIndex(h => h === 'sku');
+        const sizeIdx = headers.findIndex(h => h === 'size');
+        const costIdx = headers.findIndex(h => h === 'cost');
+        
+        const newItems = [];
+        for (let i = 1; i < lines.length; i++) {
+          if (!lines[i].trim()) continue;
+          
+          // Parse CSV line (handle commas in quotes)
+          const values = [];
+          let current = '';
+          let inQuotes = false;
+          for (const char of lines[i]) {
+            if (char === '"') inQuotes = !inQuotes;
+            else if (char === ',' && !inQuotes) { values.push(current.trim()); current = ''; }
+            else current += char;
+          }
+          values.push(current.trim());
+          
+          // Extract values
+          const rawDate = dateIdx >= 0 ? values[dateIdx]?.replace(/"/g, '') : '';
+          const name = nameIdx >= 0 ? values[nameIdx]?.replace(/"/g, '') : '';
+          const sku = skuIdx >= 0 ? values[skuIdx]?.replace(/"/g, '') : '';
+          const size = sizeIdx >= 0 ? values[sizeIdx]?.replace(/"/g, '') : '';
+          const cost = costIdx >= 0 ? parseFloat(values[costIdx]?.replace(/[$",]/g, '')) || 0 : 0;
+          
+          if (name || sku) {
+            newItems.push({
+              id: Date.now() + Math.random() + i,
+              date: parseDate(rawDate) || new Date().toISOString().split('T')[0],
+              name: name || 'Unknown Item',
+              sku: sku || '',
+              size: size || '',
+              cost: cost
+            });
+          }
+        }
+        
+        if (newItems.length > 0) {
+          setPurchases(prev => [...prev, ...newItems]);
+          alert(`Imported ${newItems.length} items to inventory!`);
+        } else {
+          alert('No items found. Make sure your CSV has headers: Date, Name, SKU, Size, Cost');
+        }
+        
+        setShowInvCsvImport(false);
+      };
+      reader.readAsText(file);
+    }
+    
+    if (e.target) e.target.value = ''; // Reset file input
+  };
+
+  // Parse date from various formats to YYYY-MM-DD
+  const parseDate = (dateStr) => {
+    if (!dateStr) return null;
+    const str = dateStr.trim();
+    
+    // Already YYYY-MM-DD format
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+      return str.substring(0, 10);
+    }
+    
+    // MM/DD/YYYY or M/D/YYYY format
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(str)) {
+      const parts = str.split('/');
+      const month = parts[0].padStart(2, '0');
+      const day = parts[1].padStart(2, '0');
+      const year = parts[2].substring(0, 4);
+      return `${year}-${month}-${day}`;
+    }
+    
+    // MM-DD-YYYY format
+    if (/^\d{1,2}-\d{1,2}-\d{4}/.test(str)) {
+      const parts = str.split('-');
+      const month = parts[0].padStart(2, '0');
+      const day = parts[1].padStart(2, '0');
+      const year = parts[2].substring(0, 4);
+      return `${year}-${month}-${day}`;
+    }
+    
+    // Try to parse with Date object as fallback
+    try {
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        return d.toISOString().substring(0, 10);
+      }
+    } catch {}
+    
+    return str.substring(0, 10);
+  };
+
+  // CSV Import for StockX
   const handleCsvUpload = (e) => {
-    const file = e.target.files[0];
+    const file = e.target?.files?.[0] || e;
     if (!file) return;
     
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target.result;
       const lines = text.split('\n');
+      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
       
-      // Find the header row (eBay has metadata rows at top)
-      let headerIndex = 0;
-      for (let i = 0; i < Math.min(20, lines.length); i++) {
-        if (lines[i].includes('Transaction creation date') || lines[i].includes('Sale Date') || lines[i].includes('Order Number')) {
-          headerIndex = i;
-          break;
-        }
-      }
-      
-      const headers = lines[headerIndex].split(',').map(h => h.trim().replace(/"/g, '').replace(/^\uFEFF/, ''));
-      
-      // Auto-detect platform based on headers
-      const headerStr = headers.join(' ').toLowerCase();
-      let detectedPlatform = 'StockX';
-      if (headerStr.includes('transaction creation date') || headerStr.includes('buyer username') || headerStr.includes('final value fee')) {
-        detectedPlatform = 'eBay';
-      }
+      // Debug: log headers to console
+      console.log('CSV Headers:', headers);
       
       const parsed = [];
-      for (let i = headerIndex + 1; i < lines.length; i++) {
+      for (let i = 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
-        // Handle CSV with commas inside quotes
+        // Handle CSV with commas inside quotes - improved regex
         const values = [];
         let current = '';
         let inQuotes = false;
-        for (let char of lines[i]) {
+        for (const char of lines[i]) {
           if (char === '"') {
             inQuotes = !inQuotes;
           } else if (char === ',' && !inQuotes) {
@@ -288,47 +643,50 @@ export default function App() {
           row[h] = values[idx] ? values[idx].replace(/"/g, '').trim() : '';
         });
         
-        // For eBay, only include "Order" type rows
-        if (detectedPlatform === 'eBay') {
-          if (row['Type'] === 'Order') {
-            parsed.push(row);
-          }
-        } else {
-          // StockX - include rows with Sale Date
-          if (row['Sale Date']) parsed.push(row);
+        // Find the date field (try multiple possible names)
+        const dateField = row['Sale Date'] || row['SaleDate'] || row['Date'] || row['Order Date'] || row['Sold Date'] || '';
+        if (dateField) {
+          row['_parsedDate'] = parseDate(dateField);
+          row['_originalDate'] = dateField;
+          parsed.push(row);
         }
       }
       
-      setCsvImport({ ...csvImport, show: true, data: parsed, preview: true, platform: detectedPlatform });
+      // Log sample data for debugging
+      console.log('Sample parsed rows:', parsed.slice(0, 3));
+      console.log('Sample dates:', parsed.slice(0, 5).map(r => ({ original: r['_originalDate'], parsed: r['_parsedDate'] })));
+      
+      setCsvImport({ ...csvImport, show: true, data: parsed, headers: headers, preview: true });
     };
     reader.readAsText(file);
   };
 
+  // Handle drag and drop
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const file = e.dataTransfer.files[0];
+    if (file && file.name.endsWith('.csv')) {
+      handleCsvUpload({ target: { files: [file] } });
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
   const filterCsvData = () => {
-    const { data, year: filterYear, month: filterMonth, platform } = csvImport;
+    const { data, year: filterYear, month: filterMonth } = csvImport;
     return data.filter(row => {
-      // Get date - eBay uses "Transaction creation date", StockX uses "Sale Date"
-      let saleDate = '';
-      if (platform === 'eBay') {
-        // eBay format: "Dec 27, 2025" - need to convert
-        const ebayDate = row['Transaction creation date'] || '';
-        if (ebayDate) {
-          const months = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
-          const match = ebayDate.match(/(\w+)\s+(\d+),\s+(\d{4})/);
-          if (match) {
-            saleDate = `${match[3]}-${months[match[1]] || '01'}-${match[2].padStart(2, '0')}`;
-          }
-        }
-      } else {
-        saleDate = row['Sale Date'] || '';
-      }
+      const parsedDate = row['_parsedDate'] || '';
+      if (!parsedDate) return false;
       
-      if (!saleDate) return filterMonth === 'all';
+      const rowYear = parsedDate.substring(0, 4);
+      const rowMonth = parsedDate.substring(5, 7);
       
-      const rowYear = saleDate.substring(0, 4);
-      const rowMonth = saleDate.substring(5, 7);
-      
-      if (rowYear !== filterYear) return false;
+      // "all" year means show everything
+      if (filterYear !== 'all' && rowYear !== filterYear) return false;
       if (filterMonth !== 'all' && rowMonth !== filterMonth) return false;
       return true;
     });
@@ -336,80 +694,41 @@ export default function App() {
 
   const importCsvSales = () => {
     const filtered = filterCsvData();
-    const platform = csvImport.platform;
-    
+    // Only grab what we actually USE - nothing extra
     const newPending = filtered.map(row => {
-      if (platform === 'eBay') {
-        // Parse eBay date: "Dec 27, 2025" -> "2025-12-27"
-        const ebayDate = row['Transaction creation date'] || '';
-        let saleDate = '';
-        if (ebayDate) {
-          const months = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
-          const match = ebayDate.match(/(\w+)\s+(\d+),\s+(\d{4})/);
-          if (match) {
-            saleDate = `${match[3]}-${months[match[1]] || '01'}-${match[2].padStart(2, '0')}`;
-          }
-        }
-        
-        // Parse amounts (remove $ and commas if present)
-        const parseAmount = (val) => parseFloat((val || '0').toString().replace(/[$,]/g, '')) || 0;
-        
-        const itemSubtotal = parseAmount(row['Item subtotal']);
-        const shipping = parseAmount(row['Shipping and handling']);
-        const grossAmount = parseAmount(row['Gross transaction amount']) || itemSubtotal;
-        const netAmount = parseAmount(row['Net amount']);
-        const feeFixed = Math.abs(parseAmount(row['Final Value Fee - fixed']));
-        const feeVariable = Math.abs(parseAmount(row['Final Value Fee - variable']));
-        const regFee = Math.abs(parseAmount(row['Regulatory operating fee']));
-        const intlFee = Math.abs(parseAmount(row['International fee']));
-        const totalFees = feeFixed + feeVariable + regFee + intlFee;
-        
-        return {
-          id: 'ebay_csv_' + (row['Order number'] || Date.now() + Math.random()),
-          orderNumber: row['Order number'] || '',
-          name: row['Item title'] || 'Unknown Item',
-          sku: row['Custom label'] || '',
-          size: '', // eBay doesn't have a dedicated size field, might be in title
-          salePrice: grossAmount,
-          payout: netAmount,
-          fees: totalFees,
-          saleDate: saleDate,
-          platform: 'eBay',
-          source: 'csv',
-          buyer: row['Buyer username'] || ''
-        };
-      } else {
-        // StockX field mapping
-        const saleDate = row['Sale Date'] ? row['Sale Date'].substring(0, 10) : '';
-        return {
-          id: 'stockx_csv_' + (row['Order Number'] || row['Order Id'] || Date.now() + Math.random()),
-          orderNumber: row['Order Number'] || row['Order Id'] || '',
-          name: row['Item'] || row['Product Name'] || 'Unknown Item',
-          sku: row['Style'] || row['SKU'] || row['Style Code'] || '',
-          size: row['Sku Size'] || row['Size'] || row['Product Size'] || '',
-          salePrice: parseFloat(row['Price'] || row['Sale Price'] || row['Order Total']) || 0,
-          payout: parseFloat(row['Final Payout Amount'] || row['Payout'] || row['Total Payout']) || 0,
-          saleDate: saleDate,
-          platform: 'StockX',
-          source: 'csv'
-        };
-      }
+      const orderNum = row['Order Number'] || row['Order Id'] || row['Order #'] || '';
+      const salePrice = parseFloat((row['Price'] || row['Sale Price'] || row['Order Total'] || '0').replace(/[$,]/g, '')) || 0;
+      const payout = parseFloat((row['Final Payout Amount'] || row['Payout'] || row['Total Payout'] || '0').replace(/[$,]/g, '')) || 0;
+      
+      return {
+        id: orderNum || Date.now() + Math.random(),
+        name: row['Item'] || row['Product Name'] || 'Unknown Item',
+        sku: row['Style'] || row['SKU'] || row['Style Code'] || '',
+        size: String(row['Sku Size'] || row['Size'] || row['Product Size'] || ''),
+        salePrice,
+        payout,
+        saleDate: row['_parsedDate'] || ''
+      };
     });
     
-    // Calculate fees from payout if not explicit
-    newPending.forEach(sale => {
-      if (!sale.fees && sale.salePrice && sale.payout) {
-        sale.fees = Math.abs(sale.salePrice - sale.payout);
-      }
-    });
-    
-    // Avoid duplicates by checking order number
-    const existingIds = new Set([...pendingCosts.map(p => p.orderNumber), ...sales.map(s => s.orderNumber)]);
-    const uniqueNew = newPending.filter(p => p.orderNumber && !existingIds.has(p.orderNumber));
+    // Avoid duplicates - check pending (by id) AND confirmed sales (by orderId)
+    const existingIds = new Set([
+      ...pendingCosts.map(p => p.id),
+      ...sales.map(s => s.orderId || s.id) // orderId is the original order number
+    ]);
+    const uniqueNew = newPending.filter(p => !existingIds.has(p.id));
     
     setPendingCosts([...pendingCosts, ...uniqueNew]);
-    setCsvImport({ show: false, data: [], filteredData: [], year: '2025', month: 'all', preview: false, platform: 'StockX' });
-    alert(`Imported ${uniqueNew.length} ${platform} sales! (${newPending.length - uniqueNew.length} duplicates skipped)`);
+    setCsvImport({ show: false, data: [], filteredData: [], year: 'all', month: 'all', preview: false, headers: [] });
+    
+    // Clear message based on what happened
+    if (uniqueNew.length === 0) {
+      alert(`All ${newPending.length} sales already imported - nothing new to add.`);
+    } else if (newPending.length - uniqueNew.length > 0) {
+      alert(`Imported ${uniqueNew.length} NEW sales! (${newPending.length - uniqueNew.length} already existed)`);
+    } else {
+      alert(`Imported ${uniqueNew.length} sales!`);
+    }
   };
 
   const printTaxPackage = () => {
@@ -490,13 +809,13 @@ export default function App() {
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '⬡' },
-    { id: 'inventory', label: 'Inventory', icon: '◫', count: filteredInventory.length },
+    { id: 'inventory', label: 'Inventory', icon: '◫', count: purchases.filter(p => !p.sold).length },
     { id: 'sales', label: 'Sales', icon: '◈', count: filteredSales.length },
     { type: 'divider' },
     { id: 'expenses', label: 'Expenses', icon: '◧' },
     { id: 'reports', label: 'CPA Reports', icon: '📊' },
     { type: 'divider' },
-    { id: 'integrations', label: 'Integrations', icon: '🔗', badge: pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length || null },
+    { id: 'import', label: 'Import', icon: '📥', badge: pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length || null },
     { id: 'settings', label: 'Settings', icon: '⚙' },
   ];
 
@@ -547,114 +866,379 @@ export default function App() {
         </div>
 
         {/* DASHBOARD */}
-        {page === 'dashboard' && <>
-          {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length > 0 && <div className="pending-pulse" style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 14, padding: 16, marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><div><span style={{ fontSize: 20, marginRight: 10 }}>⚠️</span><span style={{ color: c.gold, fontWeight: 600 }}>{pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} sales need cost basis</span></div><button className="btn-hover" onClick={() => setPage('integrations')} style={{ padding: '8px 16px', background: c.gold, border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer' }}>REVIEW</button></div>}
-          
-          {/* TOP STATS */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
+        {page === 'dashboard' && (() => {
+          // Live Pulse Component
+          const LivePulse = ({ color = '#10b981', size = 8, speed = 2, label = null, style = {} }) => (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, ...style }}>
+              <div style={{ position: 'relative', width: size, height: size }}>
+                <div className="pulse-ring" style={{ position: 'absolute', inset: -4, borderRadius: '50%', background: color, opacity: 0.3 }} />
+                <div className="pulse-glow" style={{ width: size, height: size, borderRadius: '50%', background: color, boxShadow: `0 0 ${size * 1.5}px ${color}` }} />
+              </div>
+              {label && <span style={{ fontSize: 11, fontWeight: 600, color, letterSpacing: '0.05em' }}>{label}</span>}
+            </div>
+          );
+
+          // Status Indicator Component
+          const StatusIndicator = ({ status = 'live', label = null }) => {
+            const configs = { live: { color: '#10b981', label: label || 'LIVE' }, profit: { color: '#10b981', label: label || 'PROFIT' }, synced: { color: '#8b5cf6', label: label || 'SYNCED' } };
+            const config = configs[status] || configs.live;
+            return (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: `${config.color}15`, border: `1px solid ${config.color}30`, borderRadius: 100, padding: '6px 14px' }}>
+                <LivePulse color={config.color} size={6} speed={2} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: config.color, letterSpacing: '0.08em' }}>{config.label}</span>
+              </div>
+            );
+          };
+
+          return <>
+          {/* Pending costs alert */}
+          {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length > 0 && (
+            <div className="pending-pulse" style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 14, padding: 16, marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <LivePulse color="#fbbf24" size={10} speed={1.5} />
+                <span style={{ color: c.gold, fontWeight: 600 }}>{pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} sales need cost basis</span>
+              </div>
+              <button className="btn-hover" onClick={() => setPage('import')} style={{ padding: '8px 16px', background: c.gold, border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer', color: '#000' }}>REVIEW</button>
+            </div>
+          )}
+
+          {/* HERO PROFIT CARD */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.02) 50%, transparent 100%)',
+            border: '1px solid rgba(16,185,129,0.15)',
+            borderRadius: 24,
+            padding: '40px 48px',
+            marginBottom: 24,
+            position: 'relative',
+            overflow: 'hidden'
+          }}>
+            <div className="shimmer-line" style={{ position: 'absolute', top: 0, left: '10%', right: '10%', height: 1, background: 'linear-gradient(90deg, transparent, rgba(16,185,129,0.6), transparent)' }} />
+            <div className="breathe" style={{ position: 'absolute', top: -150, right: -100, width: 400, height: 400, background: 'radial-gradient(circle, rgba(16,185,129,0.2) 0%, transparent 60%)', pointerEvents: 'none' }} />
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
+                  <LivePulse color="#10b981" size={10} speed={2} label="NET PROFIT YTD" />
+                  <StatusIndicator status="live" />
+                </div>
+                
+                <div style={{ fontSize: 72, fontWeight: 800, color: c.emerald, lineHeight: 1, textShadow: '0 0 80px rgba(16,185,129,0.5)', letterSpacing: '-0.02em' }}>
+                  {fmt(netProfit)}
+                </div>
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginTop: 24 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, position: 'relative' }}>
+                      📦
+                      <div style={{ position: 'absolute', top: -3, right: -3 }}><LivePulse color="#10b981" size={6} speed={2.5} /></div>
+                    </div>
+                    <div>
+                      <p style={{ margin: 0, fontSize: 11, color: c.textMuted, fontWeight: 600 }}>TOTAL SALES</p>
+                      <p style={{ margin: '2px 0 0', fontSize: 20, fontWeight: 800 }}>{filteredSales.length}</p>
+                    </div>
+                  </div>
+                  <div style={{ width: 1, height: 40, background: 'rgba(255,255,255,0.1)' }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, position: 'relative' }}>
+                      🎯
+                      <div style={{ position: 'absolute', top: -3, right: -3 }}><LivePulse color="#10b981" size={6} speed={3} /></div>
+                    </div>
+                    <div>
+                      <p style={{ margin: 0, fontSize: 11, color: c.textMuted, fontWeight: 600 }}>AVG PER SALE</p>
+                      <p style={{ margin: '2px 0 0', fontSize: 20, fontWeight: 800 }}>{filteredSales.length > 0 ? fmt(netProfit / filteredSales.length) : '$0'}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Circular Progress */}
+              <div style={{ position: 'relative', width: 180, height: 180 }}>
+                <svg width="180" height="180" style={{ transform: 'rotate(-90deg)' }}>
+                  <circle cx="90" cy="90" r="75" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="12" />
+                  <circle cx="90" cy="90" r="75" fill="none" stroke="url(#profitGrad)" strokeWidth="12" strokeLinecap="round"
+                    strokeDasharray={`${totalRevenue > 0 ? (netProfit / totalRevenue * 100) * 4.71 : 0} 471`}
+                    style={{ filter: 'drop-shadow(0 0 8px rgba(16,185,129,0.5))' }} />
+                  <defs><linearGradient id="profitGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#10b981" /><stop offset="100%" stopColor="#34d399" /></linearGradient></defs>
+                </svg>
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                  <LivePulse color="#10b981" size={6} speed={2} label="MARGIN" style={{ marginBottom: 4 }} />
+                  <span style={{ fontSize: 36, fontWeight: 800, color: c.emerald }}>{totalRevenue > 0 ? (netProfit / totalRevenue * 100).toFixed(1) : '0'}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* STATS ROW */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
             {[
-              { label: 'YTD PROFIT', value: netProfit, color: netProfit >= 0 ? c.emerald : c.red, glow: true },
-              { label: 'YTD COST', value: totalCOGS, color: c.gold },
-              { label: 'YTD FEES', value: totalFees, color: c.red },
-              { label: 'YTD REVENUE', value: totalRevenue, color: '#fff' }
-            ].map((card, i) => (
-              <div key={i} className="stat-card" style={{ ...cardStyle, padding: 20, position: 'relative', background: card.glow ? 'linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(16,185,129,0.02) 100%)' : cardStyle.background, border: card.glow ? '1px solid rgba(16,185,129,0.2)' : cardStyle.border, cursor: 'pointer' }}>
-                {card.glow && <div style={{ position: 'absolute', top: -50, right: -50, width: 120, height: 120, background: `radial-gradient(circle, ${c.emeraldGlow} 0%, transparent 70%)`, pointerEvents: 'none' }} />}
-                <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, letterSpacing: '0.1em' }}>{card.label}</span>
-                <p style={{ margin: '10px 0 0', fontSize: 28, fontWeight: 800, color: card.color, fontStyle: 'italic' }}>{card.isText ? card.value : fmt(card.value)}</p>
+              { label: 'Gross Revenue', value: totalRevenue, icon: '📈', color: '#fff' },
+              { label: 'Cost of Goods', value: totalCOGS, icon: '📦', color: c.gold },
+              { label: 'Platform Fees', value: totalFees, icon: '💳', color: c.red },
+              { label: 'Inventory Value', value: inventoryVal, icon: '🏪', color: '#8b5cf6' },
+            ].map((stat, i) => (
+              <div key={i} className="stat-card" style={{
+                background: 'rgba(255,255,255,0.02)',
+                border: `1px solid ${c.border}`,
+                borderRadius: 20,
+                padding: '24px',
+                position: 'relative',
+                overflow: 'hidden',
+                transition: 'all 0.3s'
+              }}>
+                <div style={{ position: 'absolute', top: 16, right: 16 }}><LivePulse color={stat.color} size={6} speed={2 + i * 0.3} /></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 14, background: `${stat.color}10`, border: `1px solid ${stat.color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>{stat.icon}</div>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: c.textMuted }}>{stat.label}</span>
+                </div>
+                <p style={{ margin: 0, fontSize: 28, fontWeight: 800, color: stat.color }}>{fmt(stat.value)}</p>
               </div>
             ))}
           </div>
 
-          {/* MONTHLY TABLE */}
-          <div style={{ ...cardStyle, marginBottom: 24 }}>
-            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}` }}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, fontStyle: 'italic' }}>MONTHLY BREAKDOWN</h3>
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: `1px solid ${c.border}` }}>
-                    <th style={{ padding: '12px 20px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: c.textMuted }}></th>
-                    <th style={{ padding: '12px 20px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>YTD COST</th>
-                    <th style={{ padding: '12px 20px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>YTD FEES</th>
-                    <th style={{ padding: '12px 20px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>YTD PROFIT</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    let runningCost = 0;
-                    let runningFees = 0;
-                    let runningProfit = 0;
-                    return ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((month, i) => {
+          {/* TWO COLUMN - TABLE & CHART */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+            {/* MONTHLY TABLE */}
+            <div style={{ ...cardStyle }}>
+              <div style={{ padding: '20px 24px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Monthly Breakdown</h3>
+                  <LivePulse color="#10b981" size={6} speed={2} />
+                </div>
+                <StatusIndicator status="profit" label={`+${fmt(netProfit)}`} />
+              </div>
+              <div style={{ overflowX: 'auto', maxHeight: 300 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
+                      <th style={{ padding: '14px 20px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: c.textMuted, letterSpacing: '0.08em' }}>MONTH</th>
+                      <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: 10, fontWeight: 700, color: c.textMuted }}>SALES</th>
+                      <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: 10, fontWeight: 700, color: c.textMuted }}>REVENUE</th>
+                      <th style={{ padding: '14px 20px', textAlign: 'right', fontSize: 10, fontWeight: 700, color: c.textMuted }}>PROFIT</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((month, i) => {
                       const monthNum = String(i + 1).padStart(2, '0');
                       const monthSales = filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === monthNum);
-                      const monthCost = monthSales.reduce((sum, s) => sum + (s.cost || 0), 0);
-                      const monthFees = monthSales.reduce((sum, s) => sum + (s.fees || 0), 0);
+                      if (monthSales.length === 0) return null;
+                      const monthRevenue = monthSales.reduce((sum, s) => sum + (s.salePrice || 0), 0);
                       const monthProfit = monthSales.reduce((sum, s) => sum + (s.profit || 0), 0);
-                      runningCost += monthCost;
-                      runningFees += monthFees;
-                      runningProfit += monthProfit;
-                      if (monthCost === 0 && monthFees === 0 && monthProfit === 0) return null;
                       return (
-                        <tr key={month} className="row-hover" style={{ borderBottom: `1px solid ${c.border}`, cursor: 'pointer' }}>
-                          <td style={{ padding: '12px 20px', fontWeight: 600 }}>{month}</td>
-                          <td style={{ padding: '12px 20px', textAlign: 'right', color: '#fff' }}>{fmt(runningCost)}</td>
-                          <td style={{ padding: '12px 20px', textAlign: 'right', color: c.red }}>{fmt(runningFees)}</td>
-                          <td style={{ padding: '12px 20px', textAlign: 'right', color: runningProfit >= 0 ? c.emerald : c.red, fontWeight: 700 }}>{fmt(runningProfit)}</td>
+                        <tr key={month} className="row-hover" style={{ borderBottom: `1px solid ${c.border}` }}>
+                          <td style={{ padding: '16px 20px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <LivePulse color="#10b981" size={6} speed={2} />
+                              <span style={{ fontWeight: 600, fontSize: 14 }}>{month}</span>
+                            </div>
+                          </td>
+                          <td style={{ padding: '16px', textAlign: 'right', fontSize: 14, color: c.textMuted }}>{monthSales.length}</td>
+                          <td style={{ padding: '16px', textAlign: 'right', fontSize: 14 }}>{fmt(monthRevenue)}</td>
+                          <td style={{ padding: '16px 20px', textAlign: 'right' }}>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: c.emerald, background: 'rgba(16,185,129,0.1)', padding: '6px 12px', borderRadius: 6 }}>+{fmt(monthProfit)}</span>
+                          </td>
                         </tr>
                       );
-                    });
-                  })()}
-                </tbody>
-                <tfoot>
-                  <tr style={{ background: 'rgba(16,185,129,0.1)' }}>
-                    <td style={{ padding: '14px 20px', fontWeight: 800, fontStyle: 'italic' }}>Totals:</td>
-                    <td style={{ padding: '14px 20px', textAlign: 'right', fontWeight: 700, color: c.emerald }}>{fmt(totalCOGS)}</td>
-                    <td style={{ padding: '14px 20px', textAlign: 'right', fontWeight: 700, color: c.red }}>{fmt(totalFees)}</td>
-                    <td style={{ padding: '14px 20px', textAlign: 'right', fontWeight: 800, color: netProfit >= 0 ? c.emerald : c.red, fontSize: 16 }}>{fmt(netProfit)}</td>
-                  </tr>
-                </tfoot>
-              </table>
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ background: 'rgba(16,185,129,0.08)' }}>
+                      <td style={{ padding: '16px 20px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <LivePulse color="#10b981" size={8} speed={1.5} />
+                          <span style={{ fontWeight: 800, fontSize: 14 }}>TOTAL</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '16px', textAlign: 'right', fontSize: 14, fontWeight: 700 }}>{filteredSales.length}</td>
+                      <td style={{ padding: '16px', textAlign: 'right', fontSize: 14, fontWeight: 700 }}>{fmt(totalRevenue)}</td>
+                      <td style={{ padding: '16px 20px', textAlign: 'right' }}>
+                        <span style={{ fontSize: 16, fontWeight: 800, color: c.emerald, textShadow: '0 0 20px rgba(16,185,129,0.4)' }}>+{fmt(netProfit)}</span>
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
-          </div>
 
-          {/* CHART */}
-          <div style={{ ...cardStyle, padding: 20 }}>
-            <h3 style={{ margin: '0 0 20px', fontSize: 15, fontWeight: 700, fontStyle: 'italic' }}>MONTHLY PERFORMANCE</h3>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 200, paddingBottom: 30, position: 'relative' }}>
-              {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, i) => {
-                const monthNum = String(i + 1).padStart(2, '0');
-                const monthSales = filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === monthNum);
-                const monthCost = monthSales.reduce((sum, s) => sum + (s.cost || 0), 0);
-                const monthFees = monthSales.reduce((sum, s) => sum + (s.fees || 0), 0);
-                const monthProfit = monthSales.reduce((sum, s) => sum + (s.profit || 0), 0);
-                const maxVal = Math.max(totalCOGS, totalFees, netProfit, 1000) / 12 * 2;
-                const costHeight = Math.max((monthCost / maxVal) * 150, 0);
-                const feesHeight = Math.max((monthFees / maxVal) * 150, 0);
-                const profitHeight = Math.max((monthProfit / maxVal) * 150, 0);
-                return (
-                  <div key={month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 150 }}>
-                      <div style={{ width: 12, height: costHeight, background: c.gold, borderRadius: '4px 4px 0 0' }} title={`Cost: ${fmt(monthCost)}`} />
-                      <div style={{ width: 12, height: feesHeight, background: c.red, borderRadius: '4px 4px 0 0' }} title={`Fees: ${fmt(monthFees)}`} />
-                      <div style={{ width: 12, height: profitHeight, background: c.emerald, borderRadius: '4px 4px 0 0' }} title={`Profit: ${fmt(monthProfit)}`} />
+            {/* CHART */}
+            <div style={{ ...cardStyle, overflow: 'hidden' }}>
+              <div style={{ padding: '20px 24px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Performance Chart</h3>
+                  <LivePulse color="#10b981" size={6} speed={2} />
+                </div>
+                <StatusIndicator status="live" label="REALTIME" />
+              </div>
+              <div style={{ padding: '24px' }}>
+                {/* Legend */}
+                <div style={{ display: 'flex', gap: 24, marginBottom: 24 }}>
+                  {[{ label: 'Revenue', color: 'rgba(255,255,255,0.5)' }, { label: 'Profit', color: '#10b981' }].map((item, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 12, height: 12, borderRadius: 3, background: item.color }} />
+                      <span style={{ fontSize: 12, color: c.textMuted }}>{item.label}</span>
+                      <LivePulse color={item.color} size={4} speed={2} />
                     </div>
-                    <span style={{ fontSize: 10, color: c.textMuted, marginTop: 8 }}>{month}</span>
+                  ))}
+                </div>
+
+                {/* Chart Container */}
+                <div style={{ position: 'relative', height: 200, display: 'flex', flexDirection: 'column' }}>
+                  {/* Y-axis grid lines */}
+                  <div style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 40, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', pointerEvents: 'none' }}>
+                    {[100, 75, 50, 25, 0].map((pct, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.04)' }} />
+                      </div>
+                    ))}
                   </div>
-                );
-              })}
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 24, marginTop: 16 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><div style={{ width: 12, height: 12, background: c.gold, borderRadius: 3 }} /><span style={{ fontSize: 11, color: c.textMuted }}>Cost</span></div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><div style={{ width: 12, height: 12, background: c.red, borderRadius: 3 }} /><span style={{ fontSize: 11, color: c.textMuted }}>Fees</span></div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><div style={{ width: 12, height: 12, background: c.emerald, borderRadius: 3 }} /><span style={{ fontSize: 11, color: c.textMuted }}>Profit</span></div>
+
+                  {/* Bars */}
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', gap: 6, paddingBottom: 40 }}>
+                    {['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'].map((month, i) => {
+                      const monthNum = String(i + 1).padStart(2, '0');
+                      const monthSales = filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === monthNum);
+                      const monthRevenue = monthSales.reduce((sum, s) => sum + (s.salePrice || 0), 0);
+                      const monthProfit = monthSales.reduce((sum, s) => sum + (s.profit || 0), 0);
+                      
+                      // Calculate max value for scaling (use highest month value, minimum 1000)
+                      const allMonthsRevenue = ['01','02','03','04','05','06','07','08','09','10','11','12'].map(m => 
+                        filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === m).reduce((sum, s) => sum + (s.salePrice || 0), 0)
+                      );
+                      const maxVal = Math.max(...allMonthsRevenue, 1000);
+                      
+                      // Scale to max 120px height
+                      const revHeight = monthRevenue > 0 ? Math.max((monthRevenue / maxVal) * 120, 4) : 0;
+                      const profitHeight = monthProfit > 0 ? Math.max((monthProfit / maxVal) * 120, 4) : 0;
+                      const hasData = monthRevenue > 0;
+                      
+                      return (
+                        <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+                          {/* Bar group */}
+                          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 2, height: 120, width: '100%' }}>
+                            {/* Revenue bar */}
+                            <div style={{ 
+                              width: hasData ? 14 : 8, 
+                              height: hasData ? revHeight : 2,
+                              background: hasData 
+                                ? 'linear-gradient(180deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0.15) 100%)' 
+                                : 'rgba(255,255,255,0.05)',
+                              borderRadius: hasData ? '4px 4px 0 0' : 2,
+                              transition: 'all 0.5s ease'
+                            }} />
+                            {/* Profit bar */}
+                            <div style={{ 
+                              width: hasData ? 14 : 8, 
+                              height: hasData ? profitHeight : 2,
+                              background: hasData 
+                                ? 'linear-gradient(180deg, #10b981 0%, rgba(16,185,129,0.4) 100%)' 
+                                : 'rgba(16,185,129,0.08)',
+                              borderRadius: hasData ? '4px 4px 0 0' : 2,
+                              boxShadow: hasData ? '0 0 12px rgba(16,185,129,0.3)' : 'none',
+                              transition: 'all 0.5s ease'
+                            }} />
+                          </div>
+                          
+                          {/* Month label */}
+                          <div style={{ 
+                            position: 'absolute', 
+                            bottom: 0, 
+                            display: 'flex', 
+                            flexDirection: 'column', 
+                            alignItems: 'center', 
+                            gap: 4 
+                          }}>
+                            <span style={{ 
+                              fontSize: 11, 
+                              fontWeight: 600, 
+                              color: hasData ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.2)'
+                            }}>{month}</span>
+                            {hasData && <LivePulse color="#10b981" size={4} speed={2.5} />}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-        </>}
+        </>;
+        })()}
 
         {/* INVENTORY */}
-        {page === 'inventory' && <div>
+        {page === 'inventory' && (() => {
+          const currentSort = formData.inventorySort || 'newest';
+          
+          // Filter inventory
+          const filteredInventory = purchases.filter(p => {
+            const search = (formData.inventorySearch || '').toLowerCase().trim();
+            const filter = formData.inventoryFilter || 'all';
+            
+            let matchesSearch = true;
+            if (search) {
+              matchesSearch = p.name?.toLowerCase().includes(search) || 
+                             p.sku?.toLowerCase().includes(search) || 
+                             p.size?.toString().toLowerCase().includes(search);
+            }
+            
+            const matchesFilter = filter === 'all' || (filter === 'instock' && !p.sold) || (filter === 'sold' && p.sold);
+            return matchesSearch && matchesFilter;
+          });
+          
+          // Sort inventory
+          const sortedInventory = [...filteredInventory].sort((a, b) => {
+            switch(currentSort) {
+              case 'newest': return new Date(b.date) - new Date(a.date);
+              case 'oldest': return new Date(a.date) - new Date(b.date);
+              case 'costHigh': return (b.cost || 0) - (a.cost || 0);
+              case 'costLow': return (a.cost || 0) - (b.cost || 0);
+              case 'nameAZ': return (a.name || '').localeCompare(b.name || '');
+              case 'nameZA': return (b.name || '').localeCompare(a.name || '');
+              case 'skuAZ': return (a.sku || '').localeCompare(b.sku || '');
+              case 'skuZA': return (b.sku || '').localeCompare(a.sku || '');
+              case 'sizeAsc': return (parseFloat(a.size) || 0) - (parseFloat(b.size) || 0);
+              case 'sizeDesc': return (parseFloat(b.size) || 0) - (parseFloat(a.size) || 0);
+              default: return 0;
+            }
+          });
+          
+          // Pagination
+          const totalPages = Math.ceil(sortedInventory.length / ITEMS_PER_PAGE);
+          const startIdx = (inventoryPage - 1) * ITEMS_PER_PAGE;
+          const paginatedInventory = sortedInventory.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+          const allPageIds = paginatedInventory.map(p => p.id);
+          const allSelected = paginatedInventory.length > 0 && allPageIds.every(id => selectedInventory.has(id));
+          
+          // Handlers
+          const handleSort = (sortKey, sortKeyAlt) => {
+            setInventoryPage(1); // Reset to page 1 when sorting
+            if (currentSort === sortKey) {
+              setFormData(prev => ({ ...prev, inventorySort: sortKeyAlt }));
+            } else {
+              setFormData(prev => ({ ...prev, inventorySort: sortKey }));
+            }
+          };
+          
+          const handleSelectAll = (checked) => {
+            if (checked) {
+              setSelectedInventory(new Set(allPageIds));
+            } else {
+              setSelectedInventory(new Set());
+            }
+          };
+          
+          const handleSelectOne = (id, checked) => {
+            setSelectedInventory(prev => {
+              const newSet = new Set(prev);
+              if (checked) newSet.add(id);
+              else newSet.delete(id);
+              return newSet;
+            });
+          };
+          
+          const isActiveSort = (key1, key2) => currentSort === key1 || currentSort === key2;
+          const getSortArrow = (key1) => currentSort === key1 ? '▲' : '▼';
+          
+          return <div>
           {/* STATS BAR */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 20 }}>
             <div style={{ ...cardStyle, padding: 16 }}>
@@ -672,341 +1256,205 @@ export default function App() {
           </div>
 
           {/* SEARCH & ACTIONS */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-            <input 
-              type="text" 
-              placeholder="🔍 Search by name, SKU, or size..." 
-              value={formData.inventorySearch || ''} 
-              onChange={e => setFormData({ ...formData, inventorySearch: e.target.value })}
-              style={{ flex: 1, padding: 14, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 14 }} 
-            />
-            <select value={formData.inventoryFilter || 'all'} onChange={e => setFormData({ ...formData, inventoryFilter: e.target.value })} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
-              <option value="all">All ({purchases.length})</option>
-              <option value="instock">In Stock ({purchases.filter(p => !p.sold).length})</option>
-              <option value="sold">Sold ({purchases.filter(p => p.sold).length})</option>
-            </select>
-            <select value={formData.inventorySort || 'newest'} onChange={e => setFormData({ ...formData, inventorySort: e.target.value })} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
-              <option value="newest">Newest First</option>
-              <option value="oldest">Oldest First</option>
-              <option value="costHigh">Cost: High → Low</option>
-              <option value="costLow">Cost: Low → High</option>
-              <option value="name">Name A → Z</option>
-            </select>
-            <button onClick={() => { setFormData({ ...formData, bulkRows: [{ size: '', cost: '' }] }); setModal('bulkAdd'); }} style={{ padding: '14px 24px', ...btnPrimary, fontSize: 13 }}>+ BULK ADD</button>
-            <button onClick={() => { setFormData({}); setModal('purchase'); }} style={{ padding: '14px 20px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>+ SINGLE</button>
-          </div>
-
-          {/* INVENTORY TABLE */}
-          <div style={cardStyle}>
-            <div style={{ padding: '14px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, color: c.textMuted }}>Showing {purchases.filter(p => {
-                const search = (formData.inventorySearch || '').toLowerCase();
-                const filter = formData.inventoryFilter || 'all';
-                const matchesSearch = !search || p.name?.toLowerCase().includes(search) || p.sku?.toLowerCase().includes(search) || p.size?.toLowerCase().includes(search);
-                const matchesFilter = filter === 'all' || (filter === 'instock' && !p.sold) || (filter === 'sold' && p.sold);
-                return matchesSearch && matchesFilter;
-              }).length} items</span>
-              <button onClick={() => exportCSV(purchases, 'inventory.csv', ['date','name','sku','size','cost','sold'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
-            </div>
-            
-            {/* TABLE HEADER */}
-            <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr 130px 60px 80px 70px 90px 40px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>DATE</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>NAME</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>SKU</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>SIZE</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>COST</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'center' }}>DAYS</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'center' }}>STATUS</span>
-              <span></span>
-            </div>
-
-            {/* TABLE ROWS */}
-            {purchases.filter(p => {
-              const search = (formData.inventorySearch || '').toLowerCase();
-              const filter = formData.inventoryFilter || 'all';
-              const matchesSearch = !search || p.name?.toLowerCase().includes(search) || p.sku?.toLowerCase().includes(search) || p.size?.toLowerCase().includes(search);
-              const matchesFilter = filter === 'all' || (filter === 'instock' && !p.sold) || (filter === 'sold' && p.sold);
-              return matchesSearch && matchesFilter;
-            }).sort((a, b) => {
-              const sort = formData.inventorySort || 'newest';
-              if (sort === 'newest') return new Date(b.date) - new Date(a.date);
-              if (sort === 'oldest') return new Date(a.date) - new Date(b.date);
-              if (sort === 'costHigh') return (b.cost || 0) - (a.cost || 0);
-              if (sort === 'costLow') return (a.cost || 0) - (b.cost || 0);
-              if (sort === 'name') return (a.name || '').localeCompare(b.name || '');
-              return 0;
-            }).length ? purchases.filter(p => {
-              const search = (formData.inventorySearch || '').toLowerCase();
-              const filter = formData.inventoryFilter || 'all';
-              const matchesSearch = !search || p.name?.toLowerCase().includes(search) || p.sku?.toLowerCase().includes(search) || p.size?.toLowerCase().includes(search);
-              const matchesFilter = filter === 'all' || (filter === 'instock' && !p.sold) || (filter === 'sold' && p.sold);
-              return matchesSearch && matchesFilter;
-            }).sort((a, b) => {
-              const sort = formData.inventorySort || 'newest';
-              if (sort === 'newest') return new Date(b.date) - new Date(a.date);
-              if (sort === 'oldest') return new Date(a.date) - new Date(b.date);
-              if (sort === 'costHigh') return (b.cost || 0) - (a.cost || 0);
-              if (sort === 'costLow') return (a.cost || 0) - (b.cost || 0);
-              if (sort === 'name') return (a.name || '').localeCompare(b.name || '');
-              return 0;
-            }).map(p => {
-              const daysInStock = Math.floor((new Date() - new Date(p.date)) / (1000 * 60 * 60 * 24));
-              return (
-              <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '90px 1fr 130px 60px 80px 70px 90px 40px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', background: p.sold ? 'rgba(251,191,36,0.05)' : 'transparent' }}>
-                <span style={{ fontSize: 12, color: c.textMuted }}>{p.date}</span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: p.sold ? c.textMuted : '#fff' }}>{p.name}</span>
-                <span style={{ fontSize: 11, color: c.emerald }}>{p.sku || '-'}</span>
-                <span style={{ fontSize: 13 }}>{p.size || '-'}</span>
-                <span style={{ fontSize: 13, fontWeight: 700, textAlign: 'right' }}>{fmt(p.cost)}</span>
-                <span style={{ fontSize: 12, textAlign: 'center', color: !p.sold && daysInStock > 60 ? c.red : !p.sold && daysInStock > 30 ? c.gold : c.textMuted }}>{p.sold ? '-' : daysInStock}</span>
-                <div style={{ textAlign: 'center' }}>
-                  <button 
-                    onClick={() => {
-                      setPurchases(purchases.map(x => x.id === p.id ? { ...x, sold: !x.sold } : x));
-                    }}
-                    style={{ 
-                      padding: '4px 10px', 
-                      background: p.sold ? 'rgba(251,191,36,0.2)' : 'rgba(16,185,129,0.1)', 
-                      border: `1px solid ${p.sold ? 'rgba(251,191,36,0.3)' : 'rgba(16,185,129,0.2)'}`, 
-                      borderRadius: 6, 
-                      color: p.sold ? c.gold : c.emerald, 
-                      fontSize: 10, 
-                      fontWeight: 700, 
-                      cursor: 'pointer' 
-                    }}
-                  >
-                    {p.sold ? '🟡 SOLD' : 'IN STOCK'}
-                  </button>
-                </div>
-                <button onClick={() => setPurchases(purchases.filter(x => x.id !== p.id))} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16 }}>×</button>
-              </div>
-            )}) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>📦</div><p style={{ color: c.textMuted }}>No inventory</p><button onClick={() => { setFormData({ ...formData, bulkRows: [{ size: '', cost: '' }] }); setModal('bulkAdd'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Add Items</button></div>}
-          </div>
-        </div>}
-
-        {/* SALES */}
-        {page === 'sales' && (() => {
-          // Filter sales based on search, platform, month
-          const displayedSales = filteredSales.filter(s => {
-            const search = (formData.salesSearch || '').toLowerCase();
-            const filter = formData.salesFilter || 'all';
-            const monthFilter = formData.salesMonth || 'all';
-            const matchesSearch = !search || s.name?.toLowerCase().includes(search) || s.sku?.toLowerCase().includes(search) || s.size?.toString().toLowerCase().includes(search);
-            const matchesFilter = filter === 'all' || s.platform === filter || (filter === 'StockX' && s.platform?.includes('StockX'));
-            const matchesMonth = monthFilter === 'all' || (s.saleDate && s.saleDate.substring(5, 7) === monthFilter);
-            return matchesSearch && matchesFilter && matchesMonth;
-          }).sort((a, b) => {
-            const sort = formData.salesSort || 'newest';
-            if (sort === 'newest') return new Date(b.saleDate) - new Date(a.saleDate);
-            if (sort === 'oldest') return new Date(a.saleDate) - new Date(b.saleDate);
-            if (sort === 'profitHigh') return (b.profit || 0) - (a.profit || 0);
-            if (sort === 'profitLow') return (a.profit || 0) - (b.profit || 0);
-            if (sort === 'priceHigh') return (b.salePrice || 0) - (a.salePrice || 0);
-            return 0;
-          });
-          
-          const displayedProfit = displayedSales.reduce((sum, s) => sum + (s.profit || 0), 0);
-          const totalPages = Math.ceil(displayedSales.length / ITEMS_PER_PAGE);
-          const paginatedSales = displayedSales.slice((salesPage - 1) * ITEMS_PER_PAGE, salesPage * ITEMS_PER_PAGE);
-          const allPageIds = paginatedSales.map(s => s.id);
-          const allSelected = paginatedSales.length > 0 && allPageIds.every(id => selectedSales.has(id));
-          
-          return <div>
-          {/* STATS BAR */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 20 }}>
-            <div style={{ ...cardStyle, padding: 16 }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL SALES</span>
-              <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: '#fff' }}>{displayedSales.length}</p>
-            </div>
-            <div style={{ ...cardStyle, padding: 16 }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL PROFIT</span>
-              <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: displayedProfit >= 0 ? c.emerald : c.red }}>{fmt(displayedProfit)}</p>
-            </div>
-          </div>
-
-          {/* SEARCH & FILTERS */}
           <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
             <input 
               type="text" 
               placeholder="🔍 Search by name, SKU, or size..." 
-              value={formData.salesSearch || ''} 
-              onChange={e => { setFormData({ ...formData, salesSearch: e.target.value }); setSalesPage(1); }}
+              value={formData.inventorySearch || ''} 
+              onChange={e => { setFormData(prev => ({ ...prev, inventorySearch: e.target.value })); setInventoryPage(1); }}
               style={{ flex: 1, minWidth: 200, padding: 14, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 14 }} 
             />
-            <select value={formData.salesMonth || 'all'} onChange={e => { setFormData({ ...formData, salesMonth: e.target.value }); setSalesPage(1); }} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
-              <option value="all">All Months</option>
-              <option value="01">January</option>
-              <option value="02">February</option>
-              <option value="03">March</option>
-              <option value="04">April</option>
-              <option value="05">May</option>
-              <option value="06">June</option>
-              <option value="07">July</option>
-              <option value="08">August</option>
-              <option value="09">September</option>
-              <option value="10">October</option>
-              <option value="11">November</option>
-              <option value="12">December</option>
+            <select value={formData.inventoryFilter || 'all'} onChange={e => { setFormData(prev => ({ ...prev, inventoryFilter: e.target.value })); setInventoryPage(1); }} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
+              <option value="all">All ({purchases.length})</option>
+              <option value="instock">In Stock ({purchases.filter(p => !p.sold).length})</option>
+              <option value="sold">Sold ({purchases.filter(p => p.sold).length})</option>
             </select>
-            <select value={formData.salesFilter || 'all'} onChange={e => { setFormData({ ...formData, salesFilter: e.target.value }); setSalesPage(1); }} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
-              <option value="all">All Platforms</option>
-              <option value="StockX">StockX - All</option>
-              <option value="StockX Standard">StockX Standard</option>
-              <option value="StockX Direct">StockX Direct</option>
-              <option value="StockX Flex">StockX Flex</option>
-              <option value="GOAT">GOAT</option>
-              <option value="eBay">eBay</option>
-              <option value="Local">Local</option>
-            </select>
-            <select value={formData.salesSort || 'newest'} onChange={e => setFormData({ ...formData, salesSort: e.target.value })} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
-              <option value="newest">Newest First</option>
-              <option value="oldest">Oldest First</option>
-              <option value="profitHigh">Profit: High → Low</option>
-              <option value="profitLow">Profit: Low → High</option>
-              <option value="priceHigh">Price: High → Low</option>
-            </select>
-            <button onClick={() => { setFormData({}); setModal('sale'); }} style={{ padding: '14px 24px', ...btnPrimary, fontSize: 13 }}>+ RECORD SALE</button>
+            <button onClick={() => setShowInvCsvImport(true)} style={{ padding: '14px 20px', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 12, color: c.gold, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>📥 IMPORT CSV</button>
+            <button onClick={() => { setFormData(prev => ({ ...prev, bulkRows: [{ size: '', cost: '' }] })); setModal('bulkAdd'); }} style={{ padding: '14px 24px', ...btnPrimary, fontSize: 13 }}>+ BULK ADD</button>
+            <button onClick={() => { setFormData({}); setModal('purchase'); }} style={{ padding: '14px 20px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>+ SINGLE</button>
           </div>
 
+          {/* CSV IMPORT PANEL */}
+          {showInvCsvImport && (
+            <div style={{ marginBottom: 16, padding: 20, background: 'rgba(251,191,36,0.05)', border: '1px solid rgba(251,191,36,0.2)', borderRadius: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: c.gold }}>📥 Import Inventory CSV</h3>
+                <button onClick={() => setShowInvCsvImport(false)} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 20 }}>×</button>
+              </div>
+              
+              <p style={{ margin: '0 0 16px', fontSize: 13, color: c.textMuted }}>
+                CSV or Excel file with columns: <strong style={{ color: '#fff' }}>Date, Name, SKU, Size, Cost</strong>
+              </p>
+              
+              {/* Drag & Drop Zone */}
+              <div 
+                onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = c.gold; e.currentTarget.style.background = 'rgba(251,191,36,0.1)'; }}
+                onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = c.border; e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; }}
+                onDrop={(e) => { 
+                  e.preventDefault(); 
+                  e.currentTarget.style.borderColor = c.border; 
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.02)';
+                  const file = e.dataTransfer.files[0];
+                  if (file && (file.name.endsWith('.csv') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
+                    handleInventoryFileUpload({ target: { files: [file] } });
+                  } else {
+                    alert('Please drop a CSV or Excel file');
+                  }
+                }}
+                style={{ 
+                  padding: 40, 
+                  border: `2px dashed ${c.border}`, 
+                  borderRadius: 12, 
+                  textAlign: 'center',
+                  background: 'rgba(255,255,255,0.02)',
+                  marginBottom: 16,
+                  transition: 'all 0.2s'
+                }}
+              >
+                <div style={{ fontSize: 36, marginBottom: 12 }}>📄</div>
+                <p style={{ margin: 0, fontSize: 14, color: c.textMuted }}>
+                  Drag & drop your CSV or Excel file here
+                </p>
+                <p style={{ margin: '8px 0 0', fontSize: 12, color: c.textMuted }}>or</p>
+                <label style={{ display: 'inline-block', marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 12, cursor: 'pointer' }}>
+                  Browse Files
+                  <input type="file" accept=".csv,.xlsx,.xls" onChange={handleInventoryFileUpload} style={{ display: 'none' }} />
+                </label>
+              </div>
+              
+              <button onClick={downloadInventoryTemplate} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#fff', fontSize: 12, cursor: 'pointer' }}>
+                📄 Download Template
+              </button>
+            </div>
+          )}
+
           {/* BULK DELETE BAR */}
-          {selectedSales.size > 0 && (
-            <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          {selectedInventory.size > 0 && (
+            <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(239,68,68,0.15)', border: `1px solid rgba(239,68,68,0.3)`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontWeight: 700, color: c.red, fontSize: 14 }}>
-                {selectedSales.size} sale{selectedSales.size > 1 ? 's' : ''} selected
+                {selectedInventory.size} item{selectedInventory.size > 1 ? 's' : ''} selected
               </span>
               <div style={{ display: 'flex', gap: 12 }}>
-                <button 
-                  onClick={() => setSelectedSales(new Set())}
-                  style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}
-                >
+                <button onClick={() => setSelectedInventory(new Set())} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>
                   Clear Selection
                 </button>
-                <button 
-                  onClick={() => {
-                    if (confirm(`Delete ${selectedSales.size} sale${selectedSales.size > 1 ? 's' : ''}? This cannot be undone.`)) {
-                      setSales(prev => prev.filter(s => !selectedSales.has(s.id)));
-                      setSelectedSales(new Set());
-                    }
-                  }}
-                  style={{ padding: '8px 20px', background: c.red, border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
-                >
-                  🗑️ Delete {selectedSales.size} Sale{selectedSales.size > 1 ? 's' : ''}
+                <button onClick={() => {
+                  if (confirm(`Delete ${selectedInventory.size} item${selectedInventory.size > 1 ? 's' : ''}? This cannot be undone.`)) {
+                    setPurchases(prev => prev.filter(p => !selectedInventory.has(p.id)));
+                    setSelectedInventory(new Set());
+                  }
+                }} style={{ padding: '8px 20px', background: c.red, border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                  🗑️ Delete {selectedInventory.size} Item{selectedInventory.size > 1 ? 's' : ''}
                 </button>
               </div>
             </div>
           )}
 
-          {/* SALES TABLE */}
+          {/* INVENTORY TABLE */}
           <div style={cardStyle}>
             <div style={{ padding: '14px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, color: c.textMuted }}>Showing {displayedSales.length} sales (page {salesPage} of {totalPages || 1})</span>
-              <button onClick={() => exportCSV(displayedSales, 'sales.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
+              <span style={{ fontSize: 13, color: c.textMuted }}>Showing {startIdx + 1}-{Math.min(startIdx + ITEMS_PER_PAGE, sortedInventory.length)} of {sortedInventory.length} items</span>
+              <button onClick={() => exportCSV(sortedInventory, 'inventory.csv', ['date','name','sku','size','cost','sold'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
             </div>
             
-            {/* TABLE HEADER WITH CHECKBOX */}
-            <div style={{ display: 'grid', gridTemplateColumns: '40px 85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
+            {/* TABLE HEADER - Clickable for sorting */}
+            <div style={{ display: 'grid', gridTemplateColumns: '40px 90px 1fr 130px 60px 80px 70px 90px 60px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
               <div style={{ display: 'flex', alignItems: 'center' }}>
-                <input 
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedSales(new Set([...selectedSales, ...allPageIds]));
-                    } else {
-                      const newSet = new Set(selectedSales);
-                      allPageIds.forEach(id => newSet.delete(id));
-                      setSelectedSales(newSet);
-                    }
-                  }}
-                  style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }}
-                />
+                <input type="checkbox" checked={allSelected} onChange={(e) => handleSelectAll(e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }} />
               </div>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>DATE</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>NAME</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>SKU</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>SIZE</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>PLATFORM</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>COST</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>PRICE</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>FEES</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>PROFIT</span>
-              <span></span>
-              <span></span>
+              <span onClick={() => handleSort('oldest', 'newest')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('oldest', 'newest') ? c.emerald : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
+                DATE {isActiveSort('oldest', 'newest') && getSortArrow('oldest')}
+              </span>
+              <span onClick={() => handleSort('nameAZ', 'nameZA')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('nameAZ', 'nameZA') ? c.emerald : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
+                NAME {isActiveSort('nameAZ', 'nameZA') && getSortArrow('nameAZ')}
+              </span>
+              <span onClick={() => handleSort('skuAZ', 'skuZA')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('skuAZ', 'skuZA') ? c.emerald : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
+                SKU {isActiveSort('skuAZ', 'skuZA') && getSortArrow('skuAZ')}
+              </span>
+              <span onClick={() => handleSort('sizeAsc', 'sizeDesc')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('sizeAsc', 'sizeDesc') ? c.emerald : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
+                SIZE {isActiveSort('sizeAsc', 'sizeDesc') && getSortArrow('sizeAsc')}
+              </span>
+              <span onClick={() => handleSort('costLow', 'costHigh')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('costLow', 'costHigh') ? c.emerald : c.textMuted, cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}>
+                COST {isActiveSort('costLow', 'costHigh') && getSortArrow('costLow')}
+              </span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'center' }}>DAYS</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'center' }}>STATUS</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'center' }}>ACTIONS</span>
             </div>
 
             {/* TABLE ROWS */}
-            {paginatedSales.length ? paginatedSales.map(s => (
-              <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '40px 85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : 'transparent' }}>
-                <div>
-                  <input 
-                    type="checkbox"
-                    checked={selectedSales.has(s.id)}
-                    onChange={(e) => {
-                      const newSet = new Set(selectedSales);
-                      if (e.target.checked) {
-                        newSet.add(s.id);
-                      } else {
-                        newSet.delete(s.id);
-                      }
-                      setSelectedSales(newSet);
-                    }}
-                    style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }}
-                  />
+            {paginatedInventory.length ? paginatedInventory.map(p => {
+              const daysInStock = Math.floor((new Date() - new Date(p.date)) / (1000 * 60 * 60 * 24));
+              return (
+                <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '40px 90px 1fr 130px 60px 80px 70px 90px 60px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', background: selectedInventory.has(p.id) ? 'rgba(239,68,68,0.1)' : p.sold ? 'rgba(251,191,36,0.05)' : 'transparent' }}>
+                  <div>
+                    <input type="checkbox" checked={selectedInventory.has(p.id)} onChange={(e) => handleSelectOne(p.id, e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }} />
+                  </div>
+                  <span style={{ fontSize: 12, color: c.textMuted }}>{p.date}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: p.sold ? c.textMuted : '#fff' }}>{p.name}</span>
+                  <span style={{ fontSize: 11, color: c.emerald }}>{p.sku || '-'}</span>
+                  <span style={{ fontSize: 13 }}>{p.size || '-'}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, textAlign: 'right' }}>{fmt(p.cost)}</span>
+                  <span style={{ fontSize: 12, textAlign: 'center', color: !p.sold && daysInStock > 60 ? c.red : !p.sold && daysInStock > 30 ? c.gold : c.textMuted }}>{p.sold ? '-' : daysInStock}</span>
+                  <div style={{ textAlign: 'center' }}>
+                    <button onClick={() => setPurchases(purchases.map(x => x.id === p.id ? { ...x, sold: !x.sold } : x))} style={{ padding: '4px 10px', background: p.sold ? 'rgba(251,191,36,0.2)' : 'rgba(16,185,129,0.1)', border: `1px solid ${p.sold ? 'rgba(251,191,36,0.3)' : 'rgba(16,185,129,0.2)'}`, borderRadius: 6, color: p.sold ? c.gold : c.emerald, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
+                      {p.sold ? '🟡 SOLD' : 'IN STOCK'}
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                    <button onClick={() => { setFormData({ editId: p.id, name: p.name, sku: p.sku, size: p.size, cost: p.cost, date: p.date }); setModal('editInventory'); }} style={{ background: 'none', border: 'none', color: c.emerald, cursor: 'pointer', fontSize: 14 }}>✏️</button>
+                    <button onClick={() => { setPurchases(purchases.filter(x => x.id !== p.id)); setSelectedInventory(prev => { const n = new Set(prev); n.delete(p.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14 }}>×</button>
+                  </div>
                 </div>
-                <span style={{ fontSize: 12, color: c.textMuted }}>{s.saleDate}</span>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</span>
-                <span style={{ fontSize: 11, color: c.emerald }}>{s.sku || '-'}</span>
-                <span style={{ fontSize: 13 }}>{s.size || '-'}</span>
-                <span style={{ fontSize: 11, color: c.textMuted }}>{s.platform}</span>
-                <span style={{ fontSize: 12, textAlign: 'right', color: c.textMuted }}>{fmt(s.cost)}</span>
-                <span style={{ fontSize: 12, textAlign: 'right' }}>{fmt(s.salePrice)}</span>
-                <span style={{ fontSize: 12, textAlign: 'right', color: c.red }}>{fmt(s.fees)}</span>
-                <span style={{ fontSize: 13, fontWeight: 700, textAlign: 'right', color: s.profit >= 0 ? c.emerald : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</span>
-                <button onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14 }}>✏️</button>
-                <button onClick={() => { setSales(sales.filter(x => x.id !== s.id)); setSelectedSales(prev => { const n = new Set(prev); n.delete(s.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16 }}>×</button>
-              </div>
-            )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💵</div><p style={{ color: c.textMuted }}>No sales match your filters</p><button onClick={() => { setFormData({}); setModal('sale'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Record Sale</button></div>}
+              );
+            }) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>📦</div><p style={{ color: c.textMuted }}>No inventory matches your filters</p><button onClick={() => { setFormData(prev => ({ ...prev, bulkRows: [{ size: '', cost: '' }] })); setModal('bulkAdd'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Add Items</button></div>}
             
             {/* PAGINATION */}
             {totalPages > 1 && (
               <div style={{ padding: '16px 20px', borderTop: `1px solid ${c.border}`, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-                <button 
-                  onClick={() => setSalesPage(1)} 
-                  disabled={salesPage === 1}
-                  style={{ padding: '8px 12px', background: salesPage === 1 ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: salesPage === 1 ? c.textMuted : '#fff', cursor: salesPage === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}
-                >
-                  ««
-                </button>
-                <button 
-                  onClick={() => setSalesPage(p => Math.max(1, p - 1))} 
-                  disabled={salesPage === 1}
-                  style={{ padding: '8px 12px', background: salesPage === 1 ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: salesPage === 1 ? c.textMuted : '#fff', cursor: salesPage === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}
-                >
-                  ‹ Prev
-                </button>
-                <span style={{ padding: '8px 16px', fontSize: 13, color: c.text }}>
-                  Page {salesPage} of {totalPages}
-                </span>
-                <button 
-                  onClick={() => setSalesPage(p => Math.min(totalPages, p + 1))} 
-                  disabled={salesPage === totalPages}
-                  style={{ padding: '8px 12px', background: salesPage === totalPages ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: salesPage === totalPages ? c.textMuted : '#fff', cursor: salesPage === totalPages ? 'not-allowed' : 'pointer', fontSize: 12 }}
-                >
-                  Next ›
-                </button>
-                <button 
-                  onClick={() => setSalesPage(totalPages)} 
-                  disabled={salesPage === totalPages}
-                  style={{ padding: '8px 12px', background: salesPage === totalPages ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: salesPage === totalPages ? c.textMuted : '#fff', cursor: salesPage === totalPages ? 'not-allowed' : 'pointer', fontSize: 12 }}
-                >
-                  »»
-                </button>
+                <button onClick={() => setInventoryPage(1)} disabled={inventoryPage === 1} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: inventoryPage === 1 ? c.textMuted : '#fff', cursor: inventoryPage === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}>«</button>
+                <button onClick={() => setInventoryPage(p => Math.max(1, p - 1))} disabled={inventoryPage === 1} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: inventoryPage === 1 ? c.textMuted : '#fff', cursor: inventoryPage === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}>‹</button>
+                
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum;
+                  if (totalPages <= 5) pageNum = i + 1;
+                  else if (inventoryPage <= 3) pageNum = i + 1;
+                  else if (inventoryPage >= totalPages - 2) pageNum = totalPages - 4 + i;
+                  else pageNum = inventoryPage - 2 + i;
+                  return (
+                    <button key={pageNum} onClick={() => setInventoryPage(pageNum)} style={{ padding: '8px 14px', background: inventoryPage === pageNum ? c.emerald : 'rgba(255,255,255,0.05)', border: `1px solid ${inventoryPage === pageNum ? c.emerald : c.border}`, borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: inventoryPage === pageNum ? 700 : 400 }}>{pageNum}</button>
+                  );
+                })}
+                
+                <button onClick={() => setInventoryPage(p => Math.min(totalPages, p + 1))} disabled={inventoryPage === totalPages} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: inventoryPage === totalPages ? c.textMuted : '#fff', cursor: inventoryPage === totalPages ? 'not-allowed' : 'pointer', fontSize: 12 }}>›</button>
+                <button onClick={() => setInventoryPage(totalPages)} disabled={inventoryPage === totalPages} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: inventoryPage === totalPages ? c.textMuted : '#fff', cursor: inventoryPage === totalPages ? 'not-allowed' : 'pointer', fontSize: 12 }}>»</button>
               </div>
             )}
           </div>
         </div>;
         })()}
+
+        {/* SALES */}
+        {page === 'sales' && <SalesPage 
+          key={`sales-${salesPage}-${formData.salesSort}-${formData.salesMonth}-${formData.salesFilter}`}
+          filteredSales={filteredSales}
+          formData={formData}
+          setFormData={setFormData}
+          salesPage={salesPage}
+          setSalesPage={setSalesPage}
+          selectedSales={selectedSales}
+          setSelectedSales={setSelectedSales}
+          sales={sales}
+          setSales={setSales}
+          settings={settings}
+          setModal={setModal}
+          ITEMS_PER_PAGE={ITEMS_PER_PAGE}
+          cardStyle={cardStyle}
+          btnPrimary={btnPrimary}
+          c={c}
+          fmt={fmt}
+          exportCSV={exportCSV}
+        />}
 
         {/* EXPENSES */}
         {page === 'expenses' && <div style={cardStyle}>
@@ -1210,15 +1658,19 @@ export default function App() {
           </div>
         </div>}
 
-        {/* INTEGRATIONS */}
-        {page === 'integrations' && <div style={{ maxWidth: 750 }}>
+        {/* IMPORT */}
+        {page === 'import' && <div style={{ maxWidth: 1100 }}>
+          {/* SPLIT SCREEN LAYOUT - Always visible */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20 }}>
+            {/* LEFT SIDE - Main Content */}
+            <div>
           {(stockxConnected || goatConnected || ebayConnected) && (
             <div style={{ ...cardStyle, padding: 20, marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>🔄 Sync All Platforms</h3>
                 <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Pull latest sales from connected platforms</p>
               </div>
-              <button onClick={() => { if (stockxConnected) fetchStockXSales(); }} disabled={syncing} style={{ padding: '12px 24px', ...btnPrimary, opacity: syncing ? 0.6 : 1 }}>
+              <button onClick={() => { if (stockxConnected) syncPlatform('StockX'); if (goatConnected) syncPlatform('GOAT'); if (ebayConnected) syncPlatform('eBay'); }} disabled={syncing} style={{ padding: '12px 24px', ...btnPrimary, opacity: syncing ? 0.6 : 1 }}>
                 {syncing ? <><span className="spin-icon">🔄</span> Syncing...</> : '🔄 Sync Now'}
               </button>
             </div>
@@ -1226,176 +1678,176 @@ export default function App() {
 
           {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length > 0 && (
             <div style={{ marginBottom: 20 }}>
-              <div style={{ ...cardStyle, overflow: 'hidden' }}>
-                {/* Header */}
-                <div style={{ padding: '16px 20px', background: 'rgba(251,191,36,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${c.border}` }}>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: c.gold }}>⚡ Bulk Cost Entry</h3>
-                    <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Tab through, enter costs, confirm all</p>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <select 
-                      id="pendingSort"
-                      defaultValue="date"
-                      onChange={(e) => {
-                        const sortBy = e.target.value;
-                        setPendingCosts(prev => {
-                          const sorted = [...prev];
-                          if (sortBy === 'item') sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-                          if (sortBy === 'date') sorted.sort((a, b) => (b.saleDate || '').localeCompare(a.saleDate || ''));
-                          if (sortBy === 'price') sorted.sort((a, b) => (b.salePrice || 0) - (a.salePrice || 0));
-                          return sorted;
-                        });
-                      }}
-                      style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 12, cursor: 'pointer' }}
-                    >
-                      <option value="date">Sort: Date</option>
-                      <option value="item">Sort: Item Name</option>
-                      <option value="price">Sort: Price</option>
-                    </select>
-                    <button onClick={() => {
-                      const yearPending = pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year)));
-                      const toConfirm = yearPending.filter(s => document.getElementById(`bulkcost_${s.id}`)?.value);
-                      if (toConfirm.length === 0) { alert('Enter at least one cost first'); return; }
-                      toConfirm.forEach(s => {
-                        const cost = document.getElementById(`bulkcost_${s.id}`)?.value;
-                        if (cost) confirmSaleWithCost(s.id, cost, 'StockX Standard');
+              {/* Header */}
+              <div style={{ padding: '16px 20px', background: 'rgba(251,191,36,0.1)', border: `1px solid rgba(251,191,36,0.2)`, borderRadius: '12px 12px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: c.gold }}>⚡ Bulk Cost Entry</h3>
+                  <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Enter costs manually or lookup from your inventory</p>
+                </div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <select 
+                    defaultValue="date"
+                    onChange={(e) => {
+                      const sortBy = e.target.value;
+                      setPendingCosts(prev => {
+                        const sorted = [...prev];
+                        if (sortBy === 'item') sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+                        if (sortBy === 'sku') sorted.sort((a, b) => (a.sku || '').localeCompare(b.sku || ''));
+                        if (sortBy === 'date') sorted.sort((a, b) => (b.saleDate || '').localeCompare(a.saleDate || ''));
+                        if (sortBy === 'price') sorted.sort((a, b) => (b.salePrice || 0) - (a.salePrice || 0));
+                        return sorted;
                       });
-                    }} style={{ padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>
-                      ✓ Confirm All Filled
-                    </button>
-                    <button onClick={() => { 
-                      const yearPending = pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year)));
-                      if (confirm(`Delete all ${yearPending.length} pending sales?`)) {
-                        setPendingCosts(pendingCosts.filter(s => !(year === 'all' || (s.saleDate && s.saleDate.startsWith(year)))));
-                      }
-                    }} style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 10, color: c.red, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                      🗑️ Clear
-                    </button>
-                  </div>
-                </div>
-                
-                {/* Bulk Table */}
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ background: 'rgba(255,255,255,0.03)' }}>
-                        <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: c.textMuted, letterSpacing: '0.05em' }}>ITEM</th>
-                        <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: c.textMuted }}>SIZE</th>
-                        <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>SOLD</th>
-                        <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>PAYOUT</th>
-                        <th style={{ padding: '12px 16px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: c.textMuted }}>YOUR COST</th>
-                        <th style={{ padding: '12px 8px', textAlign: 'center', fontSize: 11, fontWeight: 700, color: c.textMuted }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).map((s, idx) => (
-                        <tr key={s.id} style={{ borderTop: `1px solid ${c.border}` }}>
-                          <td style={{ padding: '12px 16px' }}>
-                            <div style={{ fontWeight: 600, fontSize: 13, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
-                            <div style={{ fontSize: 11, color: s.platform === 'eBay' ? '#e53238' : c.emerald }}>{s.sku || s.platform}</div>
-                            <div style={{ fontSize: 10, color: c.textMuted }}>{s.saleDate}</div>
-                          </td>
-                          <td style={{ padding: '12px 8px', textAlign: 'center', fontSize: 14, fontWeight: 600 }}>{s.size || '-'}</td>
-                          <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 14, fontWeight: 600 }}>{fmt(s.salePrice)}</td>
-                          <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 14, fontWeight: 700, color: s.platform === 'eBay' ? '#e53238' : c.emerald }}>{fmt(s.payout)}</td>
-                          <td style={{ padding: '8px 12px', textAlign: 'center', position: 'relative' }}>
-                            <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
-                              <input 
-                                type="number" 
-                                id={`bulkcost_${s.id}`}
-                                placeholder="$"
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    const cost = e.target.value;
-                                    if (cost) {
-                                      confirmSaleWithCost(s.id, cost, s.platform || 'StockX Standard');
-                                      e.target.value = '';
-                                    }
-                                  }
-                                }}
-                                style={{ 
-                                  width: 60, 
-                                  padding: '10px 8px', 
-                                  background: 'rgba(255,255,255,0.05)', 
-                                  border: `1px solid ${c.border}`, 
-                                  borderRadius: 8, 
-                                  color: c.text, 
-                                  fontSize: 14, 
-                                  textAlign: 'center',
-                                  outline: 'none'
-                                }} 
-                              />
-                              <div style={{ position: 'relative' }}>
-                                <button 
-                                  onClick={() => setFormData({ ...formData, inventoryDropdown: formData.inventoryDropdown === s.id ? null : s.id, inventorySearch: '' })}
-                                  style={{ padding: '8px 10px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, cursor: 'pointer', fontSize: 14 }}
-                                  title="Link to inventory"
-                                >📦</button>
-                                {formData.inventoryDropdown === s.id && (
-                                  <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, width: 280, background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, boxShadow: '0 10px 40px rgba(0,0,0,0.5)', zIndex: 100 }}>
-                                    <input 
-                                      type="text" 
-                                      placeholder="Search inventory..." 
-                                      value={formData.inventorySearchPending || ''}
-                                      onChange={(e) => setFormData({ ...formData, inventorySearchPending: e.target.value })}
-                                      style={{ width: '100%', padding: 12, background: 'rgba(255,255,255,0.05)', border: 'none', borderBottom: `1px solid ${c.border}`, borderRadius: '12px 12px 0 0', color: c.text, fontSize: 13, outline: 'none' }}
-                                      autoFocus
-                                    />
-                                    <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-                                      {purchases.filter(p => !p.sold && ((formData.inventorySearchPending || '') === '' || p.name?.toLowerCase().includes((formData.inventorySearchPending || '').toLowerCase()))).slice(0, 10).map(p => (
-                                        <div 
-                                          key={p.id}
-                                          onClick={() => {
-                                            // Fill cost and confirm sale
-                                            confirmSaleWithCost(s.id, p.cost, s.platform || 'StockX Standard');
-                                            // Mark inventory as sold
-                                            setPurchases(prev => prev.map(x => x.id === p.id ? { ...x, sold: true, soldDate: s.saleDate } : x));
-                                            setFormData({ ...formData, inventoryDropdown: null, inventorySearchPending: '' });
-                                          }}
-                                          style={{ padding: '10px 12px', cursor: 'pointer', borderBottom: `1px solid ${c.border}`, fontSize: 12 }}
-                                          onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
-                                          onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
-                                        >
-                                          <div style={{ fontWeight: 600 }}>{p.name}</div>
-                                          <div style={{ color: c.textMuted, fontSize: 11 }}>{p.sku} • {p.size} • {fmt(p.cost)}</div>
-                                        </div>
-                                      ))}
-                                      {purchases.filter(p => !p.sold && ((formData.inventorySearchPending || '') === '' || p.name?.toLowerCase().includes((formData.inventorySearchPending || '').toLowerCase()))).length === 0 && (
-                                        <div style={{ padding: 16, textAlign: 'center', color: c.textMuted, fontSize: 12 }}>No matching inventory</div>
-                                      )}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                          <td style={{ padding: '8px', textAlign: 'center' }}>
-                            <button 
-                              onClick={() => setPendingCosts(prev => prev.filter(x => x.id !== s.id))} 
-                              style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16, padding: 4 }}
-                            >×</button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                
-                {/* Footer Stats */}
-                <div style={{ padding: '12px 20px', background: 'rgba(255,255,255,0.02)', borderTop: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, color: c.textMuted }}>
-                    {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} sales pending
-                  </span>
-                  <span style={{ fontSize: 11, color: c.textMuted }}>
-                    💡 Enter cost + Enter, or click 📦 to link from inventory
-                  </span>
+                    }}
+                    style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 12, cursor: 'pointer' }}
+                  >
+                    <option value="date">Sort: Date</option>
+                    <option value="item">Sort: Item Name</option>
+                    <option value="sku">Sort: SKU</option>
+                    <option value="price">Sort: Price</option>
+                  </select>
+                  <button onClick={() => { 
+                    if (confirm(`Delete all pending sales?`)) {
+                      setPendingCosts([]);
+                      setSelectedPending(new Set());
+                    }
+                  }} style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 10, color: c.red, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                    🗑️ Clear All
+                  </button>
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* StockX Integration - Real OAuth + CSV */}
+              {/* Multi-Select Action Bar */}
+              {selectedPending.size > 0 && (
+                <div style={{ padding: '12px 20px', background: 'rgba(16,185,129,0.15)', borderLeft: `1px solid ${c.border}`, borderRight: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <span style={{ fontWeight: 700, color: c.emerald, fontSize: 14 }}>
+                    {selectedPending.size} selected
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                    <span style={{ fontSize: 13, color: c.textMuted }}>Cost each:</span>
+                    <input 
+                      type="number" 
+                      placeholder="$0.00"
+                      value={bulkCost}
+                      onChange={e => setBulkCost(e.target.value)}
+                      style={{ width: 100, padding: '10px 14px', background: 'rgba(255,255,255,0.1)', border: `2px solid ${c.emerald}`, borderRadius: 8, color: c.text, fontSize: 15, fontWeight: 600, textAlign: 'center' }} 
+                    />
+                    <button 
+                      onClick={() => {
+                        if (!bulkCost) { alert('Enter a cost first'); return; }
+                        selectedPending.forEach(id => confirmSaleWithCost(id, bulkCost, 'StockX Standard'));
+                        setSelectedPending(new Set());
+                        setBulkCost('');
+                      }}
+                      style={{ padding: '10px 20px', ...btnPrimary, fontSize: 13 }}
+                    >
+                      ✓ Apply to {selectedPending.size} Items
+                    </button>
+                  </div>
+                  <button onClick={() => setSelectedPending(new Set())} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>
+                    Clear Selection
+                  </button>
+                </div>
+              )}
+
+              {/* Pending Sales Table */}
+              <div style={{ border: `1px solid ${c.border}`, borderTop: selectedPending.size > 0 ? 'none' : `1px solid ${c.border}`, borderRadius: '0 0 12px 12px', overflow: 'hidden', background: c.card }}>
+                <div style={{ maxHeight: 500, overflowY: 'auto' }}>
+                  {/* Table Header */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '36px 1fr 50px 70px 70px 80px 30px', padding: '10px 12px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', position: 'sticky', top: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <input 
+                        type="checkbox"
+                        checked={selectedPending.size === pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length && selectedPending.size > 0}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                              const allIds = pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).map(s => s.id);
+                              setSelectedPending(new Set(allIds));
+                            } else {
+                              setSelectedPending(new Set());
+                            }
+                          }}
+                          style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }}
+                        />
+                      </div>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>ITEM</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'center' }}>SIZE</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>SOLD</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>PAYOUT</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'center' }}>COST</span>
+                      <span></span>
+                    </div>
+
+                    {/* Table Rows */}
+                    {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).map(s => (
+                      <div 
+                        key={s.id}
+                        onClick={() => setSelectedPendingItem(selectedPendingItem === s.id ? null : s.id)}
+                        style={{ 
+                          display: 'grid', 
+                          gridTemplateColumns: '36px 1fr 50px 70px 70px 80px 30px', 
+                          padding: '10px 12px', 
+                          borderBottom: `1px solid ${c.border}`,
+                          background: selectedPendingItem === s.id ? 'rgba(16,185,129,0.15)' : selectedPending.has(s.id) ? 'rgba(16,185,129,0.08)' : 'transparent',
+                          cursor: 'pointer',
+                          alignItems: 'center'
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
+                          <input 
+                            type="checkbox"
+                            checked={selectedPending.has(s.id)}
+                            onChange={(e) => {
+                              const newSelected = new Set(selectedPending);
+                              if (e.target.checked) newSelected.add(s.id);
+                              else newSelected.delete(s.id);
+                              setSelectedPending(newSelected);
+                            }}
+                            style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }}
+                          />
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
+                          <div style={{ fontSize: 10, color: c.emerald }}>{s.sku}</div>
+                          <div style={{ fontSize: 9, color: c.textMuted }}>{s.saleDate}</div>
+                        </div>
+                        <span style={{ fontSize: 12, fontWeight: 600, textAlign: 'center' }}>{s.size || '-'}</span>
+                        <span style={{ fontSize: 12, textAlign: 'right' }}>{fmt(s.salePrice)}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: c.emerald, textAlign: 'right' }}>{fmt(s.payout)}</span>
+                        <div style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                          <input 
+                            type="number" 
+                            placeholder="$"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && e.target.value) {
+                                confirmSaleWithCost(s.id, e.target.value, 'StockX Standard');
+                                e.target.value = '';
+                              }
+                            }}
+                            style={{ width: 65, padding: '8px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: c.text, fontSize: 12, textAlign: 'center' }} 
+                          />
+                        </div>
+                        <div style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                          <button 
+                            onClick={() => {
+                              setPendingCosts(prev => prev.filter(x => x.id !== s.id));
+                              setSelectedPending(prev => { const n = new Set(prev); n.delete(s.id); return n; });
+                            }} 
+                            style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14 }}
+                          >×</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Footer */}
+                  <div style={{ padding: '12px 16px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${c.border}`, borderTop: 'none', borderRadius: '0 0 12px 12px', fontSize: 11, color: c.textMuted }}>
+                    💡 Click a sale, then click an inventory item on the right to auto-fill cost & mark sold
+                  </div>
+                </div>
+              </div>
+            )}
+
+          {/* StockX Integration - Real OAuth */}
           <div style={{ ...cardStyle, marginBottom: 16 }}>
             <div style={{ padding: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
               <div style={{ width: 54, height: 54, background: '#00c165', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: '#fff' }}>SX</div>
@@ -1419,86 +1871,38 @@ export default function App() {
                 <span style={{ color: c.emerald, fontWeight: 600, fontSize: 12 }}>✓ Connected to StockX</span>
               </div>
             )}
-            
-            {/* CSV Import Section */}
-            <div style={{ padding: 20, borderTop: `1px solid ${c.border}` }}>
-              <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 12, fontWeight: 600 }}>OR IMPORT VIA CSV</div>
+          </div>
+
+          {/* CSV Import Section */}
+          <div style={{ ...cardStyle, marginBottom: 16 }}>
+            <div style={{ padding: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
+                <div style={{ width: 54, height: 54, background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>📄</div>
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>IMPORT CSV</h3>
+                  <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Upload StockX historical sales CSV - filter by year & month</p>
+                </div>
+              </div>
               
-              {!csvImport.show || csvImport.platform !== 'StockX' ? (
-                <div 
-                  style={{ padding: 40, border: `2px dashed ${c.border}`, borderRadius: 16, textAlign: 'center', cursor: 'pointer' }}
-                  onClick={() => document.getElementById('stockx-csv-upload').click()}
-                  onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#00c165'; }}
-                  onDragLeave={(e) => { e.currentTarget.style.borderColor = c.border; }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    e.currentTarget.style.borderColor = c.border;
-                    const file = e.dataTransfer.files[0];
-                    if (!file || !file.name.endsWith('.csv')) return;
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                      const text = event.target.result;
-                      const lines = text.split('\n');
-                      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-                      const parsed = [];
-                      for (let i = 1; i < lines.length; i++) {
-                        if (!lines[i].trim()) continue;
-                        const values = [];
-                        let current = '';
-                        let inQuotes = false;
-                        for (let char of lines[i]) {
-                          if (char === '"') inQuotes = !inQuotes;
-                          else if (char === ',' && !inQuotes) { values.push(current.trim()); current = ''; }
-                          else current += char;
-                        }
-                        values.push(current.trim());
-                        const row = {};
-                        headers.forEach((h, idx) => { row[h] = values[idx] ? values[idx].replace(/"/g, '').trim() : ''; });
-                        if (row['Sale Date']) parsed.push(row);
-                      }
-                      setCsvImport({ show: true, data: parsed, year: '2025', month: 'all', preview: true, platform: 'StockX' });
-                    };
-                    reader.readAsText(file);
-                  }}
-                >
-                  <div style={{ fontSize: 48, marginBottom: 12 }}>📤</div>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Drop CSV or Click</div>
-                  <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 16 }}>Seller Tools → Historical Sales</div>
+              {!csvImport.show ? (
+                <div>
                   <input 
                     type="file" 
                     accept=".csv" 
-                    id="stockx-csv-upload"
-                    onChange={(e) => {
-                      const file = e.target.files[0];
-                      if (!file) return;
-                      const reader = new FileReader();
-                      reader.onload = (event) => {
-                        const text = event.target.result;
-                        const lines = text.split('\n');
-                        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-                        const parsed = [];
-                        for (let i = 1; i < lines.length; i++) {
-                          if (!lines[i].trim()) continue;
-                          const values = [];
-                          let current = '';
-                          let inQuotes = false;
-                          for (let char of lines[i]) {
-                            if (char === '"') inQuotes = !inQuotes;
-                            else if (char === ',' && !inQuotes) { values.push(current.trim()); current = ''; }
-                            else current += char;
-                          }
-                          values.push(current.trim());
-                          const row = {};
-                          headers.forEach((h, idx) => { row[h] = values[idx] ? values[idx].replace(/"/g, '').trim() : ''; });
-                          if (row['Sale Date']) parsed.push(row);
-                        }
-                        setCsvImport({ show: true, data: parsed, year: '2025', month: 'all', preview: true, platform: 'StockX' });
-                      };
-                      reader.readAsText(file);
-                    }}
+                    onChange={handleCsvUpload}
+                    id="csv-upload"
                     style={{ display: 'none' }}
                   />
-                  <button onClick={(e) => { e.stopPropagation(); document.getElementById('stockx-csv-upload').click(); }} style={{ padding: '12px 24px', background: '#00c165', border: 'none', borderRadius: 12, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Choose File</button>
+                  <label 
+                    htmlFor="csv-upload" 
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                    style={{ display: 'block', padding: 40, border: `2px dashed ${c.border}`, borderRadius: 16, textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s' }}
+                  >
+                    <div style={{ fontSize: 48, marginBottom: 12 }}>📤</div>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>Click or drag CSV file here</div>
+                    <div style={{ fontSize: 12, color: c.textMuted }}>Download from StockX → Seller Tools → Historical Sales</div>
+                  </label>
                 </div>
               ) : (
                 <div>
@@ -1506,27 +1910,47 @@ export default function App() {
                   <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
                     <div style={{ flex: 1 }}>
                       <label style={{ fontSize: 11, color: c.textMuted, fontWeight: 600, display: 'block', marginBottom: 6 }}>YEAR</label>
-                      <select value={csvImport.year} onChange={e => setCsvImport({ ...csvImport, year: e.target.value })} style={{ ...inputStyle, padding: 12 }}>
+                      <select 
+                        value={csvImport.year} 
+                        onChange={e => setCsvImport({ ...csvImport, year: e.target.value })}
+                        style={{ ...inputStyle, padding: 12 }}
+                      >
+                        <option value="all">All Years</option>
                         <option value="2026">2026</option>
                         <option value="2025">2025</option>
                         <option value="2024">2024</option>
                         <option value="2023">2023</option>
+                        <option value="2022">2022</option>
+                        <option value="2021">2021</option>
+                        <option value="2020">2020</option>
                       </select>
                     </div>
                     <div style={{ flex: 1 }}>
                       <label style={{ fontSize: 11, color: c.textMuted, fontWeight: 600, display: 'block', marginBottom: 6 }}>MONTH</label>
-                      <select value={csvImport.month} onChange={e => setCsvImport({ ...csvImport, month: e.target.value })} style={{ ...inputStyle, padding: 12 }}>
+                      <select 
+                        value={csvImport.month} 
+                        onChange={e => setCsvImport({ ...csvImport, month: e.target.value })}
+                        style={{ ...inputStyle, padding: 12 }}
+                      >
                         <option value="all">All Months</option>
-                        <option value="01">January</option><option value="02">February</option><option value="03">March</option>
-                        <option value="04">April</option><option value="05">May</option><option value="06">June</option>
-                        <option value="07">July</option><option value="08">August</option><option value="09">September</option>
-                        <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+                        <option value="01">January</option>
+                        <option value="02">February</option>
+                        <option value="03">March</option>
+                        <option value="04">April</option>
+                        <option value="05">May</option>
+                        <option value="06">June</option>
+                        <option value="07">July</option>
+                        <option value="08">August</option>
+                        <option value="09">September</option>
+                        <option value="10">October</option>
+                        <option value="11">November</option>
+                        <option value="12">December</option>
                       </select>
                     </div>
                   </div>
                   
                   {/* Preview Stats */}
-                  <div style={{ background: 'rgba(0,193,101,0.1)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
+                  <div style={{ background: 'rgba(16,185,129,0.1)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
                         <div style={{ fontSize: 13, color: c.textMuted, marginBottom: 4 }}>Total rows in CSV</div>
@@ -1534,206 +1958,251 @@ export default function App() {
                       </div>
                       <div style={{ fontSize: 32 }}>→</div>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 13, color: c.textMuted, marginBottom: 4 }}>Matching filter</div>
-                        <div style={{ fontSize: 24, fontWeight: 800, color: '#00c165' }}>{filterCsvData().length.toLocaleString()}</div>
+                        <div style={{ fontSize: 13, color: c.textMuted, marginBottom: 4 }}>Matching your filter</div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: c.emerald }}>{filterCsvData().length.toLocaleString()}</div>
                       </div>
                     </div>
                   </div>
                   
+                  {/* Preview Table */}
+                  {filterCsvData().length > 0 && (
+                    <div style={{ maxHeight: 200, overflowY: 'auto', marginBottom: 16, borderRadius: 12, border: `1px solid ${c.border}` }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                        <thead>
+                          <tr style={{ background: 'rgba(255,255,255,0.05)' }}>
+                            <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Item</th>
+                            <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Size</th>
+                            <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>Price</th>
+                            <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600 }}>Date</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filterCsvData().slice(0, 5).map((row, i) => (
+                            <tr key={i} style={{ borderTop: `1px solid ${c.border}` }}>
+                              <td style={{ padding: '10px 12px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row['Item'] || row['Product Name'] || row['Product'] || 'Unknown'}</td>
+                              <td style={{ padding: '10px 12px' }}>{row['Sku Size'] || row['Size'] || '-'}</td>
+                              <td style={{ padding: '10px 12px', textAlign: 'right', color: c.emerald }}>${row['Price'] || row['Sale Price'] || '0'}</td>
+                              <td style={{ padding: '10px 12px', color: c.textMuted }}>{row['_parsedDate'] || '-'}</td>
+                            </tr>
+                          ))}
+                          {filterCsvData().length > 5 && (
+                            <tr style={{ borderTop: `1px solid ${c.border}` }}>
+                              <td colSpan={4} style={{ padding: '10px 12px', textAlign: 'center', color: c.textMuted, fontStyle: 'italic' }}>
+                                ...and {filterCsvData().length - 5} more
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  
                   {/* Action Buttons */}
                   <div style={{ display: 'flex', gap: 12 }}>
-                    <button onClick={() => setCsvImport({ show: false, data: [], year: '2025', month: 'all', preview: false, platform: 'StockX' })} style={{ flex: 1, padding: 14, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
-                    <button onClick={importCsvSales} disabled={filterCsvData().length === 0} style={{ flex: 2, padding: 14, background: '#00c165', border: 'none', borderRadius: 12, color: '#fff', fontWeight: 700, cursor: filterCsvData().length === 0 ? 'not-allowed' : 'pointer', opacity: filterCsvData().length === 0 ? 0.5 : 1 }}>Import {filterCsvData().length} Sales</button>
+                    <button 
+                      onClick={() => setCsvImport({ show: false, data: [], filteredData: [], year: 'all', month: 'all', preview: false, headers: [] })}
+                      style={{ flex: 1, padding: 14, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', cursor: 'pointer', fontWeight: 600 }}
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={importCsvSales}
+                      disabled={filterCsvData().length === 0}
+                      style={{ flex: 2, padding: 14, ...btnPrimary, opacity: filterCsvData().length === 0 ? 0.5 : 1 }}
+                    >
+                      Import {filterCsvData().length} Sales
+                    </button>
                   </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* eBay CSV Import */}
-          <div style={{ ...cardStyle, marginBottom: 16 }}>
-            <div style={{ padding: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ width: 54, height: 54, background: '#e53238', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: '#fff' }}>eB</div>
-              <div style={{ flex: 1 }}>
-                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>EBAY</h3>
-                <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Auto-import your eBay sales</p>
+          {/* Other Platforms */}
+          {[
+            { name: 'GOAT', code: 'GT', color: '#1a1a1a', border: '#333', connected: goatConnected, setConnected: setGoatConnected, desc: 'Auto-import your GOAT sales' },
+            { name: 'eBay', code: 'eB', color: '#e53238', connected: ebayConnected, setConnected: setEbayConnected, desc: 'Auto-import your eBay sales' },
+            { name: 'QuickBooks', code: 'QB', color: '#2CA01C', connected: qbConnected, setConnected: setQbConnected, desc: 'Sync with QuickBooks accounting' }
+          ].map(p => (
+            <div key={p.name} style={{ ...cardStyle, marginBottom: 16 }}>
+              <div style={{ padding: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ width: 54, height: 54, background: p.color, border: p.border ? `2px solid ${p.border}` : 'none', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: p.color === '#1a1a1a' ? '#fff' : '#fff' }}>{p.code}</div>
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>{p.name.toUpperCase()}</h3>
+                  <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>{p.desc}</p>
+                </div>
+                {p.connected ? (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {p.name !== 'QuickBooks' && (
+                      <button onClick={() => syncPlatform(p.name)} disabled={syncing} style={{ padding: '10px 18px', ...btnPrimary, fontSize: 12, opacity: syncing ? 0.6 : 1 }}>
+                        {syncing ? '...' : 'Sync'}
+                      </button>
+                    )}
+                    <button onClick={() => p.setConnected(false)} style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 10, color: c.red, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Disconnect</button>
+                  </div>
+                ) : (
+                  <button onClick={() => p.setConnected(true)} style={{ padding: '12px 22px', ...btnPrimary }}>Connect</button>
+                )}
               </div>
-              {ebayConnected ? (
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => {}} disabled={syncing} style={{ padding: '10px 18px', background: '#e53238', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 12, opacity: syncing ? 0.6 : 1 }}>
-                    {syncing ? 'Syncing...' : 'Sync Sales'}
+              {p.connected && (
+                <div style={{ padding: '12px 20px', borderTop: `1px solid ${c.border}`, background: `${p.color}10` }}>
+                  <span style={{ color: c.emerald, fontWeight: 600, fontSize: 12 }}>✓ Connected</span>
+                </div>
+              )}
+            </div>
+          ))}
+            </div>
+
+            {/* RIGHT SIDE - Inventory Lookup (ALWAYS VISIBLE) */}
+            <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 20 }}>
+              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>📦 YOUR INVENTORY</span>
+                {selectedInvLookup.size > 0 && (
+                  <button 
+                    onClick={() => {
+                      if (confirm(`Mark ${selectedInvLookup.size} item${selectedInvLookup.size > 1 ? 's' : ''} as sold?`)) {
+                        setPurchases(prev => prev.map(p => selectedInvLookup.has(p.id) ? { ...p, sold: true } : p));
+                        setSelectedInvLookup(new Set());
+                      }
+                    }}
+                    style={{ padding: '6px 12px', background: 'rgba(251,191,36,0.2)', border: '1px solid rgba(251,191,36,0.4)', borderRadius: 6, color: c.gold, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                  >
+                    Mark {selectedInvLookup.size} Sold
                   </button>
-                  <button onClick={() => setEbayConnected(false)} style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 10, color: c.red, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Disconnect</button>
-                </div>
-              ) : (
-                <button disabled style={{ padding: '12px 22px', background: '#e53238', border: 'none', borderRadius: 12, color: '#fff', fontWeight: 700, cursor: 'not-allowed', opacity: 0.5 }}>Connect</button>
-              )}
-            </div>
-            {ebayConnected && (
-              <div style={{ padding: '12px 20px', borderTop: `1px solid ${c.border}`, background: 'rgba(229,50,56,0.1)' }}>
-                <span style={{ color: '#e53238', fontWeight: 600, fontSize: 12 }}>✓ Connected to eBay</span>
+                )}
               </div>
-            )}
-            
-            {/* CSV Import Section */}
-            <div style={{ padding: 20, borderTop: `1px solid ${c.border}` }}>
-              <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 12, fontWeight: 600 }}>OR IMPORT VIA CSV</div>
               
-              {!csvImport.show || csvImport.platform !== 'eBay' ? (
-                <div 
-                  style={{ padding: 40, border: `2px dashed ${c.border}`, borderRadius: 16, textAlign: 'center', cursor: 'pointer' }}
-                  onClick={() => document.getElementById('ebay-csv-upload').click()}
-                  onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#e53238'; }}
-                  onDragLeave={(e) => { e.currentTarget.style.borderColor = c.border; }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    e.currentTarget.style.borderColor = c.border;
-                    const file = e.dataTransfer.files[0];
-                    if (!file || !file.name.endsWith('.csv')) return;
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                      const text = event.target.result;
-                      const lines = text.split('\n');
-                      let headerIndex = 0;
-                      for (let i = 0; i < Math.min(20, lines.length); i++) {
-                        if (lines[i].includes('Transaction creation date')) { headerIndex = i; break; }
-                      }
-                      const headers = lines[headerIndex].split(',').map(h => h.trim().replace(/"/g, '').replace(/^\uFEFF/, ''));
-                      const parsed = [];
-                      for (let i = headerIndex + 1; i < lines.length; i++) {
-                        if (!lines[i].trim()) continue;
-                        const values = [];
-                        let current = '';
-                        let inQuotes = false;
-                        for (let char of lines[i]) {
-                          if (char === '"') inQuotes = !inQuotes;
-                          else if (char === ',' && !inQuotes) { values.push(current.trim()); current = ''; }
-                          else current += char;
-                        }
-                        values.push(current.trim());
-                        const row = {};
-                        headers.forEach((h, idx) => { row[h] = values[idx] ? values[idx].replace(/"/g, '').trim() : ''; });
-                        if (row['Type'] === 'Order') parsed.push(row);
-                      }
-                      setCsvImport({ show: true, data: parsed, year: '2025', month: 'all', preview: true, platform: 'eBay' });
-                    };
-                    reader.readAsText(file);
-                  }}
-                >
-                  <div style={{ fontSize: 48, marginBottom: 12 }}>📤</div>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>Drop CSV or Click</div>
-                  <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 16 }}>Seller Hub → Reports → Orders</div>
-                  <input 
-                    type="file" 
-                    accept=".csv" 
-                    id="ebay-csv-upload"
-                    onChange={(e) => {
-                      const file = e.target.files[0];
-                      if (!file) return;
-                      const reader = new FileReader();
-                      reader.onload = (event) => {
-                        const text = event.target.result;
-                        const lines = text.split('\n');
-                        let headerIndex = 0;
-                        for (let i = 0; i < Math.min(20, lines.length); i++) {
-                          if (lines[i].includes('Transaction creation date')) { headerIndex = i; break; }
-                        }
-                        const headers = lines[headerIndex].split(',').map(h => h.trim().replace(/"/g, '').replace(/^\uFEFF/, ''));
-                        const parsed = [];
-                        for (let i = headerIndex + 1; i < lines.length; i++) {
-                          if (!lines[i].trim()) continue;
-                          const values = [];
-                          let current = '';
-                          let inQuotes = false;
-                          for (let char of lines[i]) {
-                            if (char === '"') inQuotes = !inQuotes;
-                            else if (char === ',' && !inQuotes) { values.push(current.trim()); current = ''; }
-                            else current += char;
-                          }
-                          values.push(current.trim());
-                          const row = {};
-                          headers.forEach((h, idx) => { row[h] = values[idx] ? values[idx].replace(/"/g, '').trim() : ''; });
-                          if (row['Type'] === 'Order') parsed.push(row);
-                        }
-                        setCsvImport({ show: true, data: parsed, year: '2025', month: 'all', preview: true, platform: 'eBay' });
-                      };
-                      reader.readAsText(file);
-                    }}
-                    style={{ display: 'none' }}
-                  />
-                  <button onClick={(e) => { e.stopPropagation(); document.getElementById('ebay-csv-upload').click(); }} style={{ padding: '12px 24px', background: '#e53238', border: 'none', borderRadius: 12, color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Choose File</button>
-                </div>
-              ) : (
-                <div>
-                  {/* Filter Controls */}
-                  <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: 11, color: c.textMuted, fontWeight: 600, display: 'block', marginBottom: 6 }}>YEAR</label>
-                      <select value={csvImport.year} onChange={e => setCsvImport({ ...csvImport, year: e.target.value })} style={{ ...inputStyle, padding: 12 }}>
-                        <option value="2026">2026</option>
-                        <option value="2025">2025</option>
-                        <option value="2024">2024</option>
-                        <option value="2023">2023</option>
-                      </select>
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: 11, color: c.textMuted, fontWeight: 600, display: 'block', marginBottom: 6 }}>MONTH</label>
-                      <select value={csvImport.month} onChange={e => setCsvImport({ ...csvImport, month: e.target.value })} style={{ ...inputStyle, padding: 12 }}>
-                        <option value="all">All Months</option>
-                        <option value="01">January</option><option value="02">February</option><option value="03">March</option>
-                        <option value="04">April</option><option value="05">May</option><option value="06">June</option>
-                        <option value="07">July</option><option value="08">August</option><option value="09">September</option>
-                        <option value="10">October</option><option value="11">November</option><option value="12">December</option>
-                      </select>
-                    </div>
-                  </div>
-                  
-                  {/* Preview Stats */}
-                  <div style={{ background: 'rgba(229,50,56,0.1)', borderRadius: 12, padding: 16, marginBottom: 20 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <div style={{ fontSize: 13, color: c.textMuted, marginBottom: 4 }}>Total rows in CSV</div>
-                        <div style={{ fontSize: 24, fontWeight: 800 }}>{csvImport.data.length.toLocaleString()}</div>
-                      </div>
-                      <div style={{ fontSize: 32 }}>→</div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 13, color: c.textMuted, marginBottom: 4 }}>Matching filter</div>
-                        <div style={{ fontSize: 24, fontWeight: 800, color: '#e53238' }}>{filterCsvData().length.toLocaleString()}</div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Action Buttons */}
-                  <div style={{ display: 'flex', gap: 12 }}>
-                    <button onClick={() => setCsvImport({ show: false, data: [], year: '2025', month: 'all', preview: false, platform: 'StockX' })} style={{ flex: 1, padding: 14, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
-                    <button onClick={importCsvSales} disabled={filterCsvData().length === 0} style={{ flex: 2, padding: 14, background: '#e53238', border: 'none', borderRadius: 12, color: '#fff', fontWeight: 700, cursor: filterCsvData().length === 0 ? 'not-allowed' : 'pointer', opacity: filterCsvData().length === 0 ? 0.5 : 1 }}>Import {filterCsvData().length} Sales</button>
-                  </div>
+              <div style={{ padding: 12, borderBottom: `1px solid ${c.border}` }}>
+                <input 
+                  type="text"
+                  placeholder="🔍 Search SKU, name, size..."
+                  value={invLookupSearch}
+                  onChange={e => setInvLookupSearch(e.target.value)}
+                  style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 12 }}
+                />
+              </div>
+
+              {selectedPendingItem && (
+                <div style={{ padding: '10px 12px', background: 'rgba(16,185,129,0.1)', borderBottom: `1px solid ${c.border}`, fontSize: 11, color: c.emerald, fontWeight: 600 }}>
+                  👆 Click an item below to use its cost
                 </div>
               )}
-            </div>
-          </div>
 
-          {/* GOAT */}
-          <div style={{ ...cardStyle, marginBottom: 16 }}>
-            <div style={{ padding: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ width: 54, height: 54, background: '#1a1a1a', border: '2px solid #333', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: '#fff' }}>GT</div>
-              <div style={{ flex: 1 }}>
-                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>GOAT</h3>
-                <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Auto-import your GOAT sales</p>
-              </div>
-              <button disabled style={{ padding: '12px 22px', ...btnPrimary, opacity: 0.5, cursor: 'not-allowed' }}>Connect</button>
-            </div>
-          </div>
+              {purchases.filter(p => !p.sold).length === 0 ? (
+                <div style={{ padding: 30, textAlign: 'center' }}>
+                  <div style={{ fontSize: 36, marginBottom: 12 }}>📦</div>
+                  <div style={{ fontWeight: 600, marginBottom: 8, color: c.textMuted }}>No inventory yet</div>
+                  <div style={{ fontSize: 11, color: c.textMuted, marginBottom: 16 }}>Add items to track costs</div>
+                  <button onClick={() => setPage('inventory')} style={{ padding: '10px 20px', ...btnPrimary, fontSize: 12 }}>+ Add Inventory</button>
+                </div>
+              ) : (
+                <div style={{ maxHeight: 500, overflowY: 'auto' }}>
+                  {/* Select All Row */}
+                  {!selectedPendingItem && purchases.filter(p => !p.sold).filter(p => {
+                    if (!invLookupSearch) return true;
+                    const search = invLookupSearch.toLowerCase();
+                    return (p.name && p.name.toLowerCase().includes(search)) ||
+                           (p.sku && p.sku.toLowerCase().includes(search)) ||
+                           (p.size && p.size.toString().toLowerCase().includes(search));
+                  }).length > 0 && (
+                    <div style={{ padding: '8px 12px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input 
+                        type="checkbox"
+                        checked={(() => {
+                          const visible = purchases.filter(p => !p.sold).filter(p => {
+                            if (!invLookupSearch) return true;
+                            const search = invLookupSearch.toLowerCase();
+                            return (p.name && p.name.toLowerCase().includes(search)) ||
+                                   (p.sku && p.sku.toLowerCase().includes(search)) ||
+                                   (p.size && p.size.toString().toLowerCase().includes(search));
+                          }).slice(0, 50);
+                          return visible.length > 0 && visible.every(p => selectedInvLookup.has(p.id));
+                        })()}
+                        onChange={(e) => {
+                          const visible = purchases.filter(p => !p.sold).filter(p => {
+                            if (!invLookupSearch) return true;
+                            const search = invLookupSearch.toLowerCase();
+                            return (p.name && p.name.toLowerCase().includes(search)) ||
+                                   (p.sku && p.sku.toLowerCase().includes(search)) ||
+                                   (p.size && p.size.toString().toLowerCase().includes(search));
+                          }).slice(0, 50);
+                          if (e.target.checked) {
+                            setSelectedInvLookup(new Set(visible.map(p => p.id)));
+                          } else {
+                            setSelectedInvLookup(new Set());
+                          }
+                        }}
+                        style={{ width: 14, height: 14, cursor: 'pointer', accentColor: c.gold }}
+                      />
+                      <span style={{ fontSize: 10, color: c.textMuted }}>Select All</span>
+                    </div>
+                  )}
+                  {purchases
+                    .filter(p => !p.sold)
+                    .filter(p => {
+                      if (!invLookupSearch) return true;
+                      const search = invLookupSearch.toLowerCase();
+                      return (p.name && p.name.toLowerCase().includes(search)) ||
+                             (p.sku && p.sku.toLowerCase().includes(search)) ||
+                             (p.size && p.size.toString().toLowerCase().includes(search));
+                    })
+                    .slice(0, 50)
+                    .map(p => (
+                      <div 
+                        key={p.id}
+                        style={{ 
+                          padding: '10px 12px', 
+                          borderBottom: `1px solid ${c.border}`,
+                          cursor: selectedPendingItem ? 'pointer' : 'default',
+                          transition: 'background 0.15s',
+                          background: selectedInvLookup.has(p.id) ? 'rgba(251,191,36,0.1)' : 'transparent'
+                        }}
+                        onClick={() => {
+                          if (selectedPendingItem) {
+                            confirmSaleWithCost(selectedPendingItem, p.cost, 'StockX Standard');
+                            setPurchases(prev => prev.map(x => x.id === p.id ? { ...x, sold: true } : x));
+                            setSelectedPendingItem(null);
+                          }
+                        }}
+                        onMouseEnter={e => { if (selectedPendingItem) e.currentTarget.style.background = 'rgba(16,185,129,0.1)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = selectedInvLookup.has(p.id) ? 'rgba(251,191,36,0.1)' : 'transparent'; }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                          {!selectedPendingItem && (
+                            <input 
+                              type="checkbox"
+                              checked={selectedInvLookup.has(p.id)}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                setSelectedInvLookup(prev => {
+                                  const newSet = new Set(prev);
+                                  if (e.target.checked) newSet.add(p.id);
+                                  else newSet.delete(p.id);
+                                  return newSet;
+                                });
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ width: 14, height: 14, cursor: 'pointer', accentColor: c.gold, marginTop: 2 }}
+                            />
+                          )}
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 2 }}>{p.name}</div>
+                            <div style={{ fontSize: 10, color: c.emerald, marginBottom: 4 }}>{p.sku} · Size {p.size}</div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                              <span style={{ color: c.gold, fontWeight: 700 }}>{fmt(p.cost)}</span>
+                              <span style={{ color: c.textMuted }}>{p.date}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  }
+                </div>
+              )}
 
-          {/* QuickBooks */}
-          <div style={{ ...cardStyle, marginBottom: 16 }}>
-            <div style={{ padding: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ width: 54, height: 54, background: '#2CA01C', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: '#fff' }}>QB</div>
-              <div style={{ flex: 1 }}>
-                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>QUICKBOOKS</h3>
-                <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Sync with QuickBooks</p>
+              <div style={{ padding: '10px 12px', borderTop: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', fontSize: 10, color: c.textMuted, textAlign: 'center' }}>
+                {purchases.filter(p => !p.sold).length} items in stock
               </div>
-              <button disabled style={{ padding: '12px 22px', ...btnPrimary, opacity: 0.5, cursor: 'not-allowed' }}>Connect</button>
             </div>
           </div>
         </div>}
@@ -1810,11 +2279,21 @@ export default function App() {
         <div style={{ background: 'linear-gradient(180deg, #111 0%, #0a0a0a 100%)', border: `1px solid ${c.border}`, borderRadius: 20, width: 420, maxHeight: '90vh', overflow: 'auto' }}>
           <div style={{ padding: '18px 22px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#111' }}>
             <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>
-              {modal === 'purchase' ? 'ADD PURCHASE' : modal === 'bulkAdd' ? 'BULK ADD ITEMS' : modal === 'sale' ? 'RECORD SALE' : modal === 'editSale' ? 'EDIT SALE' : modal === 'expense' ? 'ADD EXPENSE' : modal === 'storage' ? 'ADD STORAGE FEE' : 'LOG MILEAGE'}
+              {modal === 'purchase' ? 'ADD PURCHASE' : modal === 'bulkAdd' ? 'BULK ADD ITEMS' : modal === 'sale' ? 'RECORD SALE' : modal === 'editSale' ? 'EDIT SALE' : modal === 'editInventory' ? 'EDIT INVENTORY' : modal === 'expense' ? 'ADD EXPENSE' : modal === 'storage' ? 'ADD STORAGE FEE' : 'LOG MILEAGE'}
             </h3>
             <button onClick={() => setModal(null)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 8, width: 32, height: 32, color: '#fff', fontSize: 18, cursor: 'pointer' }}>×</button>
           </div>
           <div style={{ padding: 22 }}>
+            {/* EDIT INVENTORY MODAL */}
+            {modal === 'editInventory' && <>
+              <input value={formData.sku || ''} onChange={e => setFormData({ ...formData, sku: e.target.value })} placeholder="Style Code (SKU)" style={{ ...inputStyle, marginBottom: 12 }} />
+              <input value={formData.name || ''} onChange={e => setFormData({ ...formData, name: e.target.value })} placeholder="Product name *" style={{ ...inputStyle, marginBottom: 12 }} />
+              <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+                <input value={formData.size || ''} onChange={e => setFormData({ ...formData, size: e.target.value })} placeholder="Size" style={{ ...inputStyle, flex: 1 }} />
+                <input type="number" value={formData.cost || ''} onChange={e => setFormData({ ...formData, cost: e.target.value })} placeholder="Cost *" style={{ ...inputStyle, flex: 1 }} />
+              </div>
+              <input type="date" value={formData.date || ''} onChange={e => setFormData({ ...formData, date: e.target.value })} style={inputStyle} />
+            </>}
             {modal === 'purchase' && <>
               {formData.image && (
                 <div style={{ marginBottom: 16, padding: 16, background: '#1a1a1a', borderRadius: 12, textAlign: 'center' }}>
@@ -2080,11 +2559,24 @@ export default function App() {
                 setModal(null);
                 setFormData({});
               }
+              else if (modal === 'editInventory') {
+                // Update existing inventory item
+                setPurchases(purchases.map(p => p.id === formData.editId ? {
+                  ...p,
+                  name: formData.name,
+                  sku: formData.sku,
+                  size: formData.size,
+                  cost: parseFloat(formData.cost) || 0,
+                  date: formData.date
+                } : p));
+                setModal(null);
+                setFormData({});
+              }
               else if (modal === 'expense') addExpense(); 
               else if (modal === 'storage') addStorage(); 
               else if (modal === 'mileage') addMileage(); 
             }} style={{ flex: 1, padding: 14, ...btnPrimary, fontSize: 13 }}>
-              {modal === 'purchase' ? 'ADD ITEM' : modal === 'bulkAdd' ? `ADD ${(formData.bulkRows || []).filter(r => r.size && r.cost).length} ITEMS` : modal === 'sale' ? 'RECORD 💰' : modal === 'editSale' ? 'SAVE CHANGES' : modal === 'mileage' ? 'LOG TRIP' : 'ADD'}
+              {modal === 'purchase' ? 'ADD ITEM' : modal === 'bulkAdd' ? `ADD ${(formData.bulkRows || []).filter(r => r.size && r.cost).length} ITEMS` : modal === 'sale' ? 'RECORD 💰' : modal === 'editSale' ? 'SAVE CHANGES' : modal === 'editInventory' ? 'SAVE CHANGES' : modal === 'mileage' ? 'LOG TRIP' : 'ADD'}
             </button>
           </div>
         </div>
@@ -2279,6 +2771,44 @@ export default function App() {
           p, span, td, th, div {
             color: black !important;
           }
+        }
+
+        /* PULSE ANIMATIONS */
+        .pulse-ring {
+          animation: pulse-ring 2s ease-out infinite;
+        }
+        
+        .pulse-glow {
+          animation: pulse-glow 2s ease-in-out infinite;
+        }
+        
+        .shimmer-line {
+          animation: shimmer 3s ease-in-out infinite;
+        }
+        
+        .breathe {
+          animation: breathe 4s ease-in-out infinite;
+        }
+
+        @keyframes pulse-ring {
+          0% { transform: scale(1); opacity: 0.4; }
+          100% { transform: scale(2.5); opacity: 0; }
+        }
+        
+        @keyframes pulse-glow {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+        
+        @keyframes shimmer {
+          0% { opacity: 0.3; left: 10%; right: 90%; }
+          50% { opacity: 1; left: 45%; right: 45%; }
+          100% { opacity: 0.3; left: 90%; right: 10%; }
+        }
+        
+        @keyframes breathe {
+          0%, 100% { transform: scale(1); opacity: 0.5; }
+          50% { transform: scale(1.15); opacity: 0.7; }
         }
       `}</style>
     </div>
