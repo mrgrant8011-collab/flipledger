@@ -940,7 +940,10 @@ function App() {
       return parseFloat(val.toString().replace(/[$,]/g, '')) || 0;
     };
     
-    const newPending = filtered.map(row => {
+    console.log('%c FLIPLEDGER v92 - IMPORT STARTING ', 'background: #00ff00; color: black; font-size: 16px;');
+    console.log('Rows to import:', filtered.length);
+    
+    const newPending = filtered.map((row, idx) => {
       // SIMPLE: Check which columns exist and use them
       
       // SOLD: Use 'Gross amount' or 'Gross transaction amount'
@@ -948,9 +951,11 @@ function App() {
       
       // PAYOUT: Use 'Order earnings' if it exists (best), otherwise calculate
       let payout;
-      if (row['Order earnings'] && row['Order earnings'] !== '--') {
+      const rawOrderEarnings = row['Order earnings'];
+      
+      if (rawOrderEarnings && rawOrderEarnings !== '--' && rawOrderEarnings !== '0') {
         // Order Earnings Report - use directly
-        payout = parseAmount(row['Order earnings']);
+        payout = parseAmount(rawOrderEarnings);
       } else {
         // Transaction Report - Net amount minus ad fees
         const netAmount = parseAmount(row['Net amount']);
@@ -967,7 +972,8 @@ function App() {
          Math.abs(parseAmount(row['Promoted Listing Standard fee'])) +
          parseFloat(row['_adFee'] || 0));
       
-      console.log('eBay Import:', row['Item title']?.substring(0, 30), '| SOLD:', salePrice, '| PAYOUT:', payout);
+      // Log each item
+      console.log(`[${idx + 1}] ${row['Item title']?.substring(0, 35)} | Gross: ${row['Gross amount']} | OrderEarnings: ${rawOrderEarnings} | PAYOUT=${payout}`);
       
       return {
         id: 'ebay_' + (row['Order number'] || Date.now() + Math.random()),
@@ -986,31 +992,51 @@ function App() {
       };
     });
     
-    // Build comprehensive set of existing IDs to prevent duplicates
-    const existingIds = new Set();
-    [...sales, ...pendingCosts].forEach(s => {
-      if (s.id) existingIds.add(s.id);
-      if (s.orderId) existingIds.add(s.orderId);
-      if (s.orderNumber) existingIds.add(s.orderNumber);
-      if (s.orderId) existingIds.add('ebay_' + s.orderId);
-      if (s.orderNumber) existingIds.add('ebay_' + s.orderNumber);
+    console.log('%c CREATED ' + newPending.length + ' SALE OBJECTS ', 'background: blue; color: white;');
+    
+    // Instead of skipping duplicates, UPDATE them with new payout values
+    const existingMap = new Map();
+    pendingCosts.forEach(s => {
+      if (s.orderNumber) existingMap.set(s.orderNumber, s);
+      if (s.orderId) existingMap.set(s.orderId, s);
+    });
+    sales.forEach(s => {
+      if (s.orderNumber) existingMap.set(s.orderNumber, s);
+      if (s.orderId) existingMap.set(s.orderId, s);
     });
     
-    const uniqueNew = newPending.filter(p => {
-      if (existingIds.has(p.id)) return false;
-      if (existingIds.has(p.orderId)) return false;
-      if (existingIds.has(p.orderNumber)) return false;
-      return true;
+    // Separate into updates and new items
+    const updates = [];
+    const newItems = [];
+    
+    for (const item of newPending) {
+      if (existingMap.has(item.orderNumber) || existingMap.has(item.orderId)) {
+        updates.push(item);
+      } else {
+        newItems.push(item);
+      }
+    }
+    
+    // Update existing pendingCosts with new payout values
+    const updatedPending = pendingCosts.map(existing => {
+      const update = newPending.find(n => n.orderNumber === existing.orderNumber || n.orderId === existing.orderId);
+      if (update) {
+        console.log('UPDATING:', existing.name.substring(0, 30), '| old payout:', existing.payout, '-> new payout:', update.payout);
+        return { ...existing, payout: update.payout, salePrice: update.salePrice, fees: update.fees };
+      }
+      return existing;
     });
     
-    setPendingCosts([...pendingCosts, ...uniqueNew]);
+    // Add truly new items
+    const finalPending = [...updatedPending, ...newItems];
+    
+    setPendingCosts(finalPending);
     setEbayImport({ show: false, data: [], year: 'all', month: 'all', headers: [] });
     
-    if (uniqueNew.length === 0) {
-      alert(`All ${newPending.length} eBay sales already imported.`);
-    } else {
-      alert(`Imported ${uniqueNew.length} eBay sales!${newPending.length - uniqueNew.length > 0 ? ` (${newPending.length - uniqueNew.length} duplicates skipped)` : ''}`);
-    }
+    console.log('%c IMPORT COMPLETE ', 'background: green; color: white;');
+    console.log('Updated:', updates.length, '| New:', newItems.length);
+    
+    alert(`eBay Import: ${updates.length} updated, ${newItems.length} new items added.`);
   };
 
   const printTaxPackage = () => {
@@ -1116,7 +1142,7 @@ function App() {
             <div style={{ width: 44, height: 44, background: `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18, color: '#000' }}>FL</div>
             <div>
               <div style={{ fontWeight: 700, fontSize: 18, letterSpacing: '1px', color: c.gold }}>FLIPLEDGER</div>
-              <div style={{ fontSize: 10, color: c.textDim, letterSpacing: '2px', fontWeight: 500 }}>WEALTH INTELLIGENCE</div>
+              <div style={{ fontSize: 10, color: c.textDim, letterSpacing: '2px', fontWeight: 500 }}>WEALTH INTELLIGENCE <span style={{ color: c.green }}>v92</span></div>
             </div>
           </div>
         </div>
