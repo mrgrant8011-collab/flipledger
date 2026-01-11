@@ -1,5 +1,42 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Component } from 'react';
 import * as XLSX from 'xlsx';
+
+// Error Boundary for production stability
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error('FlipLedger Error:', error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ minHeight: '100vh', background: '#0a0a0a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', padding: 40 }}>
+          <h1 style={{ fontSize: 48, marginBottom: 16 }}>😵</h1>
+          <h2 style={{ marginBottom: 16 }}>Something went wrong</h2>
+          <p style={{ color: '#888', marginBottom: 24, textAlign: 'center', maxWidth: 400 }}>
+            Don't worry - your data is safe in your browser. Try refreshing the page.
+          </p>
+          <button onClick={() => window.location.reload()} style={{ padding: '12px 32px', background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', border: 'none', borderRadius: 10, color: '#fff', fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>
+            Refresh Page
+          </button>
+          <details style={{ marginTop: 24, color: '#666', fontSize: 12 }}>
+            <summary style={{ cursor: 'pointer' }}>Error details</summary>
+            <pre style={{ marginTop: 8, padding: 12, background: '#1a1a1a', borderRadius: 8, maxWidth: 500, overflow: 'auto' }}>
+              {this.state.error?.toString()}
+            </pre>
+          </details>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // SalesPage as separate component for proper re-rendering
 function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPage, selectedSales, setSelectedSales, sales, setSales, settings, setModal, ITEMS_PER_PAGE, cardStyle, btnPrimary, c, fmt, exportCSV }) {
@@ -96,8 +133,11 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
     </div>
 
     {selectedSales.size > 0 && <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-      <span style={{ fontWeight: 700, color: c.red, fontSize: 14 }}>🗑️ {selectedSales.size} ready to delete</span>
-      <button onClick={() => { if(confirm(`DELETE ${selectedSales.size} SALES?`)) { setSales(sales.filter(s => !selectedSales.has(s.id))); setSelectedSales(new Set()); }}} style={{ padding: '10px 24px', background: c.red, border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700 }}>🗑️ DELETE {selectedSales.size}</button>
+      <span style={{ fontWeight: 700, color: c.red, fontSize: 14 }}>🗑️ {selectedSales.size} sale{selectedSales.size > 1 ? 's' : ''} selected</span>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <button onClick={() => setSelectedSales(new Set())} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>Clear Selection</button>
+        <button onClick={() => { if(confirm(`Delete ${selectedSales.size} sale${selectedSales.size > 1 ? 's' : ''}? This cannot be undone.`)) { setSales(sales.filter(s => !selectedSales.has(s.id))); setSelectedSales(new Set()); }}} style={{ padding: '8px 20px', background: c.red, border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>🗑️ Delete {selectedSales.size} Sale{selectedSales.size > 1 ? 's' : ''}</button>
+      </div>
     </div>}
 
     <div style={cardStyle}>
@@ -148,7 +188,7 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
   </div>;
 }
 
-export default function App() {
+function App() {
   const [page, setPage] = useState('dashboard');
   const [modal, setModal] = useState(null);
   const [year, setYear] = useState('2024');
@@ -235,15 +275,26 @@ export default function App() {
     }
   }, []);
 
-  // Save to localStorage whenever data changes
-  useEffect(() => { localStorage.setItem('flipledger_purchases', JSON.stringify(purchases)); }, [purchases]);
-  useEffect(() => { localStorage.setItem('flipledger_sales', JSON.stringify(sales)); }, [sales]);
-  useEffect(() => { localStorage.setItem('flipledger_expenses', JSON.stringify(expenses)); }, [expenses]);
-  useEffect(() => { localStorage.setItem('flipledger_storage', JSON.stringify(storageFees)); }, [storageFees]);
-  useEffect(() => { localStorage.setItem('flipledger_mileage', JSON.stringify(mileage)); }, [mileage]);
-  useEffect(() => { localStorage.setItem('flipledger_goals', JSON.stringify(goals)); }, [goals]);
-  useEffect(() => { localStorage.setItem('flipledger_settings', JSON.stringify(settings)); }, [settings]);
-  useEffect(() => { localStorage.setItem('flipledger_pending', JSON.stringify(pendingCosts)); }, [pendingCosts]);
+  // Safe localStorage save with error handling
+  const safeSave = (key, data) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(data));
+    } catch (e) {
+      console.error('localStorage save failed:', key, e);
+      if (e.name === 'QuotaExceededError') {
+        alert('Storage full! Please export your data and clear old records.');
+      }
+    }
+  };
+
+  useEffect(() => { safeSave('flipledger_purchases', purchases); }, [purchases]);
+  useEffect(() => { safeSave('flipledger_sales', sales); }, [sales]);
+  useEffect(() => { safeSave('flipledger_expenses', expenses); }, [expenses]);
+  useEffect(() => { safeSave('flipledger_storage', storageFees); }, [storageFees]);
+  useEffect(() => { safeSave('flipledger_mileage', mileage); }, [mileage]);
+  useEffect(() => { safeSave('flipledger_goals', goals); }, [goals]);
+  useEffect(() => { safeSave('flipledger_settings', settings); }, [settings]);
+  useEffect(() => { safeSave('flipledger_pending', pendingCosts); }, [pendingCosts]);
 
   // Fetch StockX sales
   const fetchStockXSales = async () => {
@@ -1430,11 +1481,23 @@ export default function App() {
             </div>
           )}
 
+          {/* SELECTION BAR */}
+          <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button onClick={() => {
+                const pageIds = paginatedInventory.map(p => p.id);
+                setSelectedInventory(new Set(pageIds));
+              }} style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, color: c.emerald, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>✓ Select Page ({paginatedInventory.length})</button>
+              {selectedInventory.size > 0 && <button onClick={() => setSelectedInventory(new Set())} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>✗ Clear</button>}
+            </div>
+            <span style={{ fontSize: 13, color: selectedInventory.size > 0 ? c.emerald : c.textMuted, fontWeight: selectedInventory.size > 0 ? 700 : 400 }}>{selectedInventory.size > 0 ? `${selectedInventory.size} selected` : 'None selected'}</span>
+          </div>
+
           {/* BULK DELETE BAR */}
           {selectedInventory.size > 0 && (
             <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(239,68,68,0.15)', border: `1px solid rgba(239,68,68,0.3)`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontWeight: 700, color: c.red, fontSize: 14 }}>
-                {selectedInventory.size} item{selectedInventory.size > 1 ? 's' : ''} selected
+                🗑️ {selectedInventory.size} item{selectedInventory.size > 1 ? 's' : ''} selected
               </span>
               <div style={{ display: 'flex', gap: 12 }}>
                 <button onClick={() => setSelectedInventory(new Set())} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>
@@ -2893,5 +2956,14 @@ export default function App() {
         }
       `}</style>
     </div>
+  );
+}
+
+// Wrap App in ErrorBoundary for production stability
+export default function AppWithErrorBoundary() {
+  return (
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   );
 }
