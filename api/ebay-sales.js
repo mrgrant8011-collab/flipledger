@@ -53,22 +53,29 @@ export default async function handler(req, res) {
       }
       
       for (const lineItem of order.lineItems || []) {
+        const salePrice = parseFloat(lineItem.total?.value || lineItem.lineItemCost?.value || 0);
+        
         const sale = {
-          id: `ebay-${order.orderId}-${lineItem.lineItemId}`,
+          // Use same ID format as CSV import: 'ebay_' + orderNumber
+          id: `ebay_${order.orderId}`,
           orderId: order.orderId,
+          orderNumber: order.orderId, // Match CSV field name for duplicate detection
           platform: 'eBay',
           name: lineItem.title || 'eBay Item',
           sku: lineItem.sku || lineItem.legacyItemId || '',
           size: '', // eBay doesn't always have size
           quantity: lineItem.quantity || 1,
-          salePrice: parseFloat(lineItem.total?.value || lineItem.lineItemCost?.value || 0),
+          salePrice: salePrice,
           saleDate: order.creationDate ? order.creationDate.split('T')[0] : new Date().toISOString().split('T')[0],
           buyerUsername: order.buyer?.username || '',
-          // We'll fetch fees separately or estimate
+          buyer: order.buyer?.username || '',
+          // Fees will be updated below, payout calculated after
           fees: 0,
+          payout: 0, // Will be: salePrice - fees
           cost: 0, // User needs to provide cost
           profit: 0,
-          image: lineItem.image?.imageUrl || ''
+          image: lineItem.image?.imageUrl || '',
+          source: 'api'
         };
         
         sales.push(sale);
@@ -92,16 +99,63 @@ export default async function handler(req, res) {
         const financesData = await financesResponse.json();
         const transactions = financesData.transactions || [];
         
-        // Map fees to orders
+        // Map fees and payout to orders
         for (const tx of transactions) {
           const orderId = tx.orderId;
-          const totalFees = (tx.totalFeeAmount?.value || 0) * -1; // Fees are negative
           
-          // Find matching sale and add fees
+          // Get actual values from eBay - same as CSV columns
+          const totalFees = Math.abs(parseFloat(tx.totalFeeAmount?.value || 0));
+          const netAmount = parseFloat(tx.netAmount?.value || 0); // This is "Net amount" - actual payout
+          const grossAmount = parseFloat(tx.amount?.value || 0); // This is "Gross transaction amount"
+          
+          // Find matching sale and update with real data
           const matchingSale = sales.find(s => s.orderId === orderId);
           if (matchingSale) {
-            matchingSale.fees = Math.abs(parseFloat(totalFees));
-            matchingSale.profit = matchingSale.salePrice - matchingSale.fees - matchingSale.cost;
+            // Use gross amount from Finances API if available (more accurate)
+            if (grossAmount > 0) {
+              matchingSale.salePrice = grossAmount;
+            }
+            matchingSale.fees = totalFees;
+            // Use eBay's actual net amount (payout) - same as CSV "Net amount" column
+            matchingSale.payout = netAmount > 0 ? netAmount : (matchingSale.salePrice - totalFees);
+            matchingSale.profit = matchingSale.payout - matchingSale.cost;
+          }
+        }
+      }
+      
+      // Also fetch NON_SALE_CHARGE transactions for promoted listing fees
+      const adFeesResponse = await fetch(
+        `https://api.ebay.com/sell/finances/v1/transaction?filter=transactionType:{NON_SALE_CHARGE},transactionDate:[${start}..${end}]&limit=200`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
+          }
+        }
+      );
+      
+      if (adFeesResponse.ok) {
+        const adFeesData = await adFeesResponse.json();
+        const adTransactions = adFeesData.transactions || [];
+        
+        // Map promoted listing fees to orders
+        for (const tx of adTransactions) {
+          const orderId = tx.orderId;
+          const feeType = (tx.feeType || '').toLowerCase();
+          const bookingEntry = (tx.bookingEntry || '').toLowerCase();
+          
+          // Check if this is a promoted listing fee
+          if (orderId && (feeType.includes('ad') || feeType.includes('promot') || bookingEntry.includes('debit'))) {
+            const adFeeAmount = Math.abs(parseFloat(tx.amount?.value || 0));
+            
+            // Find matching sale and add ad fee
+            const matchingSale = sales.find(s => s.orderId === orderId);
+            if (matchingSale && adFeeAmount > 0) {
+              matchingSale.fees = (matchingSale.fees || 0) + adFeeAmount;
+              matchingSale.payout = (matchingSale.payout || matchingSale.salePrice) - adFeeAmount;
+              matchingSale.profit = matchingSale.payout - matchingSale.cost;
+            }
           }
         }
       }
@@ -111,8 +165,16 @@ export default async function handler(req, res) {
       for (const sale of sales) {
         if (sale.fees === 0) {
           sale.fees = sale.salePrice * 0.13;
-          sale.profit = sale.salePrice - sale.fees - sale.cost;
+          sale.payout = sale.salePrice - sale.fees;
+          sale.profit = sale.payout - sale.cost;
         }
+      }
+    }
+    
+    // Ensure all sales have payout calculated
+    for (const sale of sales) {
+      if (!sale.payout || sale.payout === 0) {
+        sale.payout = sale.salePrice - sale.fees;
       }
     }
     

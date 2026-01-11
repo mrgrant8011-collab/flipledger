@@ -779,7 +779,9 @@ function App() {
       const headers = parseCSVLine(lines[headerIndex]).map(h => h.replace(/^\uFEFF/, ''));
       console.log('eBay CSV - Header index:', headerIndex, 'Headers:', headers.slice(0, 10));
       
-      const parsed = [];
+      const orders = [];
+      const adFees = {}; // Map order number -> ad fee amount
+      
       for (let i = headerIndex + 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
         const values = parseCSVLine(lines[i]);
@@ -788,7 +790,7 @@ function App() {
           row[h] = values[idx] || '';
         });
         
-        // Only include "Order" type rows
+        // Capture "Order" type rows
         if (row['Type'] === 'Order') {
           const ebayDate = row['Transaction creation date'] || '';
           if (ebayDate) {
@@ -797,12 +799,30 @@ function App() {
               row['_parsedDate'] = `${match[3]}-${months[match[1]] || '01'}-${match[2].padStart(2, '0')}`;
             }
           }
-          parsed.push(row);
+          orders.push(row);
+        }
+        
+        // Capture Promoted Listing fees - match to order number
+        if (row['Type'] === 'Fee' || row['Type'] === 'Other fee') {
+          const desc = (row['Description'] || '').toLowerCase();
+          if (desc.includes('promoted') || desc.includes('ad fee') || desc.includes('advertising')) {
+            const orderNum = row['Order number'] || '';
+            if (orderNum) {
+              const feeAmount = Math.abs(parseFloat((row['Net amount'] || row['Gross transaction amount'] || '0').toString().replace(/[$,]/g, ''))) || 0;
+              adFees[orderNum] = (adFees[orderNum] || 0) + feeAmount;
+            }
+          }
         }
       }
       
-      console.log('eBay CSV - Parsed orders:', parsed.length);
-      setEbayImport({ show: true, data: parsed, headers, year: 'all', month: 'all' });
+      // Attach ad fees to their orders
+      orders.forEach(order => {
+        const orderNum = order['Order number'] || '';
+        order['_adFee'] = adFees[orderNum] || 0;
+      });
+      
+      console.log('eBay CSV - Parsed orders:', orders.length, 'Ad fees found:', Object.keys(adFees).length);
+      setEbayImport({ show: true, data: orders, headers, year: 'all', month: 'all' });
     };
     reader.readAsText(file);
   };
@@ -899,17 +919,24 @@ function App() {
       const feeVariable = Math.abs(parseAmount(row['Final Value Fee - variable']));
       const regFee = Math.abs(parseAmount(row['Regulatory operating fee']));
       const intlFee = Math.abs(parseAmount(row['International fee']));
-      const totalFees = feeFixed + feeVariable + regFee + intlFee;
+      const adFee = row['_adFee'] || 0; // Promoted listing fee from separate rows
+      
+      // Total fees now includes ad spend
+      const totalFees = feeFixed + feeVariable + regFee + intlFee + adFee;
+      
+      // Payout = net amount minus any ad fees (since they're charged separately)
+      const actualPayout = netAmount - adFee;
       
       return {
         id: 'ebay_' + (row['Order number'] || Date.now() + Math.random()),
+        orderId: row['Order number'] || '',
         orderNumber: row['Order number'] || '',
         name: row['Item title'] || 'Unknown Item',
         sku: row['Custom label'] || '',
         size: '',
         salePrice: grossAmount,
-        payout: netAmount,
-        fees: totalFees,
+        payout: actualPayout, // Now reflects actual money received after ads
+        fees: totalFees, // Now includes ad fees
         saleDate: row['_parsedDate'] || '',
         platform: 'eBay',
         source: 'csv',
@@ -917,8 +944,22 @@ function App() {
       };
     });
     
-    const existingIds = new Set([...pendingCosts.map(p => p.id), ...sales.map(s => s.orderId || s.id)]);
-    const uniqueNew = newPending.filter(p => !existingIds.has(p.id));
+    // Build comprehensive set of existing IDs to prevent duplicates
+    const existingIds = new Set();
+    [...sales, ...pendingCosts].forEach(s => {
+      if (s.id) existingIds.add(s.id);
+      if (s.orderId) existingIds.add(s.orderId);
+      if (s.orderNumber) existingIds.add(s.orderNumber);
+      if (s.orderId) existingIds.add('ebay_' + s.orderId);
+      if (s.orderNumber) existingIds.add('ebay_' + s.orderNumber);
+    });
+    
+    const uniqueNew = newPending.filter(p => {
+      if (existingIds.has(p.id)) return false;
+      if (existingIds.has(p.orderId)) return false;
+      if (existingIds.has(p.orderNumber)) return false;
+      return true;
+    });
     
     setPendingCosts([...pendingCosts, ...uniqueNew]);
     setEbayImport({ show: false, data: [], year: 'all', month: 'all', headers: [] });
@@ -2242,12 +2283,31 @@ function App() {
                         if (data.success && data.sales && data.sales.length > 0) {
                           const newPending = data.sales.map(s => ({
                             ...s,
-                            id: s.id || Date.now() + Math.random(),
+                            id: s.id || 'ebay_' + (s.orderId || Date.now() + Math.random()),
                             platform: 'eBay',
-                            needsCost: true
+                            needsCost: true,
+                            source: 'api'
                           }));
-                          const existingIds = new Set([...sales.map(s => s.orderId), ...pendingCosts.map(p => p.orderId)]);
-                          const fresh = newPending.filter(s => !existingIds.has(s.orderId));
+                          
+                          // Build comprehensive set of existing IDs to prevent duplicates
+                          // Check: id, orderId, orderNumber (covers both CSV and API formats)
+                          const existingIds = new Set();
+                          [...sales, ...pendingCosts].forEach(s => {
+                            if (s.id) existingIds.add(s.id);
+                            if (s.orderId) existingIds.add(s.orderId);
+                            if (s.orderNumber) existingIds.add(s.orderNumber);
+                            // Also add the ebay_ prefixed version
+                            if (s.orderId) existingIds.add('ebay_' + s.orderId);
+                            if (s.orderNumber) existingIds.add('ebay_' + s.orderNumber);
+                          });
+                          
+                          const fresh = newPending.filter(s => {
+                            // Check if any identifier already exists
+                            if (existingIds.has(s.id)) return false;
+                            if (existingIds.has(s.orderId)) return false;
+                            if (existingIds.has(s.orderNumber)) return false;
+                            return true;
+                          });
                           if (fresh.length > 0) {
                             setPendingCosts(prev => [...prev, ...fresh]);
                             localStorage.setItem('flipledger_pending', JSON.stringify([...pendingCosts, ...fresh]));
