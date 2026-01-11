@@ -821,7 +821,10 @@ function App() {
         order['_adFee'] = adFees[orderNum] || 0;
       });
       
-      console.log('eBay CSV - Parsed orders:', orders.length, 'Ad fees found:', Object.keys(adFees).length);
+      console.log('eBay CSV - Parsed orders:', orders.length);
+      console.log('eBay CSV - Ad fees found:', adFees);
+      console.log('eBay CSV - Sample order:', orders[0] ? { name: orders[0]['Item title'], net: orders[0]['Net amount'], adFee: orders[0]['_adFee'] } : 'none');
+      
       setEbayImport({ show: true, data: orders, headers, year: 'all', month: 'all' });
     };
     reader.readAsText(file);
@@ -911,21 +914,38 @@ function App() {
     const filtered = filterEbayData();
     const parseAmount = (val) => parseFloat((val || '0').toString().replace(/[$,]/g, '')) || 0;
     
+    // Debug first item
+    if (filtered.length > 0) {
+      const first = filtered[0];
+      console.log('eBay Import - First item raw:', {
+        name: first['Item title'],
+        gross: first['Gross transaction amount'],
+        net: first['Net amount'],
+        adFee: first['_adFee']
+      });
+    }
+    
     const newPending = filtered.map(row => {
-      const itemSubtotal = parseAmount(row['Item subtotal']);
-      const grossAmount = parseAmount(row['Gross transaction amount']) || itemSubtotal;
+      // SOLD = Gross transaction amount (what buyer paid)
+      const grossAmount = parseAmount(row['Gross transaction amount']);
+      
+      // PAYOUT = Net amount (what seller receives - already calculated by eBay)
       const netAmount = parseAmount(row['Net amount']);
+      
+      // Ad fees from separate "Other fee" rows
+      const adFee = parseFloat(row['_adFee'] || 0);
+      
+      // TRUE PAYOUT = Net amount minus promoted listing fees
+      const truePayout = netAmount - adFee;
+      
+      // Fees from the fee columns (for display only)
       const feeFixed = Math.abs(parseAmount(row['Final Value Fee - fixed']));
       const feeVariable = Math.abs(parseAmount(row['Final Value Fee - variable']));
       const regFee = Math.abs(parseAmount(row['Regulatory operating fee']));
       const intlFee = Math.abs(parseAmount(row['International fee']));
-      const adFee = row['_adFee'] || 0; // Promoted listing fee from separate rows
-      
-      // Total fees now includes ad spend
       const totalFees = feeFixed + feeVariable + regFee + intlFee + adFee;
       
-      // Payout = net amount minus any ad fees (since they're charged separately)
-      const actualPayout = netAmount - adFee;
+      console.log('eBay Import - Processing:', row['Item title']?.substring(0, 30), '| Gross:', grossAmount, '| Net:', netAmount, '| AdFee:', adFee, '| TruePayout:', truePayout);
       
       return {
         id: 'ebay_' + (row['Order number'] || Date.now() + Math.random()),
@@ -934,9 +954,9 @@ function App() {
         name: row['Item title'] || 'Unknown Item',
         sku: row['Custom label'] || '',
         size: '',
-        salePrice: grossAmount,
-        payout: actualPayout, // Now reflects actual money received after ads
-        fees: totalFees, // Now includes ad fees
+        salePrice: grossAmount,           // SOLD
+        payout: truePayout,               // TRUE PAYOUT (Net minus ad fees)
+        fees: totalFees,
         saleDate: row['_parsedDate'] || '',
         platform: 'eBay',
         source: 'csv',

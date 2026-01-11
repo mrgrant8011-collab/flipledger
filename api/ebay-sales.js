@@ -99,6 +99,8 @@ export default async function handler(req, res) {
         const financesData = await financesResponse.json();
         const transactions = financesData.transactions || [];
         
+        console.log('Finances API returned', transactions.length, 'transactions');
+        
         // Map fees and payout to orders
         for (const tx of transactions) {
           const orderId = tx.orderId;
@@ -108,19 +110,23 @@ export default async function handler(req, res) {
           const netAmount = parseFloat(tx.netAmount?.value || 0); // This is "Net amount" - actual payout
           const grossAmount = parseFloat(tx.amount?.value || 0); // This is "Gross transaction amount"
           
+          console.log('Finance tx:', orderId, '| Gross:', grossAmount, '| Net:', netAmount, '| Fees:', totalFees);
+          
           // Find matching sale and update with real data
           const matchingSale = sales.find(s => s.orderId === orderId);
           if (matchingSale) {
-            // Use gross amount from Finances API if available (more accurate)
             if (grossAmount > 0) {
               matchingSale.salePrice = grossAmount;
             }
             matchingSale.fees = totalFees;
-            // Use eBay's actual net amount (payout) - same as CSV "Net amount" column
-            matchingSale.payout = netAmount > 0 ? netAmount : (matchingSale.salePrice - totalFees);
+            // PAYOUT = Net amount (this is Order Earnings from eBay)
+            matchingSale.payout = netAmount;
             matchingSale.profit = matchingSale.payout - matchingSale.cost;
+            matchingSale._hasFinanceData = true;
           }
         }
+      } else {
+        console.log('Finances API failed:', financesResponse.status);
       }
       
       // Also fetch NON_SALE_CHARGE transactions for promoted listing fees
@@ -164,16 +170,30 @@ export default async function handler(req, res) {
       // Fees will be estimated in the final loop below
     }
     
-    // Ensure all sales have fees and payout calculated
-    // If Finances API didn't provide data, estimate fees at 13%
+    // Final pass: estimate fees for any sales that didn't get Finance API data
+    // eBay fees are typically 13-15% of sale price
+    let estimatedCount = 0;
     for (const sale of sales) {
-      if (!sale.fees || sale.fees === 0) {
+      if (!sale._hasFinanceData) {
+        estimatedCount++;
         sale.fees = sale.salePrice * 0.13;
+        sale.payout = sale.salePrice * 0.87; // Roughly 87% after 13% fees
+        sale.profit = sale.payout - sale.cost;
       }
-      if (!sale.payout || sale.payout === 0) {
-        sale.payout = sale.salePrice - sale.fees;
-      }
-      sale.profit = sale.payout - sale.cost;
+    }
+    
+    console.log('Sales with Finance data:', sales.filter(s => s._hasFinanceData).length);
+    console.log('Sales with estimated fees:', estimatedCount);
+    
+    // Log sample for debugging
+    if (sales.length > 0) {
+      console.log('Sample sale:', {
+        name: sales[0].name?.substring(0, 30),
+        salePrice: sales[0].salePrice,
+        payout: sales[0].payout,
+        fees: sales[0].fees,
+        hasFinanceData: sales[0]._hasFinanceData
+      });
     }
     
     res.status(200).json({
