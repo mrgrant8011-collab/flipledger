@@ -940,7 +940,7 @@ function App() {
       return parseFloat(val.toString().replace(/[$,]/g, '')) || 0;
     };
     
-    console.log('%c FLIPLEDGER v94 - IMPORT STARTING ', 'background: #00ff00; color: black; font-size: 16px;');
+    console.log('%c FLIPLEDGER v96 - IMPORT STARTING ', 'background: #00ff00; color: black; font-size: 16px;');
     console.log('Rows to import:', filtered.length);
     
     const newPending = filtered.map((row, idx) => {
@@ -1151,7 +1151,7 @@ function App() {
             <div style={{ width: 44, height: 44, background: `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18, color: '#000' }}>FL</div>
             <div>
               <div style={{ fontWeight: 700, fontSize: 18, letterSpacing: '1px', color: c.gold }}>FLIPLEDGER</div>
-              <div style={{ fontSize: 10, color: c.textDim, letterSpacing: '2px', fontWeight: 500 }}>WEALTH INTELLIGENCE <span style={{ color: c.green }}>v94</span></div>
+              <div style={{ fontSize: 10, color: c.textDim, letterSpacing: '2px', fontWeight: 500 }}>WEALTH INTELLIGENCE <span style={{ color: c.green }}>v96</span></div>
             </div>
           </div>
         </div>
@@ -2013,6 +2013,23 @@ function App() {
 
           {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length > 0 && (
             <div style={{ marginBottom: 20 }}>
+              {/* DEBUG PANEL - Remove after fixing */}
+              {(() => {
+                const panda = pendingCosts.find(p => p.name && p.name.toLowerCase().includes('panda'));
+                if (panda) {
+                  return (
+                    <div style={{ padding: 12, marginBottom: 12, background: '#ff0', color: '#000', borderRadius: 8, fontSize: 14, fontFamily: 'monospace' }}>
+                      <strong>🐼 DEBUG - PANDA FOUND:</strong><br/>
+                      name: {panda.name}<br/>
+                      salePrice: {panda.salePrice} (SOLD column)<br/>
+                      payout: {panda.payout} (PAYOUT column - should be 73.65)<br/>
+                      fees: {panda.fees}<br/>
+                      orderNumber: {panda.orderNumber}
+                    </div>
+                  );
+                }
+                return null;
+              })()}
               {/* Header */}
               <div style={{ padding: '16px 20px', background: 'rgba(251,191,36,0.1)', border: `1px solid rgba(251,191,36,0.2)`, borderRadius: '12px 12px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
