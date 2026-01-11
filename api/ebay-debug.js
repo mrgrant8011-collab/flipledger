@@ -1,4 +1,4 @@
-// Debug endpoint - see raw eBay transaction data
+// Debug endpoint - see raw eBay order data
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -16,9 +16,9 @@ export default async function handler(req, res) {
   const start = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   
   try {
-    // Get ALL transactions
-    const txResponse = await fetch(
-      `https://api.ebay.com/sell/finances/v1/transaction?filter=transactionDate:[${start}..${end}]&limit=1000`,
+    // Get orders from Fulfillment API (this works)
+    const ordersResponse = await fetch(
+      `https://api.ebay.com/sell/fulfillment/v1/order?filter=creationdate:[${start}..${end}]&limit=50`,
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -28,33 +28,42 @@ export default async function handler(req, res) {
       }
     );
     
-    if (!txResponse.ok) {
-      const errorText = await txResponse.text();
-      return res.status(txResponse.status).json({ 
-        error: 'eBay API Failed', 
-        status: txResponse.status,
-        details: errorText,
-        tokenPreview: accessToken.substring(0, 20) + '...'
+    if (!ordersResponse.ok) {
+      const errorText = await ordersResponse.text();
+      return res.status(ordersResponse.status).json({ 
+        error: 'Fulfillment API Failed', 
+        status: ordersResponse.status,
+        details: errorText
       });
     }
     
-    const txData = await txResponse.json();
-    const transactions = txData.transactions || [];
+    const ordersData = await ordersResponse.json();
+    const orders = ordersData.orders || [];
     
-    // Filter to just NON_SALE_CHARGE and SALE for analysis
-    const nonSaleCharges = transactions.filter(tx => tx.transactionType === 'NON_SALE_CHARGE');
-    const sales = transactions.filter(tx => tx.transactionType === 'SALE');
-    
+    // Return first 3 orders with ALL their data
     res.status(200).json({
-      totalTransactions: transactions.length,
-      salesCount: sales.length,
-      nonSaleChargeCount: nonSaleCharges.length,
-      // Return full raw data for first 5 of each
-      sampleSales: sales.slice(0, 5),
-      sampleNonSaleCharges: nonSaleCharges.slice(0, 10)
+      totalOrders: orders.length,
+      sampleOrders: orders.slice(0, 3).map(o => ({
+        orderId: o.orderId,
+        creationDate: o.creationDate,
+        orderPaymentStatus: o.orderPaymentStatus,
+        pricingSummary: o.pricingSummary,
+        paymentSummary: o.paymentSummary,
+        totalFeeBasisAmount: o.totalFeeBasisAmount,
+        totalMarketplaceFee: o.totalMarketplaceFee,
+        lineItems: o.lineItems?.map(li => ({
+          title: li.title,
+          lineItemId: li.lineItemId,
+          legacyItemId: li.legacyItemId,
+          total: li.total,
+          lineItemCost: li.lineItemCost,
+          deliveryCost: li.deliveryCost,
+          lineItemFulfillmentInstructions: li.lineItemFulfillmentInstructions
+        }))
+      }))
     });
     
   } catch (err) {
-    res.status(500).json({ error: 'Server error', message: err.message, stack: err.stack });
+    res.status(500).json({ error: 'Server error', message: err.message });
   }
 }
