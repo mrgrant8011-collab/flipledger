@@ -48,6 +48,10 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem('flipledger_pending')) || []; }
     catch { return []; }
   });
+  const [selectedSales, setSelectedSales] = useState(new Set());
+  const [salesPage, setSalesPage] = useState(1);
+  const [inventoryPage, setInventoryPage] = useState(1);
+  const ITEMS_PER_PAGE = 50;
 
   // Check for StockX token in URL on load
   useEffect(() => {
@@ -782,37 +786,78 @@ export default function App() {
         </div>}
 
         {/* SALES */}
-        {page === 'sales' && <div>
+        {page === 'sales' && (() => {
+          // Filter sales based on search, platform, month
+          const displayedSales = filteredSales.filter(s => {
+            const search = (formData.salesSearch || '').toLowerCase();
+            const filter = formData.salesFilter || 'all';
+            const monthFilter = formData.salesMonth || 'all';
+            const matchesSearch = !search || s.name?.toLowerCase().includes(search) || s.sku?.toLowerCase().includes(search) || s.size?.toString().toLowerCase().includes(search);
+            const matchesFilter = filter === 'all' || s.platform === filter || (filter === 'StockX' && s.platform?.includes('StockX'));
+            const matchesMonth = monthFilter === 'all' || (s.saleDate && s.saleDate.substring(5, 7) === monthFilter);
+            return matchesSearch && matchesFilter && matchesMonth;
+          }).sort((a, b) => {
+            const sort = formData.salesSort || 'newest';
+            if (sort === 'newest') return new Date(b.saleDate) - new Date(a.saleDate);
+            if (sort === 'oldest') return new Date(a.saleDate) - new Date(b.saleDate);
+            if (sort === 'profitHigh') return (b.profit || 0) - (a.profit || 0);
+            if (sort === 'profitLow') return (a.profit || 0) - (b.profit || 0);
+            if (sort === 'priceHigh') return (b.salePrice || 0) - (a.salePrice || 0);
+            return 0;
+          });
+          
+          const displayedProfit = displayedSales.reduce((sum, s) => sum + (s.profit || 0), 0);
+          const totalPages = Math.ceil(displayedSales.length / ITEMS_PER_PAGE);
+          const paginatedSales = displayedSales.slice((salesPage - 1) * ITEMS_PER_PAGE, salesPage * ITEMS_PER_PAGE);
+          const allPageIds = paginatedSales.map(s => s.id);
+          const allSelected = paginatedSales.length > 0 && allPageIds.every(id => selectedSales.has(id));
+          
+          return <div>
           {/* STATS BAR */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 20 }}>
             <div style={{ ...cardStyle, padding: 16 }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL SALES</span>
-              <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: '#fff' }}>{filteredSales.length}</p>
+              <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: '#fff' }}>{displayedSales.length}</p>
             </div>
             <div style={{ ...cardStyle, padding: 16 }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL PROFIT</span>
-              <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: netProfit >= 0 ? c.emerald : c.red }}>{fmt(netProfit)}</p>
+              <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: displayedProfit >= 0 ? c.emerald : c.red }}>{fmt(displayedProfit)}</p>
             </div>
           </div>
 
-          {/* SEARCH & ACTIONS */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+          {/* SEARCH & FILTERS */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
             <input 
               type="text" 
               placeholder="🔍 Search by name, SKU, or size..." 
               value={formData.salesSearch || ''} 
-              onChange={e => setFormData({ ...formData, salesSearch: e.target.value })}
-              style={{ flex: 1, padding: 14, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 14 }} 
+              onChange={e => { setFormData({ ...formData, salesSearch: e.target.value }); setSalesPage(1); }}
+              style={{ flex: 1, minWidth: 200, padding: 14, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 14 }} 
             />
-            <select value={formData.salesFilter || 'all'} onChange={e => setFormData({ ...formData, salesFilter: e.target.value })} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
-              <option value="all">All Platforms ({filteredSales.length})</option>
-              <option value="StockX">StockX - All ({filteredSales.filter(s => s.platform?.includes('StockX')).length})</option>
-              <option value="StockX Standard">StockX Standard ({filteredSales.filter(s => s.platform === 'StockX Standard').length})</option>
-              <option value="StockX Direct">StockX Direct ({filteredSales.filter(s => s.platform === 'StockX Direct').length})</option>
-              <option value="StockX Flex">StockX Flex ({filteredSales.filter(s => s.platform === 'StockX Flex').length})</option>
-              <option value="GOAT">GOAT ({filteredSales.filter(s => s.platform === 'GOAT').length})</option>
-              <option value="eBay">eBay ({filteredSales.filter(s => s.platform === 'eBay').length})</option>
-              <option value="Local">Local ({filteredSales.filter(s => s.platform === 'Local').length})</option>
+            <select value={formData.salesMonth || 'all'} onChange={e => { setFormData({ ...formData, salesMonth: e.target.value }); setSalesPage(1); }} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
+              <option value="all">All Months</option>
+              <option value="01">January</option>
+              <option value="02">February</option>
+              <option value="03">March</option>
+              <option value="04">April</option>
+              <option value="05">May</option>
+              <option value="06">June</option>
+              <option value="07">July</option>
+              <option value="08">August</option>
+              <option value="09">September</option>
+              <option value="10">October</option>
+              <option value="11">November</option>
+              <option value="12">December</option>
+            </select>
+            <select value={formData.salesFilter || 'all'} onChange={e => { setFormData({ ...formData, salesFilter: e.target.value }); setSalesPage(1); }} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
+              <option value="all">All Platforms</option>
+              <option value="StockX">StockX - All</option>
+              <option value="StockX Standard">StockX Standard</option>
+              <option value="StockX Direct">StockX Direct</option>
+              <option value="StockX Flex">StockX Flex</option>
+              <option value="GOAT">GOAT</option>
+              <option value="eBay">eBay</option>
+              <option value="Local">Local</option>
             </select>
             <select value={formData.salesSort || 'newest'} onChange={e => setFormData({ ...formData, salesSort: e.target.value })} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
               <option value="newest">Newest First</option>
@@ -824,21 +869,59 @@ export default function App() {
             <button onClick={() => { setFormData({}); setModal('sale'); }} style={{ padding: '14px 24px', ...btnPrimary, fontSize: 13 }}>+ RECORD SALE</button>
           </div>
 
+          {/* BULK DELETE BAR */}
+          {selectedSales.size > 0 && (
+            <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontWeight: 700, color: c.red, fontSize: 14 }}>
+                {selectedSales.size} sale{selectedSales.size > 1 ? 's' : ''} selected
+              </span>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button 
+                  onClick={() => setSelectedSales(new Set())}
+                  style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}
+                >
+                  Clear Selection
+                </button>
+                <button 
+                  onClick={() => {
+                    if (confirm(`Delete ${selectedSales.size} sale${selectedSales.size > 1 ? 's' : ''}? This cannot be undone.`)) {
+                      setSales(prev => prev.filter(s => !selectedSales.has(s.id)));
+                      setSelectedSales(new Set());
+                    }
+                  }}
+                  style={{ padding: '8px 20px', background: c.red, border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
+                >
+                  🗑️ Delete {selectedSales.size} Sale{selectedSales.size > 1 ? 's' : ''}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* SALES TABLE */}
           <div style={cardStyle}>
             <div style={{ padding: '14px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, color: c.textMuted }}>Showing {filteredSales.filter(s => {
-                const search = (formData.salesSearch || '').toLowerCase();
-                const filter = formData.salesFilter || 'all';
-                const matchesSearch = !search || s.name?.toLowerCase().includes(search) || s.sku?.toLowerCase().includes(search) || s.size?.toLowerCase().includes(search);
-                const matchesFilter = filter === 'all' || s.platform === filter || (filter === 'StockX' && s.platform?.includes('StockX'));
-                return matchesSearch && matchesFilter;
-              }).length} sales</span>
-              <button onClick={() => exportCSV(filteredSales, 'sales.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
+              <span style={{ fontSize: 13, color: c.textMuted }}>Showing {displayedSales.length} sales (page {salesPage} of {totalPages || 1})</span>
+              <button onClick={() => exportCSV(displayedSales, 'sales.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
             </div>
             
-            {/* TABLE HEADER */}
-            <div style={{ display: 'grid', gridTemplateColumns: '85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
+            {/* TABLE HEADER WITH CHECKBOX */}
+            <div style={{ display: 'grid', gridTemplateColumns: '40px 85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <input 
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedSales(new Set([...selectedSales, ...allPageIds]));
+                    } else {
+                      const newSet = new Set(selectedSales);
+                      allPageIds.forEach(id => newSet.delete(id));
+                      setSelectedSales(newSet);
+                    }
+                  }}
+                  style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }}
+                />
+              </div>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>DATE</span>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>NAME</span>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>SKU</span>
@@ -853,36 +936,24 @@ export default function App() {
             </div>
 
             {/* TABLE ROWS */}
-            {filteredSales.filter(s => {
-              const search = (formData.salesSearch || '').toLowerCase();
-              const filter = formData.salesFilter || 'all';
-              const matchesSearch = !search || s.name?.toLowerCase().includes(search) || s.sku?.toLowerCase().includes(search) || s.size?.toLowerCase().includes(search);
-              const matchesFilter = filter === 'all' || s.platform === filter || (filter === 'StockX' && s.platform?.includes('StockX'));
-              return matchesSearch && matchesFilter;
-            }).sort((a, b) => {
-              const sort = formData.salesSort || 'newest';
-              if (sort === 'newest') return new Date(b.saleDate) - new Date(a.saleDate);
-              if (sort === 'oldest') return new Date(a.saleDate) - new Date(b.saleDate);
-              if (sort === 'profitHigh') return (b.profit || 0) - (a.profit || 0);
-              if (sort === 'profitLow') return (a.profit || 0) - (b.profit || 0);
-              if (sort === 'priceHigh') return (b.salePrice || 0) - (a.salePrice || 0);
-              return 0;
-            }).length ? filteredSales.filter(s => {
-              const search = (formData.salesSearch || '').toLowerCase();
-              const filter = formData.salesFilter || 'all';
-              const matchesSearch = !search || s.name?.toLowerCase().includes(search) || s.sku?.toLowerCase().includes(search) || s.size?.toLowerCase().includes(search);
-              const matchesFilter = filter === 'all' || s.platform === filter || (filter === 'StockX' && s.platform?.includes('StockX'));
-              return matchesSearch && matchesFilter;
-            }).sort((a, b) => {
-              const sort = formData.salesSort || 'newest';
-              if (sort === 'newest') return new Date(b.saleDate) - new Date(a.saleDate);
-              if (sort === 'oldest') return new Date(a.saleDate) - new Date(b.saleDate);
-              if (sort === 'profitHigh') return (b.profit || 0) - (a.profit || 0);
-              if (sort === 'profitLow') return (a.profit || 0) - (b.profit || 0);
-              if (sort === 'priceHigh') return (b.salePrice || 0) - (a.salePrice || 0);
-              return 0;
-            }).map(s => (
-              <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, alignItems: 'center' }}>
+            {paginatedSales.length ? paginatedSales.map(s => (
+              <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '40px 85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : 'transparent' }}>
+                <div>
+                  <input 
+                    type="checkbox"
+                    checked={selectedSales.has(s.id)}
+                    onChange={(e) => {
+                      const newSet = new Set(selectedSales);
+                      if (e.target.checked) {
+                        newSet.add(s.id);
+                      } else {
+                        newSet.delete(s.id);
+                      }
+                      setSelectedSales(newSet);
+                    }}
+                    style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }}
+                  />
+                </div>
                 <span style={{ fontSize: 12, color: c.textMuted }}>{s.saleDate}</span>
                 <span style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</span>
                 <span style={{ fontSize: 11, color: c.emerald }}>{s.sku || '-'}</span>
@@ -893,11 +964,49 @@ export default function App() {
                 <span style={{ fontSize: 12, textAlign: 'right', color: c.red }}>{fmt(s.fees)}</span>
                 <span style={{ fontSize: 13, fontWeight: 700, textAlign: 'right', color: s.profit >= 0 ? c.emerald : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</span>
                 <button onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14 }}>✏️</button>
-                <button onClick={() => setSales(sales.filter(x => x.id !== s.id))} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16 }}>×</button>
+                <button onClick={() => { setSales(sales.filter(x => x.id !== s.id)); setSelectedSales(prev => { const n = new Set(prev); n.delete(s.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16 }}>×</button>
               </div>
-            )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💵</div><p style={{ color: c.textMuted }}>No sales</p><button onClick={() => { setFormData({}); setModal('sale'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Record Sale</button></div>}
+            )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💵</div><p style={{ color: c.textMuted }}>No sales match your filters</p><button onClick={() => { setFormData({}); setModal('sale'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Record Sale</button></div>}
+            
+            {/* PAGINATION */}
+            {totalPages > 1 && (
+              <div style={{ padding: '16px 20px', borderTop: `1px solid ${c.border}`, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
+                <button 
+                  onClick={() => setSalesPage(1)} 
+                  disabled={salesPage === 1}
+                  style={{ padding: '8px 12px', background: salesPage === 1 ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: salesPage === 1 ? c.textMuted : '#fff', cursor: salesPage === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}
+                >
+                  ««
+                </button>
+                <button 
+                  onClick={() => setSalesPage(p => Math.max(1, p - 1))} 
+                  disabled={salesPage === 1}
+                  style={{ padding: '8px 12px', background: salesPage === 1 ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: salesPage === 1 ? c.textMuted : '#fff', cursor: salesPage === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}
+                >
+                  ‹ Prev
+                </button>
+                <span style={{ padding: '8px 16px', fontSize: 13, color: c.text }}>
+                  Page {salesPage} of {totalPages}
+                </span>
+                <button 
+                  onClick={() => setSalesPage(p => Math.min(totalPages, p + 1))} 
+                  disabled={salesPage === totalPages}
+                  style={{ padding: '8px 12px', background: salesPage === totalPages ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: salesPage === totalPages ? c.textMuted : '#fff', cursor: salesPage === totalPages ? 'not-allowed' : 'pointer', fontSize: 12 }}
+                >
+                  Next ›
+                </button>
+                <button 
+                  onClick={() => setSalesPage(totalPages)} 
+                  disabled={salesPage === totalPages}
+                  style={{ padding: '8px 12px', background: salesPage === totalPages ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: salesPage === totalPages ? c.textMuted : '#fff', cursor: salesPage === totalPages ? 'not-allowed' : 'pointer', fontSize: 12 }}
+                >
+                  »»
+                </button>
+              </div>
+            )}
           </div>
-        </div>}
+        </div>;
+        })()}
 
         {/* EXPENSES */}
         {page === 'expenses' && <div style={cardStyle}>
@@ -1184,38 +1293,82 @@ export default function App() {
                         <tr key={s.id} style={{ borderTop: `1px solid ${c.border}` }}>
                           <td style={{ padding: '12px 16px' }}>
                             <div style={{ fontWeight: 600, fontSize: 13, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
-                            <div style={{ fontSize: 11, color: c.emerald }}>{s.sku}</div>
+                            <div style={{ fontSize: 11, color: s.platform === 'eBay' ? '#e53238' : c.emerald }}>{s.sku || s.platform}</div>
                             <div style={{ fontSize: 10, color: c.textMuted }}>{s.saleDate}</div>
                           </td>
                           <td style={{ padding: '12px 8px', textAlign: 'center', fontSize: 14, fontWeight: 600 }}>{s.size || '-'}</td>
                           <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 14, fontWeight: 600 }}>{fmt(s.salePrice)}</td>
-                          <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 14, fontWeight: 700, color: c.emerald }}>{fmt(s.payout)}</td>
-                          <td style={{ padding: '8px 12px', textAlign: 'center' }}>
-                            <input 
-                              type="number" 
-                              id={`bulkcost_${s.id}`}
-                              placeholder="$"
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  const cost = e.target.value;
-                                  if (cost) {
-                                    confirmSaleWithCost(s.id, cost, 'StockX Standard');
-                                    e.target.value = '';
+                          <td style={{ padding: '12px 16px', textAlign: 'right', fontSize: 14, fontWeight: 700, color: s.platform === 'eBay' ? '#e53238' : c.emerald }}>{fmt(s.payout)}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'center', position: 'relative' }}>
+                            <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'center' }}>
+                              <input 
+                                type="number" 
+                                id={`bulkcost_${s.id}`}
+                                placeholder="$"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    const cost = e.target.value;
+                                    if (cost) {
+                                      confirmSaleWithCost(s.id, cost, s.platform || 'StockX Standard');
+                                      e.target.value = '';
+                                    }
                                   }
-                                }
-                              }}
-                              style={{ 
-                                width: 80, 
-                                padding: '10px 12px', 
-                                background: 'rgba(255,255,255,0.05)', 
-                                border: `1px solid ${c.border}`, 
-                                borderRadius: 8, 
-                                color: c.text, 
-                                fontSize: 14, 
-                                textAlign: 'center',
-                                outline: 'none'
-                              }} 
-                            />
+                                }}
+                                style={{ 
+                                  width: 60, 
+                                  padding: '10px 8px', 
+                                  background: 'rgba(255,255,255,0.05)', 
+                                  border: `1px solid ${c.border}`, 
+                                  borderRadius: 8, 
+                                  color: c.text, 
+                                  fontSize: 14, 
+                                  textAlign: 'center',
+                                  outline: 'none'
+                                }} 
+                              />
+                              <div style={{ position: 'relative' }}>
+                                <button 
+                                  onClick={() => setFormData({ ...formData, inventoryDropdown: formData.inventoryDropdown === s.id ? null : s.id, inventorySearch: '' })}
+                                  style={{ padding: '8px 10px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, cursor: 'pointer', fontSize: 14 }}
+                                  title="Link to inventory"
+                                >📦</button>
+                                {formData.inventoryDropdown === s.id && (
+                                  <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, width: 280, background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, boxShadow: '0 10px 40px rgba(0,0,0,0.5)', zIndex: 100 }}>
+                                    <input 
+                                      type="text" 
+                                      placeholder="Search inventory..." 
+                                      value={formData.inventorySearchPending || ''}
+                                      onChange={(e) => setFormData({ ...formData, inventorySearchPending: e.target.value })}
+                                      style={{ width: '100%', padding: 12, background: 'rgba(255,255,255,0.05)', border: 'none', borderBottom: `1px solid ${c.border}`, borderRadius: '12px 12px 0 0', color: c.text, fontSize: 13, outline: 'none' }}
+                                      autoFocus
+                                    />
+                                    <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                                      {purchases.filter(p => !p.sold && ((formData.inventorySearchPending || '') === '' || p.name?.toLowerCase().includes((formData.inventorySearchPending || '').toLowerCase()))).slice(0, 10).map(p => (
+                                        <div 
+                                          key={p.id}
+                                          onClick={() => {
+                                            // Fill cost and confirm sale
+                                            confirmSaleWithCost(s.id, p.cost, s.platform || 'StockX Standard');
+                                            // Mark inventory as sold
+                                            setPurchases(prev => prev.map(x => x.id === p.id ? { ...x, sold: true, soldDate: s.saleDate } : x));
+                                            setFormData({ ...formData, inventoryDropdown: null, inventorySearchPending: '' });
+                                          }}
+                                          style={{ padding: '10px 12px', cursor: 'pointer', borderBottom: `1px solid ${c.border}`, fontSize: 12 }}
+                                          onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                                          onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                                        >
+                                          <div style={{ fontWeight: 600 }}>{p.name}</div>
+                                          <div style={{ color: c.textMuted, fontSize: 11 }}>{p.sku} • {p.size} • {fmt(p.cost)}</div>
+                                        </div>
+                                      ))}
+                                      {purchases.filter(p => !p.sold && ((formData.inventorySearchPending || '') === '' || p.name?.toLowerCase().includes((formData.inventorySearchPending || '').toLowerCase()))).length === 0 && (
+                                        <div style={{ padding: 16, textAlign: 'center', color: c.textMuted, fontSize: 12 }}>No matching inventory</div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                           </td>
                           <td style={{ padding: '8px', textAlign: 'center' }}>
                             <button 
@@ -1235,7 +1388,7 @@ export default function App() {
                     {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} sales pending
                   </span>
                   <span style={{ fontSize: 11, color: c.textMuted }}>
-                    💡 Enter cost + press Enter to confirm each row
+                    💡 Enter cost + Enter, or click 📦 to link from inventory
                   </span>
                 </div>
               </div>
