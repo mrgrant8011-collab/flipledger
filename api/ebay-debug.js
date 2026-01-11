@@ -17,7 +17,8 @@ export default async function handler(req, res) {
   
   const results = {
     fulfillmentAPI: null,
-    financesAPI: null
+    financesAPI: null,
+    financesAPIv2: null
   };
   
   try {
@@ -51,9 +52,9 @@ export default async function handler(req, res) {
       };
     }
     
-    // Test Finances API
+    // Test Finances API - try without filter first
     const txResponse = await fetch(
-      `https://api.ebay.com/sell/finances/v1/transaction?filter=transactionDate:[${start}..${end}]&limit=5`,
+      `https://api.ebay.com/sell/finances/v1/transaction?limit=5`,
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -63,20 +64,29 @@ export default async function handler(req, res) {
       }
     );
     
-    if (txResponse.ok) {
-      const data = await txResponse.json();
-      results.financesAPI = {
-        status: 'OK',
-        transactionCount: data.transactions?.length || 0,
-        sampleTransaction: data.transactions?.[0] || null
-      };
-    } else {
-      results.financesAPI = {
-        status: 'FAILED',
-        code: txResponse.status,
-        error: await txResponse.text()
-      };
-    }
+    results.financesAPI = {
+      status: txResponse.ok ? 'OK' : 'FAILED',
+      code: txResponse.status,
+      response: await txResponse.text()
+    };
+    
+    // Try seller_funds_summary endpoint
+    const fundsResponse = await fetch(
+      `https://api.ebay.com/sell/finances/v1/seller_funds_summary`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
+        }
+      }
+    );
+    
+    results.financesAPIv2 = {
+      status: fundsResponse.ok ? 'OK' : 'FAILED',
+      code: fundsResponse.status,
+      response: await fundsResponse.text()
+    };
     
     res.status(200).json(results);
     
