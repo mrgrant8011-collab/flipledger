@@ -984,7 +984,8 @@ function App() {
         saleDate: row['_parsedDate'] || '',
         platform: 'eBay',
         source: 'csv',
-        buyer: row['Buyer name'] || row['Buyer username'] || ''
+        buyer: row['Buyer name'] || row['Buyer username'] || '',
+        image: '' // Will be filled by API
       };
     });
     
@@ -1024,15 +1025,55 @@ function App() {
     });
     
     // Add truly new items
-    const finalPending = [...updatedPending, ...newItems];
+    let finalPending = [...updatedPending, ...newItems];
     
-    // FORCE SAVE TO LOCALSTORAGE IMMEDIATELY
+    // Save first (so user has data even if image fetch fails)
     localStorage.setItem('flipledger_pending', JSON.stringify(finalPending));
-    
     setPendingCosts(finalPending);
     setEbayImport({ show: false, data: [], year: 'all', month: 'all', headers: [] });
     
     console.log('Import complete:', updates.length, 'updated,', newItems.length, 'new');
+    
+    // Now try to fetch images from API (silently in background)
+    const token = localStorage.getItem('flipledger_ebay_token');
+    if (token) {
+      console.log('Fetching images from eBay API...');
+      try {
+        const res = await fetch('/api/ebay-sales', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.sales && data.sales.length > 0) {
+            // Build image map by order number
+            const imageMap = new Map();
+            data.sales.forEach(s => {
+              if (s.image && s.orderId) {
+                imageMap.set(s.orderId, s.image);
+              }
+            });
+            
+            // Update items with images
+            let imagesAdded = 0;
+            finalPending = finalPending.map(item => {
+              if (!item.image && imageMap.has(item.orderNumber)) {
+                imagesAdded++;
+                return { ...item, image: imageMap.get(item.orderNumber) };
+              }
+              return item;
+            });
+            
+            if (imagesAdded > 0) {
+              console.log('Added images to', imagesAdded, 'items');
+              localStorage.setItem('flipledger_pending', JSON.stringify(finalPending));
+              setPendingCosts([...finalPending]); // Force re-render
+            }
+          }
+        }
+      } catch (err) {
+        console.log('Image fetch failed (non-critical):', err.message);
+      }
+    }
     
     alert(`eBay Import: ${updates.length} updated, ${newItems.length} new items added.`);
   };
@@ -2268,9 +2309,10 @@ function App() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
                 <div style={{ width: 54, height: 54, background: 'linear-gradient(135deg, #e53238 0%, #c62828 100%)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 16, color: '#fff' }}>eB</div>
                 <div style={{ flex: 1 }}>
-                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>EBAY CSV</h3>
-                  <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Upload eBay Transaction Report CSV</p>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>EBAY IMPORT</h3>
+                  <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Upload Order Earnings Report CSV</p>
                 </div>
+                {ebayConnected && <div style={{ fontSize: 11, color: c.green }}>✓ Connected</div>}
               </div>
               
               {!ebayImport.show ? (
@@ -2278,10 +2320,34 @@ function App() {
                   <input type="file" accept=".csv" onChange={handleEbayCsvUpload} id="ebay-csv-upload" style={{ display: 'none' }} />
                   <label htmlFor="ebay-csv-upload" onDrop={handleEbayDrop} onDragOver={handleDragOver}
                     style={{ display: 'block', padding: 30, border: '2px dashed rgba(229,50,56,0.3)', borderRadius: 16, textAlign: 'center', cursor: 'pointer', background: 'rgba(229,50,56,0.05)' }}>
-                    <div style={{ fontSize: 36, marginBottom: 8 }}>🏪</div>
+                    <div style={{ fontSize: 36, marginBottom: 8 }}>📄</div>
                     <div style={{ fontWeight: 600, marginBottom: 4, color: '#e53238' }}>Click or drag eBay CSV</div>
-                    <div style={{ fontSize: 11, color: c.textMuted }}>Download from eBay → Payments → Reports → Transaction Report</div>
+                    <div style={{ fontSize: 11, color: c.textMuted }}>eBay → Payments → Reports → Order earnings report</div>
                   </label>
+                  <div style={{ display: 'flex', gap: 16, marginTop: 16, justifyContent: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+                      <span style={{ color: c.green }}>✓</span> Exact payouts
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+                      <span style={{ color: c.green }}>✓</span> All fees included
+                    </div>
+                    {ebayConnected && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>
+                        <span style={{ color: c.green }}>✓</span> Auto-fetches images
+                      </div>
+                    )}
+                  </div>
+                  {!ebayConnected && (
+                    <div style={{ marginTop: 16, padding: 12, background: 'rgba(201,169,98,0.1)', borderRadius: 10, border: '1px solid rgba(201,169,98,0.2)' }}>
+                      <div style={{ fontSize: 12, color: c.gold, marginBottom: 8 }}>💡 Want product images?</div>
+                      <button 
+                        onClick={() => window.location.href = '/api/ebay-auth'}
+                        style={{ padding: '8px 16px', background: 'transparent', border: `1px solid ${c.gold}`, borderRadius: 8, color: c.gold, fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
+                      >
+                        Connect eBay Account
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div>
@@ -2327,163 +2393,6 @@ function App() {
                     <button onClick={importEbaySales} disabled={filterEbayData().length === 0} style={{ flex: 2, padding: 12, background: 'linear-gradient(135deg, #e53238 0%, #c62828 100%)', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: filterEbayData().length === 0 ? 0.5 : 1 }}>Import {filterEbayData().length} eBay Sales</button>
                   </div>
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* eBay API Sync Section */}
-          <div style={{ ...cardStyle, marginBottom: 16 }}>
-            <div style={{ padding: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
-                <div style={{ width: 54, height: 54, background: 'linear-gradient(135deg, #e53238 0%, #c62828 100%)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, color: '#fff' }}>eBay</div>
-                <div style={{ flex: 1 }}>
-                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>EBAY API SYNC</h3>
-                  <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>
-                    {ebayConnected ? '✓ Connected - Pull your sold items automatically' : 'Connect your eBay account to sync sales'}
-                  </p>
-                </div>
-              </div>
-              
-              {ebayConnected ? (
-                <div>
-                  <button
-                    onClick={async () => {
-                      setSyncing(true);
-                      try {
-                        let token = localStorage.getItem('flipledger_ebay_token');
-                        console.log('Starting eBay sync with token length:', token?.length);
-                        
-                        let res = await fetch('/api/ebay-sales', {
-                          headers: { 'Authorization': `Bearer ${token}` }
-                        });
-                        
-                        console.log('Initial response status:', res.status);
-                        
-                        // If failed, try to refresh token
-                        if (!res.ok) {
-                          console.log('Token may be expired, attempting refresh...');
-                          const refreshToken = localStorage.getItem('flipledger_ebay_refresh');
-                          
-                          if (refreshToken && refreshToken.length > 10) {
-                            const refreshRes = await fetch('/api/ebay-refresh', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ refresh_token: refreshToken })
-                            });
-                            const refreshData = await refreshRes.json();
-                            console.log('Refresh result:', refreshData.access_token ? 'success' : 'failed');
-                            
-                            if (refreshData.access_token) {
-                              token = refreshData.access_token;
-                              localStorage.setItem('flipledger_ebay_token', token);
-                              // Retry with new token
-                              res = await fetch('/api/ebay-sales', {
-                                headers: { 'Authorization': `Bearer ${token}` }
-                              });
-                              console.log('Retry response status:', res.status);
-                            } else {
-                              // Refresh failed, need to reconnect
-                              localStorage.removeItem('flipledger_ebay_token');
-                              localStorage.removeItem('flipledger_ebay_refresh');
-                              setEbayConnected(false);
-                              alert('eBay session expired. Please reconnect your account.');
-                              setSyncing(false);
-                              return;
-                            }
-                          } else {
-                            // No refresh token available, need to reconnect
-                            console.log('No refresh token available');
-                            localStorage.removeItem('flipledger_ebay_token');
-                            localStorage.removeItem('flipledger_ebay_refresh');
-                            setEbayConnected(false);
-                            alert('eBay session expired. Please reconnect your account.');
-                            setSyncing(false);
-                            return;
-                          }
-                        }
-                        
-                        const data = await res.json();
-                        if (data.success && data.sales && data.sales.length > 0) {
-                          const newPending = data.sales.map(s => ({
-                            ...s,
-                            id: s.id || 'ebay_' + (s.orderId || Date.now() + Math.random()),
-                            platform: 'eBay',
-                            needsCost: true,
-                            source: 'api'
-                          }));
-                          
-                          // Build comprehensive set of existing IDs to prevent duplicates
-                          // Check: id, orderId, orderNumber (covers both CSV and API formats)
-                          const existingIds = new Set();
-                          [...sales, ...pendingCosts].forEach(s => {
-                            if (s.id) existingIds.add(s.id);
-                            if (s.orderId) existingIds.add(s.orderId);
-                            if (s.orderNumber) existingIds.add(s.orderNumber);
-                            // Also add the ebay_ prefixed version
-                            if (s.orderId) existingIds.add('ebay_' + s.orderId);
-                            if (s.orderNumber) existingIds.add('ebay_' + s.orderNumber);
-                          });
-                          
-                          const fresh = newPending.filter(s => {
-                            // Check if any identifier already exists
-                            if (existingIds.has(s.id)) return false;
-                            if (existingIds.has(s.orderId)) return false;
-                            if (existingIds.has(s.orderNumber)) return false;
-                            return true;
-                          });
-                          if (fresh.length > 0) {
-                            setPendingCosts(prev => [...prev, ...fresh]);
-                            localStorage.setItem('flipledger_pending', JSON.stringify([...pendingCosts, ...fresh]));
-                            alert(`Imported ${fresh.length} new sales from eBay! Add cost basis below.`);
-                          } else {
-                            alert('No new sales to import. All caught up!');
-                          }
-                        } else {
-                          console.log('Sync failed, response:', data);
-                          alert('Sync error: ' + JSON.stringify(data));
-                        }
-                      } catch (err) {
-                        console.error('eBay sync error:', err);
-                        alert('Failed to sync: ' + err.message);
-                      }
-                      setSyncing(false);
-                    }}
-                    disabled={syncing}
-                    style={{ width: '100%', padding: '14px', background: `linear-gradient(135deg, #e53238 0%, #c62828 100%)`, border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, fontSize: 14, cursor: syncing ? 'wait' : 'pointer', opacity: syncing ? 0.7 : 1 }}
-                  >
-                    {syncing ? '⏳ Syncing...' : '🔄 Sync eBay Sales (Last 90 Days)'}
-                  </button>
-                  <p style={{ margin: '10px 0 0', fontSize: 11, color: c.textMuted, textAlign: 'center' }}>
-                    Pulls your sold items. You'll add cost basis to calculate profit.
-                  </p>
-                  <button
-                    onClick={async () => {
-                      const token = localStorage.getItem('flipledger_ebay_token');
-                      const res = await fetch('/api/ebay-debug', {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                      });
-                      const data = await res.json();
-                      // Download as JSON file
-                      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = 'ebay-debug.json';
-                      a.click();
-                      alert('Debug data downloaded! Please share ebay-debug.json');
-                    }}
-                    style={{ width: '100%', marginTop: 10, padding: '10px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, fontSize: 12, cursor: 'pointer' }}
-                  >
-                    🔍 Download Debug Data
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => window.location.href = '/api/ebay-auth'}
-                  style={{ width: '100%', padding: '14px', background: '#e53238', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}
-                >
-                  🔗 Connect eBay Account
-                </button>
               )}
             </div>
           </div>
