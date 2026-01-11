@@ -1,4 +1,4 @@
-// eBay Sales - Calculate TRUE Order Earnings (matching CSV logic)
+// eBay Sales - Use Fulfillment API only (totalDueSeller)
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -17,7 +17,7 @@ export default async function handler(req, res) {
   const start = startDate || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   
   try {
-    // Step 1: Get orders from Fulfillment API
+    // Get orders from Fulfillment API
     const ordersResponse = await fetch(
       `https://api.ebay.com/sell/fulfillment/v1/order?filter=creationdate:[${start}..${end}]&limit=200`,
       {
@@ -37,13 +37,18 @@ export default async function handler(req, res) {
     const ordersData = await ordersResponse.json();
     const orders = ordersData.orders || [];
     
-    // Build sales map
-    const salesMap = {};
+    // Build sales from orders
+    const sales = [];
     for (const order of orders) {
       if (order.orderPaymentStatus !== 'PAID' && order.orderPaymentStatus !== 'FULLY_REFUNDED') continue;
       
       for (const lineItem of order.lineItems || []) {
-        salesMap[order.orderId] = {
+        // Get payout from totalDueSeller (this is what eBay pays you before promoted fees)
+        const salePrice = parseFloat(order.pricingSummary?.total?.value || lineItem.total?.value || 0);
+        const payout = parseFloat(order.paymentSummary?.totalDueSeller?.value || 0);
+        const fees = parseFloat(order.totalMarketplaceFee?.value || 0);
+        
+        sales.push({
           id: `ebay_${order.orderId}`,
           orderId: order.orderId,
           orderNumber: order.orderId,
@@ -52,115 +57,18 @@ export default async function handler(req, res) {
           sku: lineItem.sku || lineItem.legacyItemId || '',
           size: '',
           quantity: lineItem.quantity || 1,
-          salePrice: parseFloat(lineItem.total?.value || 0),
+          salePrice: salePrice,
           saleDate: order.creationDate ? order.creationDate.split('T')[0] : new Date().toISOString().split('T')[0],
           buyer: order.buyer?.username || '',
-          grossAmount: 0,
-          totalExpenses: 0,
-          fees: 0,
-          payout: 0,
+          fees: fees,
+          payout: payout,  // totalDueSeller - best available without Finances API
           cost: 0,
-          profit: 0,
+          profit: payout,  // Will be recalculated when cost is added
           image: lineItem.image?.imageUrl || '',
-          source: 'api'
-        };
+          source: 'api',
+          note: 'Payout excludes promoted listing fees (use CSV for exact amount)'
+        });
       }
-    }
-    
-    console.log('Orders in salesMap:', Object.keys(salesMap));
-    
-    // Step 2: Get ALL transactions
-    const txResponse = await fetch(
-      `https://api.ebay.com/sell/finances/v1/transaction?filter=transactionDate:[${start}..${end}]&limit=1000`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
-        }
-      }
-    );
-    
-    if (txResponse.ok) {
-      const txData = await txResponse.json();
-      const transactions = txData.transactions || [];
-      
-      console.log('Total transactions:', transactions.length);
-      
-      for (const tx of transactions) {
-        let orderId = tx.orderId;
-        const txType = tx.transactionType;
-        const bookingEntry = tx.bookingEntry;
-        const memo = tx.transactionMemo || '';
-        
-        // Try to find orderId from references array
-        if (!orderId && tx.references && tx.references.length > 0) {
-          for (const ref of tx.references) {
-            if (ref.referenceType === 'ORDER_ID' || ref.referenceType === 'ORDER') {
-              orderId = ref.referenceId;
-              break;
-            }
-          }
-        }
-        
-        // Try to extract from memo
-        if (!orderId && memo) {
-          const match = memo.match(/order\s+(\d{2}-\d{5}-\d{5})/i);
-          if (match) {
-            orderId = match[1];
-          }
-        }
-        
-        // Log NON_SALE_CHARGE for debugging
-        if (txType === 'NON_SALE_CHARGE') {
-          console.log('NON_SALE_CHARGE:', {
-            orderId: tx.orderId,
-            extractedOrderId: orderId,
-            amount: tx.amount?.value,
-            memo: memo,
-            references: tx.references,
-            bookingEntry: bookingEntry,
-            inSalesMap: orderId ? !!salesMap[orderId] : false
-          });
-        }
-        
-        if (!orderId || !salesMap[orderId]) continue;
-        
-        const sale = salesMap[orderId];
-        const amount = parseFloat(tx.amount?.value || 0);
-        const totalFee = Math.abs(parseFloat(tx.totalFeeAmount?.value || 0));
-        
-        if (txType === 'SALE') {
-          sale.grossAmount = amount;
-          sale.totalExpenses += totalFee;
-          console.log(`SALE ${orderId}: gross=${amount}, ebayFees=${totalFee}`);
-        }
-        
-        if (txType === 'NON_SALE_CHARGE') {
-          const feeAmount = Math.abs(amount);
-          sale.totalExpenses += feeAmount;
-          console.log(`NON_SALE_CHARGE ${orderId}: promotedFee=${feeAmount}, newTotalExpenses=${sale.totalExpenses}`);
-        }
-      }
-    }
-    
-    // Step 3: Calculate payout = Gross - Expenses
-    const sales = Object.values(salesMap);
-    
-    for (const sale of sales) {
-      if (sale.grossAmount > 0) {
-        sale.payout = sale.grossAmount - sale.totalExpenses;
-        sale.fees = sale.totalExpenses;
-        sale.salePrice = sale.grossAmount;
-        console.log(`FINAL ${sale.orderId}: gross=${sale.grossAmount}, expenses=${sale.totalExpenses}, payout=${sale.payout}`);
-      } else {
-        sale.fees = sale.salePrice * 0.15;
-        sale.payout = sale.salePrice * 0.85;
-      }
-      
-      sale.profit = sale.payout - sale.cost;
-      delete sale.grossAmount;
-      delete sale.totalExpenses;
     }
     
     res.status(200).json({ success: true, count: sales.length, sales });

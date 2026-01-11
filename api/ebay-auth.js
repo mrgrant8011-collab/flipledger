@@ -21,10 +21,11 @@ export default function handler(req, res) {
     });
   }
   
-  // Required scopes for accessing orders and financial data
+  // Request ALL scopes we need - fulfillment for orders, finances for transactions
   const scopes = [
     'https://api.ebay.com/oauth/api_scope',
     'https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly',
+    'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
     'https://api.ebay.com/oauth/api_scope/sell.finances'
   ].join(' ');
   
