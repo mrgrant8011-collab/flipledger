@@ -1,4 +1,4 @@
-// eBay Sales - Fulfillment API for images + Finances API for exact payouts (including AD_FEE)
+// eBay Sales - v116 with AD_FEE debug info
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -14,10 +14,11 @@ export default async function handler(req, res) {
   const accessToken = authHeader.replace('Bearer ', '');
   const { startDate, endDate } = req.query;
   const end = endDate || new Date().toISOString();
-  const start = startDate || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  // Go back further for AD_FEE (they can be charged days after sale)
+  const start = startDate || new Date(Date.now() - 120 * 24 * 60 * 60 * 1000).toISOString();
   
   try {
-    // 1. Get orders from Fulfillment API (for images and order details)
+    // 1. Get orders from Fulfillment API
     const ordersResponse = await fetch(
       `https://api.ebay.com/sell/fulfillment/v1/order?filter=creationdate:[${start}..${end}]&limit=200`,
       {
@@ -40,6 +41,7 @@ export default async function handler(req, res) {
     // 2. Get SALE transactions from Finances API
     let salesTxMap = new Map();
     let financesWorked = false;
+    let financesError = null;
     try {
       const salesResponse = await fetch(
         `https://apiz.ebay.com/sell/finances/v1/transaction?filter=transactionDate:[${start}..${end}]&filter=transactionType:{SALE}&limit=200`,
@@ -60,19 +62,22 @@ export default async function handler(req, res) {
             if (tx.orderId && tx.amount) {
               salesTxMap.set(tx.orderId, {
                 payout: parseFloat(tx.amount.value || 0),
-                totalFees: parseFloat(tx.totalFeeAmount?.value || 0),
-                itemIds: (tx.orderLineItems || []).map(li => li.lineItemId)
+                totalFees: parseFloat(tx.totalFeeAmount?.value || 0)
               });
             }
           }
         }
+      } else {
+        financesError = await salesResponse.text();
       }
     } catch (e) {
-      console.log('Finances SALE API failed:', e.message);
+      financesError = e.message;
     }
     
-    // 3. Get NON_SALE_CHARGE transactions (AD_FEE comes here!)
+    // 3. Get ALL NON_SALE_CHARGE transactions to find AD_FEE
     let adFeesByItemId = new Map();
+    let adFeesRaw = [];
+    let chargesError = null;
     try {
       const chargesResponse = await fetch(
         `https://apiz.ebay.com/sell/finances/v1/transaction?filter=transactionDate:[${start}..${end}]&filter=transactionType:{NON_SALE_CHARGE}&limit=200`,
@@ -89,21 +94,33 @@ export default async function handler(req, res) {
         const chargesData = await chargesResponse.json();
         if (chargesData.transactions) {
           for (const tx of chargesData.transactions) {
-            // AD_FEE has feeType and references with ITEM_ID
-            if (tx.feeType === 'AD_FEE' && tx.references) {
-              for (const ref of tx.references) {
-                if (ref.referenceType === 'ITEM_ID') {
-                  const itemId = ref.referenceId;
-                  const fee = parseFloat(tx.amount?.value || 0);
-                  adFeesByItemId.set(itemId, (adFeesByItemId.get(itemId) || 0) + fee);
+            // Collect ALL ad fees for debugging
+            if (tx.feeType === 'AD_FEE') {
+              adFeesRaw.push({
+                transactionId: tx.transactionId,
+                amount: tx.amount?.value,
+                feeType: tx.feeType,
+                references: tx.references,
+                date: tx.transactionDate
+              });
+              
+              if (tx.references) {
+                for (const ref of tx.references) {
+                  if (ref.referenceType === 'ITEM_ID') {
+                    const itemId = ref.referenceId;
+                    const fee = Math.abs(parseFloat(tx.amount?.value || 0));
+                    adFeesByItemId.set(itemId, (adFeesByItemId.get(itemId) || 0) + fee);
+                  }
                 }
               }
             }
           }
         }
+      } else {
+        chargesError = await chargesResponse.text();
       }
     } catch (e) {
-      console.log('Finances NON_SALE_CHARGE API failed:', e.message);
+      chargesError = e.message;
     }
     
     // 4. Build sales from orders
@@ -114,46 +131,38 @@ export default async function handler(req, res) {
       for (const lineItem of order.lineItems || []) {
         const salePrice = parseFloat(order.pricingSummary?.total?.value || lineItem.total?.value || 0);
         const baseFees = parseFloat(order.totalMarketplaceFee?.value || 0);
-        const itemId = lineItem.legacyItemId || lineItem.lineItemId;
+        const itemId = lineItem.legacyItemId || '';
         
         let payout;
-        let adFee = 0;
+        let adFee = adFeesByItemId.get(itemId) || 0;
         let note = '';
         
-        // Check if we have Finances API data for this order
+        // Use Finances API payout if available
         if (salesTxMap.has(order.orderId)) {
-          const txData = salesTxMap.get(order.orderId);
-          payout = txData.payout;
-          
-          // Look for AD_FEE for this item
-          if (adFeesByItemId.has(itemId)) {
-            adFee = adFeesByItemId.get(itemId);
-            payout = payout - adFee; // Subtract ad fee from payout
-            note = `Exact payout (AD_FEE: $${adFee.toFixed(2)} deducted)`;
+          payout = salesTxMap.get(order.orderId).payout;
+          if (adFee > 0) {
+            payout = payout - adFee;
+            note = `Finances API payout minus AD_FEE ($${adFee.toFixed(2)})`;
           } else {
-            note = 'Exact payout from Finances API';
+            note = `Finances API payout (no AD_FEE found for item ${itemId})`;
           }
         } else {
-          // Fallback to Fulfillment API
+          // Fallback
           payout = parseFloat(order.paymentSummary?.totalDueSeller?.value || 0);
-          
-          // Still check for ad fees
-          if (adFeesByItemId.has(itemId)) {
-            adFee = adFeesByItemId.get(itemId);
+          if (adFee > 0) {
             payout = payout - adFee;
-            note = `Payout adjusted for AD_FEE: $${adFee.toFixed(2)}`;
+            note = `Fulfillment payout minus AD_FEE ($${adFee.toFixed(2)})`;
           } else {
-            note = 'Payout may exclude promoted listing fees';
+            note = `Fulfillment payout (no AD_FEE found for item ${itemId})`;
           }
         }
         
         sales.push({
           id: `ebay_${order.orderId}`,
           orderId: order.orderId,
-          orderNumber: order.orderId,
           platform: 'eBay',
           name: lineItem.title || 'eBay Item',
-          sku: lineItem.sku || lineItem.legacyItemId || '',
+          sku: lineItem.sku || itemId || '',
           size: '',
           quantity: lineItem.quantity || 1,
           salePrice: salePrice,
@@ -162,6 +171,7 @@ export default async function handler(req, res) {
           fees: baseFees + adFee,
           payout: payout,
           adFee: adFee,
+          itemId: itemId,
           cost: 0,
           profit: payout,
           image: lineItem.image?.imageUrl || '',
@@ -173,9 +183,16 @@ export default async function handler(req, res) {
     
     res.status(200).json({ 
       success: true, 
-      count: sales.length, 
-      financesApiWorked: financesWorked,
-      adFeesFound: adFeesByItemId.size,
+      count: sales.length,
+      debug: {
+        financesWorked,
+        financesError,
+        chargesError,
+        salesTxCount: salesTxMap.size,
+        adFeesFound: adFeesByItemId.size,
+        adFeesRaw: adFeesRaw.slice(0, 10), // First 10 for debugging
+        adFeesByItemId: Object.fromEntries(adFeesByItemId)
+      },
       sales 
     });
     

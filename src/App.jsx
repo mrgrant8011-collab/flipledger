@@ -2317,6 +2317,15 @@ function App() {
                               }
                               
                               const data = await res.json();
+                              
+                              // Download debug data
+                              const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = 'ebay-sync-debug.json';
+                              a.click();
+                              
                               if (data.success && data.sales?.length > 0) {
                                 const newPending = data.sales.map(s => ({
                                   ...s,
@@ -2338,12 +2347,12 @@ function App() {
                                 if (fresh.length > 0) {
                                   setPendingCosts(prev => [...prev, ...fresh]);
                                   localStorage.setItem('flipledger_pending', JSON.stringify([...pendingCosts, ...fresh]));
-                                  alert(`✓ Imported ${fresh.length} sales!${data.financesApiWorked ? ' (Exact payouts from Finances API)' : ' (Payouts may exclude promoted fees)'}`);
+                                  alert(`✓ Imported ${fresh.length} sales! Debug file downloaded. AD_FEEs found: ${data.debug?.adFeesFound || 0}`);
                                 } else {
-                                  alert('All caught up! No new sales to import.');
+                                  alert(`All caught up! Debug file downloaded. AD_FEEs found: ${data.debug?.adFeesFound || 0}`);
                                 }
                               } else {
-                                alert('No sales found or error: ' + JSON.stringify(data));
+                                alert('No sales found. Debug file downloaded. Check it for errors.');
                               }
                             } catch (err) {
                               alert('Sync failed: ' + err.message);
