@@ -160,22 +160,20 @@ export default async function handler(req, res) {
         }
       }
     } catch (feesErr) {
-      console.log('Could not fetch fees, using estimates:', feesErr.message);
-      // Estimate fees at ~13% if we can't get real data
-      for (const sale of sales) {
-        if (sale.fees === 0) {
-          sale.fees = sale.salePrice * 0.13;
-          sale.payout = sale.salePrice - sale.fees;
-          sale.profit = sale.payout - sale.cost;
-        }
-      }
+      console.log('Could not fetch fees from Finances API:', feesErr.message);
+      // Fees will be estimated in the final loop below
     }
     
-    // Ensure all sales have payout calculated
+    // Ensure all sales have fees and payout calculated
+    // If Finances API didn't provide data, estimate fees at 13%
     for (const sale of sales) {
+      if (!sale.fees || sale.fees === 0) {
+        sale.fees = sale.salePrice * 0.13;
+      }
       if (!sale.payout || sale.payout === 0) {
         sale.payout = sale.salePrice - sale.fees;
       }
+      sale.profit = sale.payout - sale.cost;
     }
     
     res.status(200).json({
