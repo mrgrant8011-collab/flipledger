@@ -17,7 +17,7 @@ export default async function handler(req, res) {
   const start = startDate || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   
   try {
-    // Step 1: Get orders from Fulfillment API
+    // Step 1: Get orders from Fulfillment API (for images and details)
     const ordersResponse = await fetch(
       `https://api.ebay.com/sell/fulfillment/v1/order?filter=creationdate:[${start}..${end}]&limit=200`,
       {
@@ -37,7 +37,7 @@ export default async function handler(req, res) {
     const ordersData = await ordersResponse.json();
     const orders = ordersData.orders || [];
     
-    // Build sales map - just basic info from orders
+    // Build sales map
     const salesMap = {};
     for (const order of orders) {
       if (order.orderPaymentStatus !== 'PAID' && order.orderPaymentStatus !== 'FULLY_REFUNDED') continue;
@@ -55,9 +55,8 @@ export default async function handler(req, res) {
           salePrice: parseFloat(lineItem.total?.value || 0),
           saleDate: order.creationDate ? order.creationDate.split('T')[0] : new Date().toISOString().split('T')[0],
           buyer: order.buyer?.username || '',
-          // For calculation - same as CSV
           grossAmount: 0,
-          totalExpenses: 0,  // ALL fees combined
+          totalExpenses: 0,
           fees: 0,
           payout: 0,
           cost: 0,
@@ -68,8 +67,7 @@ export default async function handler(req, res) {
       }
     }
     
-    // Step 2: Get ALL transactions and sum by order
-    // This matches how CSV calculates: Gross - Expenses = Order Earnings
+    // Step 2: Get ALL transactions
     const txResponse = await fetch(
       `https://api.ebay.com/sell/finances/v1/transaction?filter=transactionDate:[${start}..${end}]&limit=1000`,
       {
@@ -86,47 +84,53 @@ export default async function handler(req, res) {
       const transactions = txData.transactions || [];
       
       for (const tx of transactions) {
-        const orderId = tx.orderId;
+        let orderId = tx.orderId;
+        const txType = tx.transactionType;
+        const bookingEntry = tx.bookingEntry;
+        const memo = tx.transactionMemo || '';
+        
+        // For NON_SALE_CHARGE, orderId might be in memo like "for order 09-14015-15110"
+        if (!orderId && memo) {
+          const match = memo.match(/order\s+(\d{2}-\d{5}-\d{5})/i);
+          if (match) {
+            orderId = match[1];
+          }
+        }
+        
         if (!orderId || !salesMap[orderId]) continue;
         
         const sale = salesMap[orderId];
         const amount = parseFloat(tx.amount?.value || 0);
         const totalFee = Math.abs(parseFloat(tx.totalFeeAmount?.value || 0));
-        const txType = tx.transactionType;
-        const bookingEntry = tx.bookingEntry;
         
-        // SALE transaction = gross amount + eBay fees
+        // SALE = gross amount, fees go to expenses
         if (txType === 'SALE') {
           sale.grossAmount = amount;
-          sale.totalExpenses += totalFee;  // Add eBay fees
+          sale.totalExpenses += totalFee;
         }
         
-        // NON_SALE_CHARGE = promoted listing fee and other fees
-        // These are DEBIT entries that reduce your payout
+        // NON_SALE_CHARGE (promoted listing, etc) = add to expenses
         if (txType === 'NON_SALE_CHARGE' && bookingEntry === 'DEBIT') {
-          sale.totalExpenses += Math.abs(amount);  // Add promoted fees
+          sale.totalExpenses += Math.abs(amount);
         }
       }
     }
     
-    // Step 3: Calculate payout same as CSV: Gross - Expenses = Order Earnings
+    // Step 3: Calculate payout = Gross - Expenses
     const sales = Object.values(salesMap);
     
     for (const sale of sales) {
       if (sale.grossAmount > 0) {
-        // ORDER EARNINGS = GROSS - ALL EXPENSES (same as CSV!)
         sale.payout = sale.grossAmount - sale.totalExpenses;
         sale.fees = sale.totalExpenses;
         sale.salePrice = sale.grossAmount;
       } else {
-        // Fallback
+        // Fallback estimate
         sale.fees = sale.salePrice * 0.15;
         sale.payout = sale.salePrice * 0.85;
       }
       
       sale.profit = sale.payout - sale.cost;
-      
-      // Clean up
       delete sale.grossAmount;
       delete sale.totalExpenses;
     }
