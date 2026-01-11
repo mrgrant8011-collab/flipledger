@@ -393,7 +393,7 @@ export default function App() {
       id: uniqueId,
       orderId: sale.id, // KEEP original order number for deduplication!
       cost: costNum, 
-      platform: channel,
+      platform: sale.platform || channel, // USE the pending item's platform if it has one!
       fees: sale.fees || (sale.salePrice - sale.payout),
       profit: profit 
     }]);
