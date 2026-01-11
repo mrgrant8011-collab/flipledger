@@ -96,7 +96,7 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
   return <div>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 20 }}>
       <div style={{ ...cardStyle, padding: 16 }}><span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL SALES</span><p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: '#fff' }}>{total}</p></div>
-      <div style={{ ...cardStyle, padding: 16 }}><span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL PROFIT</span><p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: profit >= 0 ? c.emerald : c.red }}>{fmt(profit)}</p></div>
+      <div style={{ ...cardStyle, padding: 16 }}><span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL PROFIT</span><p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: profit >= 0 ? c.green : c.red }}>{fmt(profit)}</p></div>
     </div>
 
     <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -126,10 +126,10 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
           freshIds.forEach(id => { selected[id] = true; });
           // Convert to Set
           setSelectedSales(new Set(Object.keys(selected).map(k => isNaN(Number(k)) ? k : Number(k))));
-        }} style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, color: c.emerald, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>✓ Select Page ({items.length})</button>
+        }} style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, color: c.green, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>✓ Select Page ({items.length})</button>
         {selectedSales.size > 0 && <button onClick={() => setSelectedSales(new Set())} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>✗ Clear</button>}
       </div>
-      <span style={{ fontSize: 13, color: selectedSales.size > 0 ? c.emerald : c.textMuted, fontWeight: selectedSales.size > 0 ? 700 : 400 }}>{selectedSales.size > 0 ? `${selectedSales.size} selected` : 'None selected'}</span>
+      <span style={{ fontSize: 13, color: selectedSales.size > 0 ? c.green : c.textMuted, fontWeight: selectedSales.size > 0 ? 700 : 400 }}>{selectedSales.size > 0 ? `${selectedSales.size} selected` : 'None selected'}</span>
     </div>
 
     {selectedSales.size > 0 && <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -147,31 +147,31 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
       </div>
       
       <div style={{ display: 'grid', gridTemplateColumns: '40px 85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
-        <div><input type="checkbox" checked={allSelected} onChange={e => setSelectedSales(e.target.checked ? new Set(itemIds) : new Set())} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }} /></div>
-        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'oldest' ? 'newest' : 'oldest' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'oldest' || sortBy === 'newest') ? c.emerald : c.textMuted, cursor: 'pointer' }}>DATE {sortBy === 'oldest' ? '▲' : sortBy === 'newest' ? '▼' : ''}</span>
-        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'nameAZ' ? 'nameZA' : 'nameAZ' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'nameAZ' || sortBy === 'nameZA') ? c.emerald : c.textMuted, cursor: 'pointer' }}>NAME {sortBy === 'nameAZ' ? '▲' : sortBy === 'nameZA' ? '▼' : ''}</span>
-        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'skuAZ' ? 'skuZA' : 'skuAZ' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'skuAZ' || sortBy === 'skuZA') ? c.emerald : c.textMuted, cursor: 'pointer' }}>SKU {sortBy === 'skuAZ' ? '▲' : sortBy === 'skuZA' ? '▼' : ''}</span>
-        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'sizeAsc' ? 'sizeDesc' : 'sizeAsc' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'sizeAsc' || sortBy === 'sizeDesc') ? c.emerald : c.textMuted, cursor: 'pointer' }}>SIZE {sortBy === 'sizeAsc' ? '▲' : sortBy === 'sizeDesc' ? '▼' : ''}</span>
+        <div><input type="checkbox" checked={allSelected} onChange={e => setSelectedSales(e.target.checked ? new Set(itemIds) : new Set())} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }} /></div>
+        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'oldest' ? 'newest' : 'oldest' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'oldest' || sortBy === 'newest') ? c.green : c.textMuted, cursor: 'pointer' }}>DATE {sortBy === 'oldest' ? '▲' : sortBy === 'newest' ? '▼' : ''}</span>
+        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'nameAZ' ? 'nameZA' : 'nameAZ' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'nameAZ' || sortBy === 'nameZA') ? c.green : c.textMuted, cursor: 'pointer' }}>NAME {sortBy === 'nameAZ' ? '▲' : sortBy === 'nameZA' ? '▼' : ''}</span>
+        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'skuAZ' ? 'skuZA' : 'skuAZ' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'skuAZ' || sortBy === 'skuZA') ? c.green : c.textMuted, cursor: 'pointer' }}>SKU {sortBy === 'skuAZ' ? '▲' : sortBy === 'skuZA' ? '▼' : ''}</span>
+        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'sizeAsc' ? 'sizeDesc' : 'sizeAsc' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'sizeAsc' || sortBy === 'sizeDesc') ? c.green : c.textMuted, cursor: 'pointer' }}>SIZE {sortBy === 'sizeAsc' ? '▲' : sortBy === 'sizeDesc' ? '▼' : ''}</span>
         <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>PLATFORM</span>
         <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>COST</span>
         <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>PRICE</span>
         <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>FEES</span>
-        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'profitLow' ? 'profitHigh' : 'profitLow' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'profitLow' || sortBy === 'profitHigh') ? c.emerald : c.textMuted, cursor: 'pointer', textAlign: 'right' }}>PROFIT {sortBy === 'profitLow' ? '▲' : sortBy === 'profitHigh' ? '▼' : ''}</span>
+        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'profitLow' ? 'profitHigh' : 'profitLow' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'profitLow' || sortBy === 'profitHigh') ? c.green : c.textMuted, cursor: 'pointer', textAlign: 'right' }}>PROFIT {sortBy === 'profitLow' ? '▲' : sortBy === 'profitHigh' ? '▼' : ''}</span>
         <span></span><span></span>
       </div>
 
       {items.length > 0 ? items.map(s => (
         <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '40px 85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : 'transparent' }}>
-          <div><input type="checkbox" checked={selectedSales.has(s.id)} onChange={e => { const n = new Set(selectedSales); e.target.checked ? n.add(s.id) : n.delete(s.id); setSelectedSales(n); }} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }} /></div>
+          <div><input type="checkbox" checked={selectedSales.has(s.id)} onChange={e => { const n = new Set(selectedSales); e.target.checked ? n.add(s.id) : n.delete(s.id); setSelectedSales(n); }} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }} /></div>
           <span style={{ fontSize: 12, color: c.textMuted }}>{s.saleDate}</span>
           <span style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</span>
-          <span style={{ fontSize: 11, color: c.emerald }}>{s.sku || '-'}</span>
+          <span style={{ fontSize: 11, color: c.green }}>{s.sku || '-'}</span>
           <span style={{ fontSize: 13 }}>{s.size || '-'}</span>
           <span style={{ fontSize: 11, color: c.textMuted }}>{s.platform}</span>
           <span style={{ fontSize: 12, textAlign: 'right', color: c.textMuted }}>{fmt(s.cost)}</span>
           <span style={{ fontSize: 12, textAlign: 'right' }}>{fmt(s.salePrice)}</span>
           <span style={{ fontSize: 12, textAlign: 'right', color: c.red }}>{fmt(s.fees)}</span>
-          <span style={{ fontSize: 13, fontWeight: 700, textAlign: 'right', color: s.profit >= 0 ? c.emerald : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</span>
+          <span style={{ fontSize: 13, fontWeight: 700, textAlign: 'right', color: s.profit >= 0 ? c.green : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</span>
           <button onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14 }}>✏️</button>
           <button onClick={() => { setSales(sales.filter(x => x.id !== s.id)); setSelectedSales(prev => { const n = new Set(prev); n.delete(s.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16 }}>×</button>
         </div>
@@ -180,7 +180,7 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
       {pages > 1 && <div style={{ padding: '16px 20px', borderTop: `1px solid ${c.border}`, display: 'flex', justifyContent: 'center', gap: 8 }}>
         <button onClick={() => setSalesPage(1)} disabled={page === 1} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: page === 1 ? c.textMuted : '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}>«</button>
         <button onClick={() => setSalesPage(page - 1)} disabled={page === 1} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: page === 1 ? c.textMuted : '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}>‹</button>
-        {[...Array(Math.min(5, pages))].map((_, i) => { let n = pages <= 5 ? i + 1 : page <= 3 ? i + 1 : page >= pages - 2 ? pages - 4 + i : page - 2 + i; return <button key={n} onClick={() => setSalesPage(n)} style={{ padding: '8px 14px', background: page === n ? c.emerald : 'rgba(255,255,255,0.05)', border: `1px solid ${page === n ? c.emerald : c.border}`, borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: page === n ? 700 : 400 }}>{n}</button>; })}
+        {[...Array(Math.min(5, pages))].map((_, i) => { let n = pages <= 5 ? i + 1 : page <= 3 ? i + 1 : page >= pages - 2 ? pages - 4 + i : page - 2 + i; return <button key={n} onClick={() => setSalesPage(n)} style={{ padding: '8px 14px', background: page === n ? c.green : 'rgba(255,255,255,0.05)', border: `1px solid ${page === n ? c.green : c.border}`, borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: page === n ? 700 : 400 }}>{n}</button>; })}
         <button onClick={() => setSalesPage(page + 1)} disabled={page === pages} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: page === pages ? c.textMuted : '#fff', cursor: page === pages ? 'not-allowed' : 'pointer', fontSize: 12 }}>›</button>
         <button onClick={() => setSalesPage(pages)} disabled={page === pages} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: page === pages ? c.textMuted : '#fff', cursor: page === pages ? 'not-allowed' : 'pointer', fontSize: 12 }}>»</button>
       </div>}
@@ -343,7 +343,23 @@ function App() {
     setStockxConnected(false);
   };
 
-  const c = { bg: '#030303', card: 'rgba(255,255,255,0.02)', border: 'rgba(255,255,255,0.06)', emerald: '#10b981', emeraldGlow: 'rgba(16,185,129,0.4)', gold: '#fbbf24', red: '#ef4444', text: '#fff', textMuted: 'rgba(255,255,255,0.4)' };
+  const c = { 
+    bg: '#0C0C0C', 
+    card: '#141414', 
+    cardHover: '#1A1A1A',
+    border: 'rgba(255,255,255,0.06)', 
+    gold: '#C9A962', 
+    goldLight: '#E8D5A3',
+    goldDark: '#8B7355',
+    goldGlow: 'rgba(201,169,98,0.3)',
+    green: '#34D399', 
+    greenMuted: '#10B981',
+    greenGlow: 'rgba(52,211,153,0.3)',
+    red: '#F87171', 
+    text: '#FFFFFF', 
+    textMuted: 'rgba(255,255,255,0.5)',
+    textDim: 'rgba(255,255,255,0.3)'
+  };
 
   const filterByYear = (items, dateField = 'date') => year === 'all' ? items : items.filter(item => item[dateField]?.startsWith(year));
   const inventory = purchases.filter(p => !sales.find(s => s.purchaseId === p.id));
@@ -973,49 +989,62 @@ function App() {
   ];
 
   const inputStyle = { width: '100%', padding: 14, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 14, boxSizing: 'border-box', outline: 'none' };
-  const cardStyle = { background: c.card, border: `1px solid ${c.border}`, borderRadius: 20, overflow: 'hidden' };
-  const btnPrimary = { background: `linear-gradient(135deg, ${c.emerald} 0%, #059669 100%)`, border: 'none', borderRadius: 12, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer', boxShadow: `0 8px 32px ${c.emeraldGlow}` };
+  const cardStyle = { background: c.card, border: `1px solid ${c.border}`, borderRadius: 20, overflow: 'hidden', transition: 'all 0.3s ease' };
+  const btnPrimary = { background: `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)`, border: 'none', borderRadius: 10, color: '#000', fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: `0 4px 20px ${c.goldGlow}` };
+  const btnSecondary = { background: c.card, border: `1px solid ${c.border}`, borderRadius: 10, color: c.text, fontSize: 13, fontWeight: 500, cursor: 'pointer' };
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: c.bg, fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', color: c.text }}>
-      <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', background: `radial-gradient(ellipse at 0% 0%, rgba(16,185,129,0.07) 0%, transparent 50%), radial-gradient(ellipse at 100% 100%, rgba(251,191,36,0.04) 0%, transparent 50%)` }} />
+    <div style={{ display: 'flex', minHeight: '100vh', background: c.bg, fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif", color: c.text, WebkitFontSmoothing: 'antialiased' }}>
+      <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', background: `radial-gradient(ellipse at 0% 0%, rgba(201,169,98,0.04) 0%, transparent 50%), radial-gradient(ellipse at 100% 100%, rgba(52,211,153,0.03) 0%, transparent 50%)` }} />
 
-      <aside className="no-print" style={{ width: 240, minWidth: 240, background: 'rgba(5,5,5,0.95)', borderRight: `1px solid ${c.border}`, display: 'flex', flexDirection: 'column', zIndex: 10 }}>
-        <div style={{ padding: 20, borderBottom: `1px solid ${c.border}` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 42, height: 42, background: `linear-gradient(135deg, ${c.emerald}, #059669)`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 20, boxShadow: `0 8px 32px ${c.emeraldGlow}`, fontStyle: 'italic' }}>F</div>
-            <div><div style={{ fontWeight: 800, fontSize: 18, fontStyle: 'italic' }}>FLIP<span style={{ color: c.emerald }}>LEDGER</span></div><div style={{ fontSize: 9, color: c.gold, letterSpacing: '0.1em' }}>GET YOUR MONEY RIGHT</div></div>
+      <aside className="no-print" style={{ width: 240, minWidth: 240, background: '#0A0A0A', borderRight: `1px solid ${c.border}`, display: 'flex', flexDirection: 'column', zIndex: 10 }}>
+        <div style={{ padding: 24, borderBottom: `1px solid ${c.border}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ width: 44, height: 44, background: `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18, color: '#000' }}>FL</div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 18, letterSpacing: '1px', color: c.gold }}>FLIPLEDGER</div>
+              <div style={{ fontSize: 10, color: c.textDim, letterSpacing: '2px', fontWeight: 500 }}>WEALTH INTELLIGENCE</div>
+            </div>
           </div>
         </div>
 
-        <div style={{ padding: '12px' }}>
-          <select value={year} onChange={e => setYear(e.target.value)} style={{ width: '100%', padding: 10, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 8, color: c.emerald, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-            <option value="all">All Years</option>
+        <div style={{ padding: '16px' }}>
+          <select value={year} onChange={e => setYear(e.target.value)} style={{ width: '100%', padding: '12px 16px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 100, color: c.text, fontSize: 13, fontWeight: 600, cursor: 'pointer', appearance: 'none', textAlign: 'center' }}>
             {[2026,2025,2024].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
 
-        <nav style={{ flex: 1, padding: '8px', overflowY: 'auto' }}>
-          {navItems.map((item, i) => item.type === 'divider' ? <div key={i} style={{ height: 1, background: c.border, margin: '8px' }} /> : (
-            <button key={item.id} className="nav-item" onClick={() => setPage(item.id)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 12, width: '100%', padding: '11px 14px', marginBottom: 2, border: 'none', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600, background: page === item.id ? 'rgba(16,185,129,0.15)' : 'transparent', color: page === item.id ? c.emerald : c.textMuted, transition: 'all 0.2s' }}>
-              <span style={{ fontSize: 16 }}>{item.icon}</span>
-              <span>{item.label}</span>
-              {item.badge && <span style={{ marginLeft: 'auto', background: c.red, padding: '2px 8px', borderRadius: 10, fontSize: 10 }}>{item.badge}</span>}
-              {item.count !== undefined && <span style={{ marginLeft: 'auto', background: 'rgba(16,185,129,0.2)', padding: '2px 8px', borderRadius: 8, fontSize: 11 }}>{item.count}</span>}
+        <nav style={{ flex: 1, padding: '8px 12px', overflowY: 'auto' }}>
+          {navItems.map((item, i) => item.type === 'divider' ? <div key={i} style={{ height: 1, background: c.border, margin: '12px 8px' }} /> : (
+            <button key={item.id} className="nav-item" onClick={() => setPage(item.id)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '14px 16px', marginBottom: 4, border: 'none', borderRadius: 12, cursor: 'pointer', fontSize: 14, fontWeight: 500, background: page === item.id ? `rgba(201,169,98,0.1)` : 'transparent', color: page === item.id ? c.gold : c.textMuted, transition: 'all 0.2s' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 16, opacity: page === item.id ? 1 : 0.6 }}>{item.icon}</span>
+                <span>{item.label}</span>
+              </div>
+              {item.badge && <span style={{ background: c.red, padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 700 }}>{item.badge}</span>}
+              {item.count !== undefined && <span style={{ background: c.gold, color: '#000', padding: '3px 10px', borderRadius: 100, fontSize: 11, fontWeight: 700 }}>{item.count}</span>}
             </button>
           ))}
         </nav>
 
-        <div style={{ padding: 12, borderTop: `1px solid ${c.border}` }}>
-          <button className="btn-hover" onClick={() => { setFormData({}); setModal('purchase'); }} style={{ width: '100%', padding: 10, marginBottom: 8, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 10, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>+ Add Purchase</button>
-          <button className="btn-hover" onClick={() => { setFormData({}); setModal('sale'); }} style={{ width: '100%', padding: 10, ...btnPrimary, fontSize: 12 }}>+ Record Sale</button>
+        <div style={{ padding: 16, borderTop: `1px solid ${c.border}` }}>
+          <button className="btn-hover" onClick={() => { setFormData({}); setModal('purchase'); }} style={{ width: '100%', padding: 12, marginBottom: 8, background: c.card, border: `1px solid ${c.border}`, borderRadius: 10, color: c.text, fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>+ Add Purchase</button>
+          <button className="btn-hover" onClick={() => { setFormData({}); setModal('sale'); }} style={{ width: '100%', padding: 12, ...btnPrimary }}>+ Record Sale</button>
         </div>
       </aside>
 
-      <main style={{ flex: 1, padding: '28px 36px', overflowY: 'auto' }}>
-        <div style={{ marginBottom: 28 }}>
-          <h1 style={{ margin: 0, fontSize: 32, fontWeight: 800, fontStyle: 'italic' }}>{navItems.find(n => n.id === page)?.label?.toUpperCase() || 'DASHBOARD'}</h1>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: c.textMuted }}>{year === 'all' ? 'All time' : `Tax Year ${year}`}</p>
+      <main style={{ flex: 1, padding: '32px 48px', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32, paddingBottom: 24, borderBottom: `1px solid ${c.border}` }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: '0.5px' }}>{navItems.find(n => n.id === page)?.label || 'Dashboard'}</h1>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 20px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 100, fontSize: 12, fontWeight: 500, color: c.textMuted }}>
+              <div style={{ width: 8, height: 8, background: c.green, borderRadius: '50%', animation: 'pulse 3s ease-in-out infinite' }} />
+              Connected
+            </div>
+            <div style={{ padding: '10px 20px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 100, fontSize: 13, fontWeight: 600, color: c.text }}>{year}</div>
+          </div>
         </div>
 
         {/* DASHBOARD */}
@@ -1057,93 +1086,79 @@ function App() {
 
           {/* HERO PROFIT CARD */}
           <div style={{
-            background: 'linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.02) 50%, transparent 100%)',
-            border: '1px solid rgba(16,185,129,0.15)',
+            background: c.card,
+            border: `1px solid ${c.border}`,
             borderRadius: 24,
-            padding: '40px 48px',
-            marginBottom: 24,
+            padding: '48px 56px',
+            marginBottom: 28,
             position: 'relative',
             overflow: 'hidden'
           }}>
-            <div className="shimmer-line" style={{ position: 'absolute', top: 0, left: '10%', right: '10%', height: 1, background: 'linear-gradient(90deg, transparent, rgba(16,185,129,0.6), transparent)' }} />
-            <div className="breathe" style={{ position: 'absolute', top: -150, right: -100, width: 400, height: 400, background: 'radial-gradient(circle, rgba(16,185,129,0.2) 0%, transparent 60%)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1, background: `linear-gradient(90deg, transparent, ${c.gold}, transparent)`, opacity: 0.3 }} />
+            <div style={{ position: 'absolute', top: -100, right: -50, width: 300, height: 300, background: `radial-gradient(circle, rgba(201,169,98,0.08) 0%, transparent 60%)`, pointerEvents: 'none' }} />
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative' }}>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
-                  <LivePulse color="#10b981" size={10} speed={2} label="NET PROFIT YTD" />
-                  <StatusIndicator status="live" />
-                </div>
-                
-                <div style={{ fontSize: 72, fontWeight: 800, color: c.emerald, lineHeight: 1, textShadow: '0 0 80px rgba(16,185,129,0.5)', letterSpacing: '-0.02em' }}>
-                  {fmt(netProfit)}
-                </div>
-                
-                <div style={{ display: 'flex', alignItems: 'center', gap: 24, marginTop: 24 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, position: 'relative' }}>
-                      📦
-                      <div style={{ position: 'absolute', top: -3, right: -3 }}><LivePulse color="#10b981" size={6} speed={2.5} /></div>
-                    </div>
-                    <div>
-                      <p style={{ margin: 0, fontSize: 11, color: c.textMuted, fontWeight: 600 }}>TOTAL SALES</p>
-                      <p style={{ margin: '2px 0 0', fontSize: 20, fontWeight: 800 }}>{filteredSales.length}</p>
-                    </div>
-                  </div>
-                  <div style={{ width: 1, height: 40, background: 'rgba(255,255,255,0.1)' }} />
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, position: 'relative' }}>
-                      🎯
-                      <div style={{ position: 'absolute', top: -3, right: -3 }}><LivePulse color="#10b981" size={6} speed={3} /></div>
-                    </div>
-                    <div>
-                      <p style={{ margin: 0, fontSize: 11, color: c.textMuted, fontWeight: 600 }}>AVG PER SALE</p>
-                      <p style={{ margin: '2px 0 0', fontSize: 20, fontWeight: 800 }}>{filteredSales.length > 0 ? fmt(netProfit / filteredSales.length) : '$0'}</p>
-                    </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: '1px', color: c.textDim, textTransform: 'uppercase' }}>Net Profit YTD</span>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px', background: 'rgba(52,211,153,0.1)', borderRadius: 100 }}>
+                    <div style={{ width: 6, height: 6, background: c.green, borderRadius: '50%', animation: 'pulse 2s infinite' }} />
+                    <span style={{ fontSize: 10, fontWeight: 600, color: c.green, letterSpacing: '1px' }}>LIVE</span>
                   </div>
                 </div>
-              </div>
+                
+                <div style={{ fontSize: 72, fontWeight: 800, lineHeight: 1, letterSpacing: '-2px', marginBottom: 16 }}>
+                  <span style={{ color: c.gold }}>${netProfit < 0 ? '-' : ''}</span>
+                  <span style={{ background: 'linear-gradient(180deg, #FFFFFF 20%, #34D399 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{Math.abs(netProfit).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                </div>
+                
+                <div style={{ fontSize: 14, color: c.textMuted }}>
+                  <span style={{ color: c.green, fontWeight: 600 }}>↑ {totalSales > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0}%</span>
+                  <span style={{ margin: '0 8px' }}>·</span>
+                  {filteredSales.length} transactions
+                </div>
+                </div>
 
-              {/* Circular Progress */}
-              <div style={{ position: 'relative', width: 180, height: 180 }}>
-                <svg width="180" height="180" style={{ transform: 'rotate(-90deg)' }}>
-                  <circle cx="90" cy="90" r="75" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="12" />
-                  <circle cx="90" cy="90" r="75" fill="none" stroke="url(#profitGrad)" strokeWidth="12" strokeLinecap="round"
-                    strokeDasharray={`${totalRevenue > 0 ? (netProfit / totalRevenue * 100) * 4.71 : 0} 471`}
-                    style={{ filter: 'drop-shadow(0 0 8px rgba(16,185,129,0.5))' }} />
-                  <defs><linearGradient id="profitGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor="#10b981" /><stop offset="100%" stopColor="#34d399" /></linearGradient></defs>
+              {/* Margin Ring */}
+              <div style={{ position: 'relative', width: 160, height: 160 }}>
+                <svg width="160" height="160" style={{ transform: 'rotate(-90deg)' }}>
+                  <circle cx="80" cy="80" r="70" fill="none" stroke={c.card} strokeWidth="8" />
+                  <circle cx="80" cy="80" r="70" fill="none" stroke="url(#marginGrad)" strokeWidth="8" strokeLinecap="round"
+                    strokeDasharray={`${totalRevenue > 0 ? (netProfit / totalRevenue * 100) * 4.4 : 0} 440`} />
+                  <defs><linearGradient id="marginGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor={c.green} /><stop offset="100%" stopColor={c.gold} /></linearGradient></defs>
                 </svg>
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-                  <LivePulse color="#10b981" size={6} speed={2} label="MARGIN" style={{ marginBottom: 4 }} />
-                  <span style={{ fontSize: 36, fontWeight: 800, color: c.emerald }}>{totalRevenue > 0 ? (netProfit / totalRevenue * 100).toFixed(1) : '0'}%</span>
+                  <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '2px', color: c.textDim, textTransform: 'uppercase', marginBottom: 4 }}>Margin</span>
+                  <span style={{ fontSize: 36, fontWeight: 800, color: c.gold }}>{totalRevenue > 0 ? (netProfit / totalRevenue * 100).toFixed(0) : '0'}%</span>
                 </div>
               </div>
             </div>
           </div>
 
           {/* STATS ROW */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 28 }}>
             {[
-              { label: 'Gross Revenue', value: totalRevenue, icon: '📈', color: '#fff' },
-              { label: 'Cost of Goods', value: totalCOGS, icon: '📦', color: c.gold },
-              { label: 'Platform Fees', value: totalFees, icon: '💳', color: c.red },
-              { label: 'Inventory Value', value: inventoryVal, icon: '🏪', color: '#8b5cf6' },
+              { label: 'Gross Revenue', value: totalRevenue, icon: '📈', color: c.gold, trend: '+18%' },
+              { label: 'Cost of Goods', value: totalCOGS, icon: '💎', color: c.green, trend: '+12%' },
+              { label: 'Platform Fees', value: totalFees, icon: '⚡', color: c.red, trend: '-3%' },
+              { label: 'Inventory Value', value: inventoryVal, icon: '🏦', color: c.text, trend: '+8%' },
             ].map((stat, i) => (
               <div key={i} className="stat-card" style={{
-                background: 'rgba(255,255,255,0.02)',
+                background: c.card,
                 border: `1px solid ${c.border}`,
                 borderRadius: 20,
-                padding: '24px',
+                padding: '28px',
                 position: 'relative',
                 overflow: 'hidden',
                 transition: 'all 0.3s'
               }}>
-                <div style={{ position: 'absolute', top: 16, right: 16 }}><LivePulse color={stat.color} size={6} speed={2 + i * 0.3} /></div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-                  <div style={{ width: 48, height: 48, borderRadius: 14, background: `${stat.color}10`, border: `1px solid ${stat.color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>{stat.icon}</div>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: c.textMuted }}>{stat.label}</span>
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, ${stat.color}, transparent)`, opacity: 0.5 }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>{stat.icon}</div>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: stat.trend.startsWith('+') ? c.green : c.red }}>{stat.trend}</span>
                 </div>
-                <p style={{ margin: 0, fontSize: 28, fontWeight: 800, color: stat.color }}>{fmt(stat.value)}</p>
+                <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 500, color: c.textDim, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{stat.label}</p>
+                <p style={{ margin: 0, fontSize: 28, fontWeight: 700, color: stat.color }}>{fmt(stat.value)}</p>
               </div>
             ))}
           </div>
@@ -1152,21 +1167,17 @@ function App() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
             {/* MONTHLY TABLE */}
             <div style={{ ...cardStyle }}>
-              <div style={{ padding: '20px 24px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Monthly Breakdown</h3>
-                  <LivePulse color="#10b981" size={6} speed={2} />
-                </div>
-                <StatusIndicator status="profit" label={`+${fmt(netProfit)}`} />
+              <div style={{ padding: '24px 28px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Monthly Breakdown</h3>
               </div>
               <div style={{ overflowX: 'auto', maxHeight: 300 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
-                      <th style={{ padding: '14px 20px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: c.textMuted, letterSpacing: '0.08em' }}>MONTH</th>
-                      <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: 10, fontWeight: 700, color: c.textMuted }}>SALES</th>
-                      <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: 10, fontWeight: 700, color: c.textMuted }}>REVENUE</th>
-                      <th style={{ padding: '14px 20px', textAlign: 'right', fontSize: 10, fontWeight: 700, color: c.textMuted }}>PROFIT</th>
+                      <th style={{ padding: '14px 24px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: c.textDim, letterSpacing: '0.5px', textTransform: 'uppercase' }}>Month</th>
+                      <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: c.textDim }}>Sales</th>
+                      <th style={{ padding: '14px 16px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: c.textDim }}>Revenue</th>
+                      <th style={{ padding: '14px 24px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: c.textDim }}>Profit</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1187,7 +1198,7 @@ function App() {
                           <td style={{ padding: '16px', textAlign: 'right', fontSize: 14, color: c.textMuted }}>{monthSales.length}</td>
                           <td style={{ padding: '16px', textAlign: 'right', fontSize: 14 }}>{fmt(monthRevenue)}</td>
                           <td style={{ padding: '16px 20px', textAlign: 'right' }}>
-                            <span style={{ fontSize: 14, fontWeight: 700, color: c.emerald, background: 'rgba(16,185,129,0.1)', padding: '6px 12px', borderRadius: 6 }}>+{fmt(monthProfit)}</span>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: c.green, background: 'rgba(16,185,129,0.1)', padding: '6px 12px', borderRadius: 6 }}>+{fmt(monthProfit)}</span>
                           </td>
                         </tr>
                       );
@@ -1204,7 +1215,7 @@ function App() {
                       <td style={{ padding: '16px', textAlign: 'right', fontSize: 14, fontWeight: 700 }}>{filteredSales.length}</td>
                       <td style={{ padding: '16px', textAlign: 'right', fontSize: 14, fontWeight: 700 }}>{fmt(totalRevenue)}</td>
                       <td style={{ padding: '16px 20px', textAlign: 'right' }}>
-                        <span style={{ fontSize: 16, fontWeight: 800, color: c.emerald, textShadow: '0 0 20px rgba(16,185,129,0.4)' }}>+{fmt(netProfit)}</span>
+                        <span style={{ fontSize: 16, fontWeight: 800, color: c.green, textShadow: '0 0 20px rgba(16,185,129,0.4)' }}>+{fmt(netProfit)}</span>
                       </td>
                     </tr>
                   </tfoot>
@@ -1400,7 +1411,7 @@ function App() {
             </div>
             <div style={{ ...cardStyle, padding: 16 }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>IN STOCK</span>
-              <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: c.emerald }}>{purchases.filter(p => !p.sold).length}</p>
+              <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: c.green }}>{purchases.filter(p => !p.sold).length}</p>
             </div>
             <div style={{ ...cardStyle, padding: 16 }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>INVESTED</span>
@@ -1487,10 +1498,10 @@ function App() {
               <button onClick={() => {
                 const pageIds = paginatedInventory.map(p => p.id);
                 setSelectedInventory(new Set(pageIds));
-              }} style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, color: c.emerald, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>✓ Select Page ({paginatedInventory.length})</button>
+              }} style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, color: c.green, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>✓ Select Page ({paginatedInventory.length})</button>
               {selectedInventory.size > 0 && <button onClick={() => setSelectedInventory(new Set())} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>✗ Clear</button>}
             </div>
-            <span style={{ fontSize: 13, color: selectedInventory.size > 0 ? c.emerald : c.textMuted, fontWeight: selectedInventory.size > 0 ? 700 : 400 }}>{selectedInventory.size > 0 ? `${selectedInventory.size} selected` : 'None selected'}</span>
+            <span style={{ fontSize: 13, color: selectedInventory.size > 0 ? c.green : c.textMuted, fontWeight: selectedInventory.size > 0 ? 700 : 400 }}>{selectedInventory.size > 0 ? `${selectedInventory.size} selected` : 'None selected'}</span>
           </div>
 
           {/* BULK DELETE BAR */}
@@ -1525,21 +1536,21 @@ function App() {
             {/* TABLE HEADER - Clickable for sorting */}
             <div style={{ display: 'grid', gridTemplateColumns: '40px 90px 1fr 130px 60px 80px 70px 90px 60px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
               <div style={{ display: 'flex', alignItems: 'center' }}>
-                <input type="checkbox" checked={allSelected} onChange={(e) => handleSelectAll(e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }} />
+                <input type="checkbox" checked={allSelected} onChange={(e) => handleSelectAll(e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }} />
               </div>
-              <span onClick={() => handleSort('oldest', 'newest')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('oldest', 'newest') ? c.emerald : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
+              <span onClick={() => handleSort('oldest', 'newest')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('oldest', 'newest') ? c.green : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
                 DATE {isActiveSort('oldest', 'newest') && getSortArrow('oldest')}
               </span>
-              <span onClick={() => handleSort('nameAZ', 'nameZA')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('nameAZ', 'nameZA') ? c.emerald : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
+              <span onClick={() => handleSort('nameAZ', 'nameZA')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('nameAZ', 'nameZA') ? c.green : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
                 NAME {isActiveSort('nameAZ', 'nameZA') && getSortArrow('nameAZ')}
               </span>
-              <span onClick={() => handleSort('skuAZ', 'skuZA')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('skuAZ', 'skuZA') ? c.emerald : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
+              <span onClick={() => handleSort('skuAZ', 'skuZA')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('skuAZ', 'skuZA') ? c.green : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
                 SKU {isActiveSort('skuAZ', 'skuZA') && getSortArrow('skuAZ')}
               </span>
-              <span onClick={() => handleSort('sizeAsc', 'sizeDesc')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('sizeAsc', 'sizeDesc') ? c.emerald : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
+              <span onClick={() => handleSort('sizeAsc', 'sizeDesc')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('sizeAsc', 'sizeDesc') ? c.green : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
                 SIZE {isActiveSort('sizeAsc', 'sizeDesc') && getSortArrow('sizeAsc')}
               </span>
-              <span onClick={() => handleSort('costLow', 'costHigh')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('costLow', 'costHigh') ? c.emerald : c.textMuted, cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}>
+              <span onClick={() => handleSort('costLow', 'costHigh')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('costLow', 'costHigh') ? c.green : c.textMuted, cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}>
                 COST {isActiveSort('costLow', 'costHigh') && getSortArrow('costLow')}
               </span>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'center' }}>DAYS</span>
@@ -1553,21 +1564,21 @@ function App() {
               return (
                 <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '40px 90px 1fr 130px 60px 80px 70px 90px 60px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', background: selectedInventory.has(p.id) ? 'rgba(239,68,68,0.1)' : p.sold ? 'rgba(251,191,36,0.05)' : 'transparent' }}>
                   <div>
-                    <input type="checkbox" checked={selectedInventory.has(p.id)} onChange={(e) => handleSelectOne(p.id, e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }} />
+                    <input type="checkbox" checked={selectedInventory.has(p.id)} onChange={(e) => handleSelectOne(p.id, e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }} />
                   </div>
                   <span style={{ fontSize: 12, color: c.textMuted }}>{p.date}</span>
                   <span style={{ fontSize: 13, fontWeight: 600, color: p.sold ? c.textMuted : '#fff' }}>{p.name}</span>
-                  <span style={{ fontSize: 11, color: c.emerald }}>{p.sku || '-'}</span>
+                  <span style={{ fontSize: 11, color: c.green }}>{p.sku || '-'}</span>
                   <span style={{ fontSize: 13 }}>{p.size || '-'}</span>
                   <span style={{ fontSize: 13, fontWeight: 700, textAlign: 'right' }}>{fmt(p.cost)}</span>
                   <span style={{ fontSize: 12, textAlign: 'center', color: !p.sold && daysInStock > 60 ? c.red : !p.sold && daysInStock > 30 ? c.gold : c.textMuted }}>{p.sold ? '-' : daysInStock}</span>
                   <div style={{ textAlign: 'center' }}>
-                    <button onClick={() => setPurchases(purchases.map(x => x.id === p.id ? { ...x, sold: !x.sold } : x))} style={{ padding: '4px 10px', background: p.sold ? 'rgba(251,191,36,0.2)' : 'rgba(16,185,129,0.1)', border: `1px solid ${p.sold ? 'rgba(251,191,36,0.3)' : 'rgba(16,185,129,0.2)'}`, borderRadius: 6, color: p.sold ? c.gold : c.emerald, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
+                    <button onClick={() => setPurchases(purchases.map(x => x.id === p.id ? { ...x, sold: !x.sold } : x))} style={{ padding: '4px 10px', background: p.sold ? 'rgba(251,191,36,0.2)' : 'rgba(16,185,129,0.1)', border: `1px solid ${p.sold ? 'rgba(251,191,36,0.3)' : 'rgba(16,185,129,0.2)'}`, borderRadius: 6, color: p.sold ? c.gold : c.green, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
                       {p.sold ? '🟡 SOLD' : 'IN STOCK'}
                     </button>
                   </div>
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-                    <button onClick={() => { setFormData({ editId: p.id, name: p.name, sku: p.sku, size: p.size, cost: p.cost, date: p.date }); setModal('editInventory'); }} style={{ background: 'none', border: 'none', color: c.emerald, cursor: 'pointer', fontSize: 14 }}>✏️</button>
+                    <button onClick={() => { setFormData({ editId: p.id, name: p.name, sku: p.sku, size: p.size, cost: p.cost, date: p.date }); setModal('editInventory'); }} style={{ background: 'none', border: 'none', color: c.green, cursor: 'pointer', fontSize: 14 }}>✏️</button>
                     <button onClick={() => { setPurchases(purchases.filter(x => x.id !== p.id)); setSelectedInventory(prev => { const n = new Set(prev); n.delete(p.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14 }}>×</button>
                   </div>
                 </div>
@@ -1587,7 +1598,7 @@ function App() {
                   else if (inventoryPage >= totalPages - 2) pageNum = totalPages - 4 + i;
                   else pageNum = inventoryPage - 2 + i;
                   return (
-                    <button key={pageNum} onClick={() => setInventoryPage(pageNum)} style={{ padding: '8px 14px', background: inventoryPage === pageNum ? c.emerald : 'rgba(255,255,255,0.05)', border: `1px solid ${inventoryPage === pageNum ? c.emerald : c.border}`, borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: inventoryPage === pageNum ? 700 : 400 }}>{pageNum}</button>
+                    <button key={pageNum} onClick={() => setInventoryPage(pageNum)} style={{ padding: '8px 14px', background: inventoryPage === pageNum ? c.green : 'rgba(255,255,255,0.05)', border: `1px solid ${inventoryPage === pageNum ? c.green : c.border}`, borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: inventoryPage === pageNum ? 700 : 400 }}>{pageNum}</button>
                   );
                 })}
                 
@@ -1715,13 +1726,13 @@ function App() {
             </div>
             
             {/* NET PROFIT - THE BIG NUMBER */}
-            <div style={{ background: 'rgba(16,185,129,0.1)', borderRadius: 12, padding: 20, marginTop: 24, border: `2px solid ${c.emerald}` }}>
+            <div style={{ background: 'rgba(16,185,129,0.1)', borderRadius: 12, padding: 20, marginTop: 24, border: `2px solid ${c.green}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <span style={{ fontSize: 14, fontWeight: 700 }}>NET PROFIT (Schedule C, Line 31)</span>
                   <p style={{ margin: '4px 0 0', fontSize: 11, color: c.textMuted }}>Gross Sales − COGS − Fees − Expenses</p>
                 </div>
-                <span style={{ fontSize: 32, fontWeight: 800, color: (totalRevenue - totalCOGS - totalFees - totalExp) >= 0 ? c.emerald : c.red }}>
+                <span style={{ fontSize: 32, fontWeight: 800, color: (totalRevenue - totalCOGS - totalFees - totalExp) >= 0 ? c.green : c.red }}>
                   {fmt(totalRevenue - totalCOGS - totalFees - totalExp)}
                 </span>
               </div>
@@ -1750,7 +1761,7 @@ function App() {
                 }).filter(r => r.revenue > 0);
                 rows.push({ month: 'TOTAL', sales: filteredSales.length, revenue: totalRevenue, cogs: totalCOGS, fees: totalFees, profit: totalRevenue - totalCOGS - totalFees });
                 exportCSV(rows, 'monthly-breakdown.csv', ['month', 'sales', 'revenue', 'cogs', 'fees', 'profit']);
-              }} style={{ padding: '8px 16px', background: c.emerald, border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>📥 Export CSV</button>
+              }} style={{ padding: '8px 16px', background: c.green, border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>📥 Export CSV</button>
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -1780,7 +1791,7 @@ function App() {
                         <td style={{ padding: '14px 16px', textAlign: 'right' }}>{fmt(monthRevenue)}</td>
                         <td style={{ padding: '14px 16px', textAlign: 'right', color: c.gold }}>{fmt(monthCOGS)}</td>
                         <td style={{ padding: '14px 16px', textAlign: 'right', color: c.red }}>{fmt(monthFees)}</td>
-                        <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, color: monthProfit >= 0 ? c.emerald : c.red }}>{fmt(monthProfit)}</td>
+                        <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, color: monthProfit >= 0 ? c.green : c.red }}>{fmt(monthProfit)}</td>
                       </tr>
                     );
                   })}
@@ -1792,7 +1803,7 @@ function App() {
                     <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700 }}>{fmt(totalRevenue)}</td>
                     <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700, color: c.gold }}>{fmt(totalCOGS)}</td>
                     <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700, color: c.red }}>{fmt(totalFees)}</td>
-                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 800, fontSize: 16, color: (totalRevenue - totalCOGS - totalFees) >= 0 ? c.emerald : c.red }}>{fmt(totalRevenue - totalCOGS - totalFees)}</td>
+                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 800, fontSize: 16, color: (totalRevenue - totalCOGS - totalFees) >= 0 ? c.green : c.red }}>{fmt(totalRevenue - totalCOGS - totalFees)}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -1884,7 +1895,7 @@ function App() {
               {/* Multi-Select Action Bar */}
               {selectedPending.size > 0 && (
                 <div style={{ padding: '12px 20px', background: 'rgba(16,185,129,0.15)', borderLeft: `1px solid ${c.border}`, borderRight: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <span style={{ fontWeight: 700, color: c.emerald, fontSize: 14 }}>
+                  <span style={{ fontWeight: 700, color: c.green, fontSize: 14 }}>
                     {selectedPending.size} selected
                   </span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
@@ -1894,7 +1905,7 @@ function App() {
                       placeholder="$0.00"
                       value={bulkCost}
                       onChange={e => setBulkCost(e.target.value)}
-                      style={{ width: 100, padding: '10px 14px', background: 'rgba(255,255,255,0.1)', border: `2px solid ${c.emerald}`, borderRadius: 8, color: c.text, fontSize: 15, fontWeight: 600, textAlign: 'center' }} 
+                      style={{ width: 100, padding: '10px 14px', background: 'rgba(255,255,255,0.1)', border: `2px solid ${c.green}`, borderRadius: 8, color: c.text, fontSize: 15, fontWeight: 600, textAlign: 'center' }} 
                     />
                     <button 
                       onClick={() => {
@@ -1931,7 +1942,7 @@ function App() {
                               setSelectedPending(new Set());
                             }
                           }}
-                          style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }}
+                          style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }}
                         />
                       </div>
                       <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>ITEM</span>
@@ -1967,17 +1978,17 @@ function App() {
                               else newSelected.delete(s.id);
                               setSelectedPending(newSelected);
                             }}
-                            style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.emerald }}
+                            style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }}
                           />
                         </div>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
-                          <div style={{ fontSize: 10, color: c.emerald }}>{s.sku}</div>
+                          <div style={{ fontSize: 10, color: c.green }}>{s.sku}</div>
                           <div style={{ fontSize: 9, color: c.textMuted }}>{s.saleDate}</div>
                         </div>
                         <span style={{ fontSize: 12, fontWeight: 600, textAlign: 'center' }}>{s.size || '-'}</span>
                         <span style={{ fontSize: 12, textAlign: 'right' }}>{fmt(s.salePrice)}</span>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: c.emerald, textAlign: 'right' }}>{fmt(s.payout)}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: c.green, textAlign: 'right' }}>{fmt(s.payout)}</span>
                         <div style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                           <input 
                             type="number" 
@@ -2033,7 +2044,7 @@ function App() {
             </div>
             {stockxConnected && (
               <div style={{ padding: '12px 20px', borderTop: `1px solid ${c.border}`, background: 'rgba(0,193,101,0.1)' }}>
-                <span style={{ color: c.emerald, fontWeight: 600, fontSize: 12 }}>✓ Connected to StockX</span>
+                <span style={{ color: c.green, fontWeight: 600, fontSize: 12 }}>✓ Connected to StockX</span>
               </div>
             )}
           </div>
@@ -2190,7 +2201,7 @@ function App() {
               </div>
               {p.connected && (
                 <div style={{ padding: '12px 20px', borderTop: `1px solid ${c.border}`, background: `${p.color}10` }}>
-                  <span style={{ color: c.emerald, fontWeight: 600, fontSize: 12 }}>✓ Connected</span>
+                  <span style={{ color: c.green, fontWeight: 600, fontSize: 12 }}>✓ Connected</span>
                 </div>
               )}
             </div>
@@ -2227,7 +2238,7 @@ function App() {
               </div>
 
               {selectedPendingItem && (
-                <div style={{ padding: '10px 12px', background: 'rgba(16,185,129,0.1)', borderBottom: `1px solid ${c.border}`, fontSize: 11, color: c.emerald, fontWeight: 600 }}>
+                <div style={{ padding: '10px 12px', background: 'rgba(16,185,129,0.1)', borderBottom: `1px solid ${c.border}`, fontSize: 11, color: c.green, fontWeight: 600 }}>
                   👆 Click an item below to use its cost
                 </div>
               )}
@@ -2331,7 +2342,7 @@ function App() {
                           )}
                           <div style={{ flex: 1 }}>
                             <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 2 }}>{p.name}</div>
-                            <div style={{ fontSize: 10, color: c.emerald, marginBottom: 4 }}>{p.sku} · Size {p.size}</div>
+                            <div style={{ fontSize: 10, color: c.green, marginBottom: 4 }}>{p.sku} · Size {p.size}</div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
                               <span style={{ color: c.gold, fontWeight: 700 }}>{fmt(p.cost)}</span>
                               <span style={{ color: c.textMuted }}>{p.date}</span>
@@ -2400,14 +2411,14 @@ function App() {
                     </div>
                     {platform.checkbox && (
                       <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 11, color: 'rgba(255,255,255,0.6)', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={settings[platform.checkbox.key]} onChange={e => setSettings({ ...settings, [platform.checkbox.key]: e.target.checked })} style={{ accentColor: c.emerald, width: 14, height: 14 }} />
+                        <input type="checkbox" checked={settings[platform.checkbox.key]} onChange={e => setSettings({ ...settings, [platform.checkbox.key]: e.target.checked })} style={{ accentColor: c.green, width: 14, height: 14 }} />
                         {platform.checkbox.label}
                       </label>
                     )}
                     {platform.total !== undefined && (
                       <div style={{ marginTop: 12, padding: 10, background: 'rgba(16,185,129,0.1)', borderRadius: 8, display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ fontSize: 10, color: c.textMuted, fontWeight: 600 }}>TOTAL FEE</span>
-                        <span style={{ fontWeight: 700, color: c.emerald, fontSize: 14 }}>{platform.total}%{platform.extra && ` ${platform.extra}`}</span>
+                        <span style={{ fontWeight: 700, color: c.green, fontSize: 14 }}>{platform.total}%{platform.extra && ` ${platform.extra}`}</span>
                       </div>
                     )}
                   </div>
@@ -2519,13 +2530,13 @@ function App() {
                     const newRows = [...(formData.bulkRows || [{ size: '', cost: '' }]), { size: '', cost: '' }];
                     setFormData({ ...formData, bulkRows: newRows });
                   }}
-                  style={{ width: '100%', padding: 10, background: 'rgba(16,185,129,0.1)', border: `1px dashed rgba(16,185,129,0.3)`, borderRadius: 8, color: c.emerald, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                  style={{ width: '100%', padding: 10, background: 'rgba(16,185,129,0.1)', border: `1px dashed rgba(16,185,129,0.3)`, borderRadius: 8, color: c.green, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                 >+ Add Another Size</button>
               </div>
               
               <div style={{ padding: 14, background: 'rgba(16,185,129,0.1)', borderRadius: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ color: c.textMuted, fontSize: 13 }}>Items to add:</span>
-                <span style={{ fontWeight: 800, fontSize: 20, color: c.emerald }}>{(formData.bulkRows || []).filter(r => r.size && r.cost).length}</span>
+                <span style={{ fontWeight: 800, fontSize: 20, color: c.green }}>{(formData.bulkRows || []).filter(r => r.size && r.cost).length}</span>
               </div>
             </>}
             {modal === 'sale' && <>
@@ -2586,7 +2597,7 @@ function App() {
               {formData.saleCost && formData.salePrice && (
                 <div style={{ marginTop: 16, padding: 16, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: c.textMuted }}>Est. Profit</span>
-                  <span style={{ fontWeight: 800, fontSize: 24, color: c.emerald, fontStyle: 'italic' }}>
+                  <span style={{ fontWeight: 800, fontSize: 24, color: c.green, fontStyle: 'italic' }}>
                     {fmt((+formData.salePrice || 0) - (+formData.saleCost || 0) - calcFees(+formData.salePrice || 0, formData.platform || 'StockX Standard'))}
                   </span>
                 </div>
