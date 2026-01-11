@@ -1008,13 +1008,7 @@ function App() {
           </div>
         </div>
 
-        <div style={{ padding: '16px' }}>
-          <select value={year} onChange={e => setYear(e.target.value)} style={{ width: '100%', padding: '12px 16px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 100, color: c.text, fontSize: 13, fontWeight: 600, cursor: 'pointer', appearance: 'none', textAlign: 'center' }}>
-            {[2026,2025,2024].map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
-
-        <nav style={{ flex: 1, padding: '8px 12px', overflowY: 'auto' }}>
+        <nav style={{ flex: 1, padding: '16px 12px', overflowY: 'auto' }}>
           {navItems.map((item, i) => item.type === 'divider' ? <div key={i} style={{ height: 1, background: c.border, margin: '12px 8px' }} /> : (
             <button key={item.id} className="nav-item" onClick={() => setPage(item.id)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '14px 16px', marginBottom: 4, border: 'none', borderRadius: 12, cursor: 'pointer', fontSize: 14, fontWeight: 500, background: page === item.id ? `rgba(201,169,98,0.1)` : 'transparent', color: page === item.id ? c.gold : c.textMuted, transition: 'all 0.2s' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -1043,7 +1037,9 @@ function App() {
               <div style={{ width: 8, height: 8, background: c.green, borderRadius: '50%', animation: 'pulse 3s ease-in-out infinite' }} />
               Connected
             </div>
-            <div style={{ padding: '10px 20px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 100, fontSize: 13, fontWeight: 600, color: c.text }}>{year}</div>
+            <select value={year} onChange={e => setYear(e.target.value)} style={{ padding: '10px 24px 10px 20px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 100, fontSize: 13, fontWeight: 600, color: c.text, cursor: 'pointer', appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}>
+              {[2026,2025,2024,2023].map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
           </div>
         </div>
 
