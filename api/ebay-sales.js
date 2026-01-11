@@ -1,4 +1,4 @@
-// eBay Sales - Calculate TRUE Order Earnings (with Promoted Listing fees)
+// eBay Sales - Calculate TRUE Order Earnings (matching CSV logic)
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -8,22 +8,16 @@ export default async function handler(req, res) {
   
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.log('No auth header provided');
     return res.status(401).json({ error: 'No token provided' });
   }
   
   const accessToken = authHeader.replace('Bearer ', '');
-  console.log('Token received, length:', accessToken.length);
-  
   const { startDate, endDate } = req.query;
   const end = endDate || new Date().toISOString();
   const start = startDate || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
   
-  console.log('Date range:', start, 'to', end);
-  
   try {
     // Step 1: Get orders from Fulfillment API
-    console.log('Fetching orders from Fulfillment API...');
     const ordersResponse = await fetch(
       `https://api.ebay.com/sell/fulfillment/v1/order?filter=creationdate:[${start}..${end}]&limit=200`,
       {
@@ -35,18 +29,15 @@ export default async function handler(req, res) {
       }
     );
     
-    console.log('Orders response status:', ordersResponse.status);
-    
     if (!ordersResponse.ok) {
       const errorText = await ordersResponse.text();
-      console.log('Orders API error:', errorText);
-      return res.status(ordersResponse.status).json({ error: 'Failed to fetch orders', details: errorText, status: ordersResponse.status });
+      return res.status(ordersResponse.status).json({ error: 'Failed to fetch orders', details: errorText });
     }
     
     const ordersData = await ordersResponse.json();
     const orders = ordersData.orders || [];
     
-    // Build sales map
+    // Build sales map - just basic info from orders
     const salesMap = {};
     for (const order of orders) {
       if (order.orderPaymentStatus !== 'PAID' && order.orderPaymentStatus !== 'FULLY_REFUNDED') continue;
@@ -64,10 +55,9 @@ export default async function handler(req, res) {
           salePrice: parseFloat(lineItem.total?.value || 0),
           saleDate: order.creationDate ? order.creationDate.split('T')[0] : new Date().toISOString().split('T')[0],
           buyer: order.buyer?.username || '',
-          // Will be set from transactions
-          netAmount: 0,        // From SALE transaction (after eBay fees, BEFORE ad fees)
-          promotedFee: 0,      // From NON_SALE_CHARGE (Promoted Listing fee)
-          ebayFees: 0,
+          // For calculation - same as CSV
+          grossAmount: 0,
+          totalExpenses: 0,  // ALL fees combined
           fees: 0,
           payout: 0,
           cost: 0,
@@ -78,11 +68,10 @@ export default async function handler(req, res) {
       }
     }
     
-    console.log('Orders found:', Object.keys(salesMap).length);
-    
-    // Step 2: Get SALE transactions
-    const saleResponse = await fetch(
-      `https://api.ebay.com/sell/finances/v1/transaction?filter=transactionType:{SALE},transactionDate:[${start}..${end}]&limit=200`,
+    // Step 2: Get ALL transactions and sum by order
+    // This matches how CSV calculates: Gross - Expenses = Order Earnings
+    const txResponse = await fetch(
+      `https://api.ebay.com/sell/finances/v1/transaction?filter=transactionDate:[${start}..${end}]&limit=1000`,
       {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
@@ -92,81 +81,54 @@ export default async function handler(req, res) {
       }
     );
     
-    if (saleResponse.ok) {
-      const saleData = await saleResponse.json();
-      const saleTx = saleData.transactions || [];
+    if (txResponse.ok) {
+      const txData = await txResponse.json();
+      const transactions = txData.transactions || [];
       
-      console.log('SALE transactions:', saleTx.length);
-      
-      for (const tx of saleTx) {
+      for (const tx of transactions) {
         const orderId = tx.orderId;
         if (!orderId || !salesMap[orderId]) continue;
         
         const sale = salesMap[orderId];
-        sale.salePrice = parseFloat(tx.amount?.value || sale.salePrice);
-        sale.netAmount = parseFloat(tx.amount?.value || 0) - Math.abs(parseFloat(tx.totalFeeAmount?.value || 0));
-        sale.ebayFees = Math.abs(parseFloat(tx.totalFeeAmount?.value || 0));
+        const amount = parseFloat(tx.amount?.value || 0);
+        const totalFee = Math.abs(parseFloat(tx.totalFeeAmount?.value || 0));
+        const txType = tx.transactionType;
+        const bookingEntry = tx.bookingEntry;
         
-        console.log(`SALE ${orderId}: gross=${tx.amount?.value}, fees=${tx.totalFeeAmount?.value}, net=${sale.netAmount}`);
-      }
-    }
-    
-    // Step 3: Get NON_SALE_CHARGE transactions (Promoted Listing fees)
-    const feeResponse = await fetch(
-      `https://api.ebay.com/sell/finances/v1/transaction?filter=transactionType:{NON_SALE_CHARGE},transactionDate:[${start}..${end}]&limit=200`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
+        // SALE transaction = gross amount + eBay fees
+        if (txType === 'SALE') {
+          sale.grossAmount = amount;
+          sale.totalExpenses += totalFee;  // Add eBay fees
+        }
+        
+        // NON_SALE_CHARGE = promoted listing fee and other fees
+        // These are DEBIT entries that reduce your payout
+        if (txType === 'NON_SALE_CHARGE' && bookingEntry === 'DEBIT') {
+          sale.totalExpenses += Math.abs(amount);  // Add promoted fees
         }
       }
-    );
-    
-    if (feeResponse.ok) {
-      const feeData = await feeResponse.json();
-      const feeTx = feeData.transactions || [];
-      
-      console.log('NON_SALE_CHARGE transactions:', feeTx.length);
-      
-      for (const tx of feeTx) {
-        const orderId = tx.orderId;
-        if (!orderId || !salesMap[orderId]) continue;
-        
-        // This is the Promoted Listing fee (or other non-sale charge)
-        const feeAmount = Math.abs(parseFloat(tx.amount?.value || 0));
-        const feeType = tx.feeType || tx.transactionMemo || '';
-        
-        console.log(`NON_SALE_CHARGE ${orderId}: amount=${feeAmount}, type=${feeType}`);
-        
-        // Add to promoted fee for this order
-        salesMap[orderId].promotedFee += feeAmount;
-      }
     }
     
-    // Step 4: Calculate TRUE Order Earnings
-    // Order Earnings = netAmount - promotedFee
+    // Step 3: Calculate payout same as CSV: Gross - Expenses = Order Earnings
     const sales = Object.values(salesMap);
     
     for (const sale of sales) {
-      if (sale.netAmount > 0) {
-        // TRUE PAYOUT = Net (after eBay fees) - Promoted Listing fee
-        sale.payout = sale.netAmount - sale.promotedFee;
-        sale.fees = sale.ebayFees + sale.promotedFee;
+      if (sale.grossAmount > 0) {
+        // ORDER EARNINGS = GROSS - ALL EXPENSES (same as CSV!)
+        sale.payout = sale.grossAmount - sale.totalExpenses;
+        sale.fees = sale.totalExpenses;
+        sale.salePrice = sale.grossAmount;
       } else {
-        // Fallback estimate
+        // Fallback
         sale.fees = sale.salePrice * 0.15;
         sale.payout = sale.salePrice * 0.85;
       }
       
       sale.profit = sale.payout - sale.cost;
       
-      console.log(`FINAL ${sale.orderId}: salePrice=${sale.salePrice}, ebayFees=${sale.ebayFees}, promotedFee=${sale.promotedFee}, PAYOUT=${sale.payout}`);
-      
-      // Clean up internal fields
-      delete sale.netAmount;
-      delete sale.promotedFee;
-      delete sale.ebayFees;
+      // Clean up
+      delete sale.grossAmount;
+      delete sale.totalExpenses;
     }
     
     res.status(200).json({ success: true, count: sales.length, sales });
