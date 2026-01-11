@@ -2523,48 +2523,6 @@ function App() {
               🔗 Platform Connections
             </h3>
             
-            {/* eBay Connection */}
-            <div style={{ padding: 20, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: `1px solid ${c.border}`, marginBottom: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 44, height: 44, background: '#e53238', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12, color: '#fff' }}>eBay</div>
-                  <div>
-                    <div style={{ fontWeight: 600, marginBottom: 2 }}>eBay</div>
-                    <div style={{ fontSize: 12, color: c.textMuted }}>
-                      {ebayConnected ? '✓ Connected' : 'Import your sold items automatically'}
-                    </div>
-                  </div>
-                </div>
-                {ebayConnected ? (
-                  <button
-                    onClick={() => {
-                      localStorage.removeItem('flipledger_ebay_token');
-                      localStorage.removeItem('flipledger_ebay_refresh');
-                      setEbayToken(null);
-                      setEbayConnected(false);
-                    }}
-                    style={{ padding: '10px 20px', background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 8, color: c.red, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
-                  >
-                    Disconnect
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => window.location.href = '/api/ebay-auth'}
-                    style={{ padding: '10px 20px', background: '#e53238', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
-                  >
-                    Connect eBay
-                  </button>
-                )}
-              </div>
-              
-              {ebayConnected && (
-                <div style={{ marginTop: 12, padding: '10px 12px', background: 'rgba(16,185,129,0.1)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ color: c.green, fontSize: 12 }}>✓ Connected</span>
-                  <span style={{ color: c.textMuted, fontSize: 11 }}>• Go to Import page to sync sales</span>
-                </div>
-              )}
-            </div>
-
             {/* StockX Connection */}
             <div style={{ padding: 20, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: `1px solid ${c.border}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
