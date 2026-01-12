@@ -1795,84 +1795,169 @@ function App() {
         {/* MILEAGE */}
         {/* CPA REPORTS */}
         {page === 'reports' && <div style={{ maxWidth: 1000 }}>
+          {/* PLATFORM-SPECIFIC CALCULATIONS FOR 1099-K MATCHING */}
+          {(() => {
+            // Calculate 1099-K matching amounts per platform
+            // eBay: 1099-K reports GROSS (salePrice), fees are deductible
+            // StockX: 1099-K reports PAYOUT (what you received), fees already deducted
+            
+            let line1_gross = 0;      // What to report on Line 1 (must match 1099-Ks)
+            let line10_fees = 0;       // Deductible fees (only eBay)
+            let totalCostOfGoods = 0;  // COGS
+            
+            const platformData = {};
+            
+            filteredSales.forEach(s => {
+              const platform = s.platform || 'Other';
+              const isStockX = platform.toLowerCase().includes('stockx');
+              const isGoat = platform.toLowerCase().includes('goat');
+              const isEbay = platform.toLowerCase().includes('ebay');
+              
+              // Initialize platform data
+              if (!platformData[platform]) {
+                platformData[platform] = { 
+                  sales: 0, 
+                  gross1099K: 0,  // What matches their 1099-K
+                  fees: 0,        // Deductible fees
+                  cogs: 0,
+                  payout: 0
+                };
+              }
+              
+              platformData[platform].sales++;
+              platformData[platform].cogs += s.cost || 0;
+              totalCostOfGoods += s.cost || 0;
+              
+              if (isStockX || isGoat) {
+                // StockX & GOAT 1099-K = payout (after fees)
+                const payout = s.payout || (s.salePrice - (s.fees || 0));
+                platformData[platform].gross1099K += payout;
+                platformData[platform].payout += payout;
+                line1_gross += payout;
+                // NO fee deduction - already taken out
+              } else if (isEbay) {
+                // eBay 1099-K = gross (before fees)
+                platformData[platform].gross1099K += s.salePrice || 0;
+                platformData[platform].fees += s.fees || 0;
+                platformData[platform].payout += (s.payout || (s.salePrice - (s.fees || 0)));
+                line1_gross += s.salePrice || 0;
+                line10_fees += s.fees || 0;
+              } else {
+                // Other platforms - assume gross like eBay (safer)
+                platformData[platform].gross1099K += s.salePrice || 0;
+                platformData[platform].fees += s.fees || 0;
+                platformData[platform].payout += (s.payout || (s.salePrice - (s.fees || 0)));
+                line1_gross += s.salePrice || 0;
+                line10_fees += s.fees || 0;
+              }
+            });
+            
+            const line5_grossProfit = line1_gross - totalCostOfGoods;
+            const line31_netProfit = line1_gross - totalCostOfGoods - line10_fees - totalExp;
+            
+            return (
+              <>
           {/* ACTION BUTTONS */}
           <div style={{ marginBottom: 20, display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
             <button className="btn-hover" onClick={() => {
               // Export CPA-ready Excel with multiple sheets
               const wb = XLSX.utils.book_new();
               
-              // Sheet 1: Schedule C Summary
+              // Sheet 1: Schedule C Summary (1099-K Compliant)
               const scheduleC = [
                 ['SCHEDULE C - PROFIT OR LOSS FROM BUSINESS', ''],
                 ['Tax Year:', year],
                 ['Generated:', new Date().toLocaleDateString()],
                 ['', ''],
+                ['*** 1099-K COMPLIANT REPORTING ***', ''],
+                ['eBay: Reports GROSS sales - fees are deductible', ''],
+                ['StockX: Reports PAYOUT (after fees) - no fee deduction', ''],
+                ['', ''],
                 ['LINE', 'DESCRIPTION', 'AMOUNT'],
-                ['Line 1', 'Gross receipts or sales', totalRevenue],
-                ['Line 4', 'Cost of goods sold', totalCOGS],
-                ['Line 5', 'Gross profit (Line 1 - Line 4)', totalRevenue - totalCOGS],
-                ['Line 10', 'Commissions and fees', totalFees],
-                ['Line 27a', 'Other expenses (see detail)', totalExp],
-                ['Line 31', 'NET PROFIT', totalRevenue - totalCOGS - totalFees - totalExp],
+                ['Line 1', 'Gross receipts (matches 1099-Ks)', line1_gross],
+                ['Line 4', 'Cost of goods sold', totalCostOfGoods],
+                ['Line 5', 'Gross profit (Line 1 - Line 4)', line5_grossProfit],
+                ['Line 10', 'Commissions/fees (eBay only)', line10_fees],
+                ['Line 27a', 'Other expenses', totalExp],
+                ['Line 31', 'NET PROFIT', line31_netProfit],
               ];
               const ws1 = XLSX.utils.aoa_to_sheet(scheduleC);
               XLSX.utils.book_append_sheet(wb, ws1, 'Schedule C');
               
-              // Sheet 2: Platform Breakdown
-              const platforms = {};
-              filteredSales.forEach(s => {
-                const p = s.platform || 'Other';
-                if (!platforms[p]) platforms[p] = { sales: 0, revenue: 0, cogs: 0, fees: 0 };
-                platforms[p].sales++;
-                platforms[p].revenue += s.salePrice || 0;
-                platforms[p].cogs += s.cost || 0;
-                platforms[p].fees += s.fees || 0;
+              // Sheet 2: Platform Breakdown (1099-K Reconciliation)
+              const platformRows = [
+                ['1099-K RECONCILIATION BY PLATFORM'],
+                [''],
+                ['PLATFORM', 'SALES', '1099-K AMOUNT', 'DEDUCTIBLE FEES', 'COGS', 'NET PROFIT', 'NOTES']
+              ];
+              Object.entries(platformData).forEach(([p, d]) => {
+                const isStockX = p.toLowerCase().includes('stockx');
+                const isGoat = p.toLowerCase().includes('goat');
+                const netProfit = d.gross1099K - d.cogs - d.fees;
+                platformRows.push([
+                  p, 
+                  d.sales, 
+                  d.gross1099K, 
+                  d.fees,
+                  d.cogs, 
+                  netProfit,
+                  (isStockX || isGoat) ? 'Payout (fees pre-deducted)' : 'Gross (fees deductible)'
+                ]);
               });
-              const platformRows = [['PLATFORM', 'SALES', 'GROSS REVENUE', 'COGS', 'FEES', 'NET PROFIT']];
-              Object.entries(platforms).forEach(([p, d]) => {
-                platformRows.push([p, d.sales, d.revenue, d.cogs, d.fees, d.revenue - d.cogs - d.fees]);
-              });
-              platformRows.push(['TOTAL', filteredSales.length, totalRevenue, totalCOGS, totalFees, totalRevenue - totalCOGS - totalFees]);
+              platformRows.push(['TOTAL', filteredSales.length, line1_gross, line10_fees, totalCostOfGoods, line31_netProfit + totalExp, '']);
               const ws2 = XLSX.utils.aoa_to_sheet(platformRows);
-              XLSX.utils.book_append_sheet(wb, ws2, 'By Platform');
+              XLSX.utils.book_append_sheet(wb, ws2, '1099-K Reconciliation');
               
               // Sheet 3: Monthly Breakdown
               const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-              const monthlyRows = [['MONTH', 'SALES', 'GROSS REVENUE', 'COGS', 'FEES', 'NET PROFIT']];
+              const monthlyRows = [['MONTH', 'SALES', '1099-K AMOUNT', 'COGS', 'FEES', 'NET PROFIT']];
               months.forEach((month, i) => {
                 const monthNum = String(i + 1).padStart(2, '0');
                 const monthSales = filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === monthNum);
                 if (monthSales.length > 0) {
-                  const rev = monthSales.reduce((sum, s) => sum + (s.salePrice || 0), 0);
-                  const cogs = monthSales.reduce((sum, s) => sum + (s.cost || 0), 0);
-                  const fees = monthSales.reduce((sum, s) => sum + (s.fees || 0), 0);
-                  monthlyRows.push([month, monthSales.length, rev, cogs, fees, rev - cogs - fees]);
+                  let mGross = 0, mFees = 0, mCogs = 0;
+                  monthSales.forEach(s => {
+                    const isStockX = (s.platform || '').toLowerCase().includes('stockx');
+                    const isGoat = (s.platform || '').toLowerCase().includes('goat');
+                    mCogs += s.cost || 0;
+                    if (isStockX || isGoat) {
+                      mGross += s.payout || (s.salePrice - (s.fees || 0));
+                    } else {
+                      mGross += s.salePrice || 0;
+                      mFees += s.fees || 0;
+                    }
+                  });
+                  monthlyRows.push([month, monthSales.length, mGross, mCogs, mFees, mGross - mCogs - mFees]);
                 }
               });
-              monthlyRows.push(['TOTAL', filteredSales.length, totalRevenue, totalCOGS, totalFees, totalRevenue - totalCOGS - totalFees]);
+              monthlyRows.push(['TOTAL', filteredSales.length, line1_gross, totalCostOfGoods, line10_fees, line31_netProfit + totalExp]);
               const ws3 = XLSX.utils.aoa_to_sheet(monthlyRows);
               XLSX.utils.book_append_sheet(wb, ws3, 'By Month');
               
-              // Sheet 4: Fee Breakdown
-              const feeRows = [['FEE TYPE', 'AMOUNT']];
-              const feeByPlatform = {};
+              // Sheet 4: All Transactions
+              const txRows = [['DATE', 'PLATFORM', 'ITEM', 'SKU', 'SIZE', 'SALE PRICE', 'PAYOUT', 'COGS', 'FEES', '1099-K AMOUNT', 'NET PROFIT']];
               filteredSales.forEach(s => {
-                const p = s.platform || 'Other';
-                feeByPlatform[p + ' Fees'] = (feeByPlatform[p + ' Fees'] || 0) + (s.fees || 0);
-                if (s.adFee) feeByPlatform[p + ' Promoted/Ad Fees'] = (feeByPlatform[p + ' Promoted/Ad Fees'] || 0) + s.adFee;
+                const isStockX = (s.platform || '').toLowerCase().includes('stockx');
+                const isGoat = (s.platform || '').toLowerCase().includes('goat');
+                const payout = s.payout || (s.salePrice - (s.fees || 0));
+                const gross1099K = (isStockX || isGoat) ? payout : (s.salePrice || 0);
+                const deductibleFees = (isStockX || isGoat) ? 0 : (s.fees || 0);
+                txRows.push([
+                  s.saleDate, 
+                  s.platform, 
+                  s.name, 
+                  s.sku, 
+                  s.size, 
+                  s.salePrice || 0, 
+                  payout,
+                  s.cost || 0, 
+                  s.fees || 0,
+                  gross1099K,
+                  gross1099K - (s.cost || 0) - deductibleFees
+                ]);
               });
-              Object.entries(feeByPlatform).filter(([k,v]) => v > 0).forEach(([k, v]) => feeRows.push([k, v]));
-              feeRows.push(['TOTAL DEDUCTIBLE FEES', totalFees]);
-              const ws4 = XLSX.utils.aoa_to_sheet(feeRows);
-              XLSX.utils.book_append_sheet(wb, ws4, 'Fee Breakdown');
-              
-              // Sheet 5: All Transactions
-              const txRows = [['DATE', 'PLATFORM', 'ITEM', 'SKU', 'SIZE', 'SALE PRICE', 'COGS', 'FEES', 'NET PROFIT']];
-              filteredSales.forEach(s => {
-                txRows.push([s.saleDate, s.platform, s.name, s.sku, s.size, s.salePrice || 0, s.cost || 0, s.fees || 0, (s.salePrice || 0) - (s.cost || 0) - (s.fees || 0)]);
-              });
-              const ws5 = XLSX.utils.aoa_to_sheet(txRows);
-              XLSX.utils.book_append_sheet(wb, ws5, 'All Transactions');
+              const ws4 = XLSX.utils.aoa_to_sheet(txRows);
+              XLSX.utils.book_append_sheet(wb, ws4, 'All Transactions');
               
               XLSX.writeFile(wb, `FlipLedger_TaxReport_${year}.xlsx`);
             }} style={{ padding: '12px 24px', background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)', border: 'none', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
@@ -1881,17 +1966,30 @@ function App() {
             <button className="btn-hover" onClick={printTaxPackage} style={{ padding: '12px 24px', ...btnPrimary, fontSize: 13 }}>🖨️ Print Tax Summary</button>
           </div>
           
-          {/* SCHEDULE C MAPPING - THE KEY SECTION */}
+          {/* IMPORTANT: 1099-K REPORTING EXPLANATION */}
+          <div style={{ ...cardStyle, padding: 20, marginBottom: 20, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)' }}>
+            <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700, color: '#93c5fd' }}>⚠️ 1099-K Reporting Differences</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div style={{ padding: 12, background: 'rgba(229,50,56,0.1)', borderRadius: 8, border: '1px solid rgba(229,50,56,0.2)' }}>
+                <div style={{ fontWeight: 700, marginBottom: 4, color: '#e53238' }}>eBay</div>
+                <div style={{ fontSize: 12, color: c.textMuted }}>1099-K = <strong>GROSS</strong> (what buyer paid)</div>
+                <div style={{ fontSize: 12, color: c.textMuted }}>→ Report gross on Line 1</div>
+                <div style={{ fontSize: 12, color: c.textMuted }}>→ Deduct fees on Line 10</div>
+              </div>
+              <div style={{ padding: 12, background: 'rgba(34,197,94,0.1)', borderRadius: 8, border: '1px solid rgba(34,197,94,0.2)' }}>
+                <div style={{ fontWeight: 700, marginBottom: 4, color: '#22c55e' }}>StockX & GOAT</div>
+                <div style={{ fontSize: 12, color: c.textMuted }}>1099-K = <strong>PAYOUT</strong> (after fees)</div>
+                <div style={{ fontSize: 12, color: c.textMuted }}>→ Report payout on Line 1</div>
+                <div style={{ fontSize: 12, color: c.textMuted }}>→ NO fee deduction (already taken out)</div>
+              </div>
+            </div>
+          </div>
+          
+          {/* SCHEDULE C MAPPING */}
           <div className="print-report" style={{ ...cardStyle, padding: 32, marginBottom: 20 }}>
             <div style={{ textAlign: 'center', marginBottom: 24, paddingBottom: 16, borderBottom: '2px solid #333' }}>
               <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>📋 SCHEDULE C SUMMARY</h1>
-              <p style={{ margin: '8px 0 0', fontSize: 13, color: c.textMuted }}>Tax Year {year} • Maps directly to IRS Schedule C</p>
-            </div>
-            
-            <div style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 12, padding: 20, marginBottom: 24 }}>
-              <p style={{ margin: 0, fontSize: 13, color: '#93c5fd' }}>
-                💡 <strong>For your CPA:</strong> These numbers map directly to Schedule C. Export the CPA Package (Excel) for complete documentation with all supporting details.
-              </p>
+              <p style={{ margin: '8px 0 0', fontSize: 13, color: c.textMuted }}>Tax Year {year} • 1099-K Compliant</p>
             </div>
             
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -1905,23 +2003,29 @@ function App() {
               <tbody>
                 <tr style={{ borderBottom: `1px solid ${c.border}` }}>
                   <td style={{ padding: '14px 16px', fontWeight: 600, color: '#60a5fa' }}>Line 1</td>
-                  <td style={{ padding: '14px 16px' }}>Gross receipts or sales</td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 15 }}>{fmt(totalRevenue)}</td>
+                  <td style={{ padding: '14px 16px' }}>
+                    Gross receipts or sales
+                    <div style={{ fontSize: 11, color: c.textMuted }}>eBay gross + StockX/GOAT payouts (matches 1099-Ks)</div>
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 15 }}>{fmt(line1_gross)}</td>
                 </tr>
                 <tr style={{ borderBottom: `1px solid ${c.border}` }}>
                   <td style={{ padding: '14px 16px', fontWeight: 600, color: '#60a5fa' }}>Line 4</td>
                   <td style={{ padding: '14px 16px' }}>Cost of goods sold</td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 15, color: c.gold }}>{fmt(totalCOGS)}</td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 15, color: c.gold }}>{fmt(totalCostOfGoods)}</td>
                 </tr>
                 <tr style={{ borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
                   <td style={{ padding: '14px 16px', fontWeight: 600, color: '#60a5fa' }}>Line 5</td>
                   <td style={{ padding: '14px 16px', fontWeight: 600 }}>Gross profit (Line 1 − Line 4)</td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 15, fontWeight: 700 }}>{fmt(totalRevenue - totalCOGS)}</td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 15, fontWeight: 700 }}>{fmt(line5_grossProfit)}</td>
                 </tr>
                 <tr style={{ borderBottom: `1px solid ${c.border}` }}>
                   <td style={{ padding: '14px 16px', fontWeight: 600, color: '#60a5fa' }}>Line 10</td>
-                  <td style={{ padding: '14px 16px' }}>Commissions and fees</td>
-                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 15, color: c.red }}>{fmt(totalFees)}</td>
+                  <td style={{ padding: '14px 16px' }}>
+                    Commissions and fees
+                    <div style={{ fontSize: 11, color: c.textMuted }}>eBay fees only (StockX/GOAT fees pre-deducted)</div>
+                  </td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 15, color: c.red }}>{fmt(line10_fees)}</td>
                 </tr>
                 <tr style={{ borderBottom: `1px solid ${c.border}` }}>
                   <td style={{ padding: '14px 16px', fontWeight: 600, color: '#60a5fa' }}>Line 27a</td>
@@ -1933,126 +2037,73 @@ function App() {
                 <tr style={{ background: 'rgba(16,185,129,0.15)' }}>
                   <td style={{ padding: '18px 16px', fontWeight: 800, color: c.green }}>Line 31</td>
                   <td style={{ padding: '18px 16px', fontWeight: 800 }}>NET PROFIT (or Loss)</td>
-                  <td style={{ padding: '18px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 24, fontWeight: 800, color: (totalRevenue - totalCOGS - totalFees - totalExp) >= 0 ? c.green : c.red }}>
-                    {fmt(totalRevenue - totalCOGS - totalFees - totalExp)}
+                  <td style={{ padding: '18px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 24, fontWeight: 800, color: line31_netProfit >= 0 ? c.green : c.red }}>
+                    {fmt(line31_netProfit)}
                   </td>
                 </tr>
               </tfoot>
             </table>
           </div>
           
-          {/* PLATFORM BREAKDOWN + 1099-K RECONCILIATION */}
-          <div className="no-print" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
-            {/* Platform Breakdown */}
-            <div className="card-hover" style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
-              <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}` }}>
-                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>📊 By Platform</h3>
-              </div>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
-                    <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: c.textMuted }}>PLATFORM</th>
-                    <th style={{ padding: '10px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>SALES</th>
-                    <th style={{ padding: '10px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>GROSS</th>
-                    <th style={{ padding: '10px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>FEES</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    const platforms = {};
-                    filteredSales.forEach(s => {
-                      const p = s.platform || 'Other';
-                      if (!platforms[p]) platforms[p] = { sales: 0, revenue: 0, fees: 0 };
-                      platforms[p].sales++;
-                      platforms[p].revenue += s.salePrice || 0;
-                      platforms[p].fees += s.fees || 0;
-                    });
-                    return Object.entries(platforms).sort((a,b) => b[1].revenue - a[1].revenue).map(([platform, data]) => (
-                      <tr key={platform} style={{ borderBottom: `1px solid ${c.border}` }}>
-                        <td style={{ padding: '12px 16px' }}>
-                          <span style={{ 
-                            display: 'inline-block', 
-                            padding: '4px 10px', 
-                            borderRadius: 20, 
-                            fontSize: 11, 
-                            fontWeight: 600,
-                            background: platform === 'eBay' ? 'rgba(229,50,56,0.2)' : platform === 'StockX' ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.1)',
-                            color: platform === 'eBay' ? '#e53238' : platform === 'StockX' ? '#22c55e' : c.text
-                          }}>{platform}</span>
-                        </td>
-                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>{data.sales}</td>
-                        <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'monospace' }}>{fmt(data.revenue)}</td>
-                        <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'monospace', color: c.red }}>{fmt(data.fees)}</td>
-                      </tr>
-                    ));
-                  })()}
-                </tbody>
-                <tfoot>
-                  <tr style={{ background: 'rgba(16,185,129,0.1)' }}>
-                    <td style={{ padding: '12px 16px', fontWeight: 700 }}>Total</td>
-                    <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700 }}>{filteredSales.length}</td>
-                    <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace' }}>{fmt(totalRevenue)}</td>
-                    <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: c.red }}>{fmt(totalFees)}</td>
-                  </tr>
-                </tfoot>
-              </table>
+          {/* 1099-K RECONCILIATION BY PLATFORM */}
+          <div className="no-print" style={{ ...cardStyle, padding: 0, overflow: 'hidden', marginBottom: 20 }}>
+            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}` }}>
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>🔗 1099-K Reconciliation by Platform</h3>
+              <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Match these totals to your 1099-K forms</p>
             </div>
-            
-            {/* 1099-K Reconciliation */}
-            <div className="card-hover" style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
-              <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}` }}>
-                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>🔗 1099-K Reconciliation</h3>
-              </div>
-              <div style={{ padding: 16 }}>
-                <p style={{ margin: '0 0 16px', fontSize: 12, color: c.textMuted }}>
-                  Compare FlipLedger totals with your 1099-K forms from each platform.
-                </p>
-                {(() => {
-                  const platforms = {};
-                  filteredSales.forEach(s => {
-                    const p = s.platform || 'Other';
-                    if (!platforms[p]) platforms[p] = 0;
-                    platforms[p] += s.salePrice || 0;
-                  });
-                  return Object.entries(platforms).sort((a,b) => b[1] - a[1]).map(([platform, gross]) => (
-                    <div key={platform} style={{ padding: '12px 0', borderBottom: `1px solid ${c.border}` }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                        <span style={{ fontWeight: 600 }}>{platform}</span>
-                        <span style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700 }}>{fmt(gross)}</span>
-                      </div>
-                      <div style={{ fontSize: 11, color: c.textMuted }}>
-                        Should match Box 1a on your {platform} 1099-K
-                      </div>
-                    </div>
-                  ));
-                })()}
-                <div style={{ marginTop: 16, padding: 12, background: 'rgba(251,191,36,0.1)', borderRadius: 8, border: '1px solid rgba(251,191,36,0.2)' }}>
-                  <p style={{ margin: 0, fontSize: 11, color: c.gold }}>
-                    ⚠️ Small differences may occur due to timing (orders placed in Dec, paid in Jan). Document any discrepancies.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: c.textMuted }}>PLATFORM</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>SALES</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>1099-K AMOUNT</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>DEDUCTIBLE FEES</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: c.textMuted }}>NOTES</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(platformData).sort((a,b) => b[1].gross1099K - a[1].gross1099K).map(([platform, data]) => {
+                  const isStockX = platform.toLowerCase().includes('stockx');
+                  const isGoat = platform.toLowerCase().includes('goat');
+                  return (
+                    <tr key={platform} style={{ borderBottom: `1px solid ${c.border}` }}>
+                      <td style={{ padding: '14px 16px' }}>
+                        <span style={{ 
+                          display: 'inline-block', 
+                          padding: '4px 10px', 
+                          borderRadius: 20, 
+                          fontSize: 11, 
+                          fontWeight: 600,
+                          background: platform.toLowerCase().includes('ebay') ? 'rgba(229,50,56,0.2)' : (isStockX || isGoat) ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.1)',
+                          color: platform.toLowerCase().includes('ebay') ? '#e53238' : (isStockX || isGoat) ? '#22c55e' : c.text
+                        }}>{platform}</span>
+                      </td>
+                      <td style={{ padding: '14px 16px', textAlign: 'right' }}>{data.sales}</td>
+                      <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>{fmt(data.gross1099K)}</td>
+                      <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', color: data.fees > 0 ? c.red : c.textMuted }}>{data.fees > 0 ? fmt(data.fees) : '$0.00'}</td>
+                      <td style={{ padding: '14px 16px', fontSize: 11, color: c.textMuted }}>
+                        {(isStockX || isGoat) ? `← Should match ${platform} 1099-K Box 1a` : '← Should match eBay 1099-K Box 1a'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: 'rgba(16,185,129,0.1)' }}>
+                  <td style={{ padding: '14px 16px', fontWeight: 700 }}>Total (Line 1)</td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700 }}>{filteredSales.length}</td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace' }}>{fmt(line1_gross)}</td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: c.red }}>{fmt(line10_fees)}</td>
+                  <td style={{ padding: '14px 16px', fontSize: 11, color: c.textMuted }}>← Sum of all 1099-Ks</td>
+                </tr>
+              </tfoot>
+            </table>
           </div>
           
           {/* MONTHLY BREAKDOWN */}
           <div className="card-hover no-print" style={{ ...cardStyle, marginBottom: 20 }}>
             <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>📅 MONTHLY BREAKDOWN</h3>
-              <button className="btn-hover" onClick={() => {
-                const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-                const rows = months.map((month, i) => {
-                  const monthNum = String(i + 1).padStart(2, '0');
-                  const monthSales = filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === monthNum);
-                  const revenue = monthSales.reduce((sum, s) => sum + (s.salePrice || 0), 0);
-                  const cogs = monthSales.reduce((sum, s) => sum + (s.cost || 0), 0);
-                  const fees = monthSales.reduce((sum, s) => sum + (s.fees || 0), 0);
-                  const profit = revenue - cogs - fees;
-                  return { month, sales: monthSales.length, revenue, cogs, fees, profit };
-                }).filter(r => r.revenue > 0);
-                rows.push({ month: 'TOTAL', sales: filteredSales.length, revenue: totalRevenue, cogs: totalCOGS, fees: totalFees, profit: totalRevenue - totalCOGS - totalFees });
-                exportCSV(rows, 'monthly-breakdown.csv', ['month', 'sales', 'revenue', 'cogs', 'fees', 'profit']);
-              }} style={{ padding: '8px 16px', background: c.green, border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>📥 Export CSV</button>
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -2060,7 +2111,7 @@ function App() {
                   <tr style={{ borderBottom: `1px solid ${c.border}` }}>
                     <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: c.textMuted }}>MONTH</th>
                     <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>SALES</th>
-                    <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>REVENUE</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>1099-K AMT</th>
                     <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>COGS</th>
                     <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>FEES</th>
                     <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>PROFIT</th>
@@ -2070,31 +2121,42 @@ function App() {
                   {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((month, i) => {
                     const monthNum = String(i + 1).padStart(2, '0');
                     const monthSales = filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === monthNum);
-                    const monthRevenue = monthSales.reduce((sum, s) => sum + (s.salePrice || 0), 0);
-                    const monthCOGS = monthSales.reduce((sum, s) => sum + (s.cost || 0), 0);
-                    const monthFees = monthSales.reduce((sum, s) => sum + (s.fees || 0), 0);
-                    const monthProfit = monthRevenue - monthCOGS - monthFees;
-                    if (monthRevenue === 0) return null;
+                    if (monthSales.length === 0) return null;
+                    
+                    let mGross = 0, mFees = 0, mCogs = 0;
+                    monthSales.forEach(s => {
+                      const isStockX = (s.platform || '').toLowerCase().includes('stockx');
+                      const isGoat = (s.platform || '').toLowerCase().includes('goat');
+                      mCogs += s.cost || 0;
+                      if (isStockX || isGoat) {
+                        mGross += s.payout || (s.salePrice - (s.fees || 0));
+                      } else {
+                        mGross += s.salePrice || 0;
+                        mFees += s.fees || 0;
+                      }
+                    });
+                    const mProfit = mGross - mCogs - mFees;
+                    
                     return (
-                      <tr key={month} className="row-hover" style={{ borderBottom: `1px solid ${c.border}`, cursor: 'pointer' }}>
+                      <tr key={month} className="row-hover" style={{ borderBottom: `1px solid ${c.border}` }}>
                         <td style={{ padding: '14px 16px', fontWeight: 600 }}>{month}</td>
                         <td style={{ padding: '14px 16px', textAlign: 'right' }}>{monthSales.length}</td>
-                        <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace' }}>{fmt(monthRevenue)}</td>
-                        <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', color: c.gold }}>{fmt(monthCOGS)}</td>
-                        <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', color: c.red }}>{fmt(monthFees)}</td>
-                        <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: monthProfit >= 0 ? c.green : c.red }}>{fmt(monthProfit)}</td>
+                        <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace' }}>{fmt(mGross)}</td>
+                        <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', color: c.gold }}>{fmt(mCogs)}</td>
+                        <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', color: c.red }}>{fmt(mFees)}</td>
+                        <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: mProfit >= 0 ? c.green : c.red }}>{fmt(mProfit)}</td>
                       </tr>
                     );
                   })}
                 </tbody>
                 <tfoot>
                   <tr style={{ background: 'rgba(16,185,129,0.1)' }}>
-                    <td style={{ padding: '16px', fontWeight: 800 }}>YEARLY TOTAL</td>
+                    <td style={{ padding: '16px', fontWeight: 800 }}>TOTAL</td>
                     <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700 }}>{filteredSales.length}</td>
-                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace' }}>{fmt(totalRevenue)}</td>
-                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: c.gold }}>{fmt(totalCOGS)}</td>
-                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: c.red }}>{fmt(totalFees)}</td>
-                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 800, fontFamily: 'monospace', fontSize: 16, color: (totalRevenue - totalCOGS - totalFees) >= 0 ? c.green : c.red }}>{fmt(totalRevenue - totalCOGS - totalFees)}</td>
+                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace' }}>{fmt(line1_gross)}</td>
+                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: c.gold }}>{fmt(totalCostOfGoods)}</td>
+                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: c.red }}>{fmt(line10_fees)}</td>
+                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 800, fontFamily: 'monospace', fontSize: 16, color: line31_netProfit + totalExp >= 0 ? c.green : c.red }}>{fmt(line31_netProfit + totalExp)}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -2104,28 +2166,37 @@ function App() {
           {/* QUICK EMAIL TEMPLATE */}
           <div className="card-hover no-print" style={{ ...cardStyle, padding: 24, marginBottom: 20 }}>
             <h4 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700 }}>✉️ COPY FOR YOUR CPA</h4>
-            <p style={{ margin: '0 0 12px', fontSize: 12, color: c.textMuted }}>Click to copy a ready-to-send summary for your accountant:</p>
+            <p style={{ margin: '0 0 12px', fontSize: 12, color: c.textMuted }}>Click to copy a ready-to-send summary:</p>
             <div 
               onClick={() => {
+                const platformLines = Object.entries(platformData).map(([p, d]) => {
+                  const isStockX = p.toLowerCase().includes('stockx');
+                  const isGoat = p.toLowerCase().includes('goat');
+                  return `• ${p}: ${fmt(d.gross1099K)} (${d.sales} sales)${(isStockX || isGoat) ? ' - payout, no fee deduction' : ' - gross, fees deductible'}`;
+                }).join('\n');
+                
                 const text = `Hi,
 
 Here are my reselling business numbers for ${year}:
 
-SCHEDULE C SUMMARY:
-• Gross Sales (Line 1): ${fmt(totalRevenue)}
-• Cost of Goods Sold (Line 4): ${fmt(totalCOGS)}
-• Gross Profit (Line 5): ${fmt(totalRevenue - totalCOGS)}
-• Platform Fees (Line 10): ${fmt(totalFees)}
-• Other Expenses (Line 27a): ${fmt(totalExp)}
-• Net Profit (Line 31): ${fmt(totalRevenue - totalCOGS - totalFees - totalExp)}
+SCHEDULE C SUMMARY (1099-K COMPLIANT):
+• Line 1 - Gross Receipts: ${fmt(line1_gross)}
+• Line 4 - Cost of Goods Sold: ${fmt(totalCostOfGoods)}
+• Line 5 - Gross Profit: ${fmt(line5_grossProfit)}
+• Line 10 - Fees (eBay only): ${fmt(line10_fees)}
+• Line 27a - Other Expenses: ${fmt(totalExp)}
+• Line 31 - Net Profit: ${fmt(line31_netProfit)}
 
-I've attached the detailed Excel report with:
-- Schedule C line mapping
-- Platform breakdown (for 1099-K reconciliation)
-- Monthly breakdown
-- All ${filteredSales.length} transactions
+1099-K BREAKDOWN BY PLATFORM:
+${platformLines}
 
-Please let me know if you need anything else.`;
+IMPORTANT NOTES:
+- eBay 1099-K reports GROSS (before fees) - I deduct fees on Line 10
+- StockX 1099-K reports PAYOUT (after fees) - NO separate fee deduction
+
+I've attached the detailed Excel with all ${filteredSales.length} transactions.
+
+Let me know if you need anything else.`;
                 navigator.clipboard.writeText(text);
                 alert('Copied to clipboard! Paste into your email.');
               }}
@@ -2135,28 +2206,26 @@ Please let me know if you need anything else.`;
                 border: `1px solid ${c.border}`, 
                 borderRadius: 12, 
                 cursor: 'pointer',
-                fontSize: 13,
+                fontSize: 12,
                 lineHeight: 1.6,
-                fontFamily: 'monospace',
-                whiteSpace: 'pre-wrap'
+                fontFamily: 'monospace'
               }}
             >
-{`SCHEDULE C SUMMARY (${year}):
-• Gross Sales (Line 1): ${fmt(totalRevenue)}
-• Cost of Goods Sold (Line 4): ${fmt(totalCOGS)}  
-• Platform Fees (Line 10): ${fmt(totalFees)}
-• Net Profit (Line 31): ${fmt(totalRevenue - totalCOGS - totalFees - totalExp)}
-
-📋 Click to copy full email template`}
+              <div style={{ marginBottom: 8, fontWeight: 700 }}>SCHEDULE C ({year}):</div>
+              <div>• Line 1 (Gross): {fmt(line1_gross)}</div>
+              <div>• Line 4 (COGS): {fmt(totalCostOfGoods)}</div>
+              <div>• Line 10 (Fees): {fmt(line10_fees)}</div>
+              <div>• Line 31 (Profit): {fmt(line31_netProfit)}</div>
+              <div style={{ marginTop: 12, color: c.green }}>📋 Click to copy full email</div>
             </div>
           </div>
           
           {/* EXPORT DETAIL REPORTS */}
           <div className="card-hover no-print" style={{ ...cardStyle, padding: 24 }}>
             <h4 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700 }}>📎 EXPORT DETAIL REPORTS</h4>
-            <p style={{ margin: '0 0 16px', fontSize: 12, color: c.textMuted }}>Download detailed data if your CPA needs backup documentation</p>
+            <p style={{ margin: '0 0 16px', fontSize: 12, color: c.textMuted }}>Download detailed data for backup documentation</p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-              <button className="btn-hover" onClick={() => exportCSV(filteredSales, 'sales-detail.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: 16, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', cursor: 'pointer', textAlign: 'center' }}>
+              <button className="btn-hover" onClick={() => exportCSV(filteredSales, 'sales-detail.csv', ['saleDate','name','sku','size','platform','salePrice','payout','cost','fees','profit'])} style={{ padding: 16, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', cursor: 'pointer', textAlign: 'center' }}>
                 <div style={{ fontSize: 24, marginBottom: 8 }}>💰</div>
                 <div style={{ fontWeight: 600, fontSize: 13 }}>Sales Detail</div>
                 <div style={{ fontSize: 11, color: c.textMuted, marginTop: 4 }}>{filteredSales.length} transactions</div>
@@ -2173,8 +2242,10 @@ Please let me know if you need anything else.`;
               </button>
             </div>
           </div>
+              </>
+            );
+          })()}
         </div>}
-
         {/* IMPORT */}
         {page === 'import' && <div style={{ maxWidth: 1100 }}>
           {/* SPLIT SCREEN LAYOUT - Always visible */}
