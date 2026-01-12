@@ -2271,11 +2271,14 @@ Let me know if you need anything else.`;
 
           {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length > 0 && (
             <div style={{ marginBottom: 20 }}>
-              {/* Header */}
-              <div style={{ padding: '16px 20px', background: 'rgba(251,191,36,0.1)', border: `1px solid rgba(251,191,36,0.2)`, borderRadius: '12px 12px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: c.gold }}>⚡ Bulk Cost Entry</h3>
-                  <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Enter costs manually or lookup from your inventory</p>
+              {/* Header - Clean */}
+              <div style={{ padding: '14px 20px', background: c.card, border: `1px solid ${c.border}`, borderRadius: '12px 12px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontSize: 18 }}>📋</span>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Pending Costs</h3>
+                    <span style={{ fontSize: 12, color: c.textMuted }}>{pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} items need cost entry</span>
+                  </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <select 
@@ -2285,46 +2288,41 @@ Let me know if you need anything else.`;
                       setPendingCosts(prev => {
                         const sorted = [...prev];
                         if (sortBy === 'item') sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-                        if (sortBy === 'sku') sorted.sort((a, b) => (a.sku || '').localeCompare(b.sku || ''));
                         if (sortBy === 'date') sorted.sort((a, b) => (b.saleDate || '').localeCompare(a.saleDate || ''));
-                        if (sortBy === 'price') sorted.sort((a, b) => (b.salePrice || 0) - (a.salePrice || 0));
+                        if (sortBy === 'price') sorted.sort((a, b) => (b.payout || 0) - (a.payout || 0));
                         return sorted;
                       });
                     }}
-                    style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 12, cursor: 'pointer' }}
+                    style={{ padding: '6px 10px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: c.text, fontSize: 12, cursor: 'pointer' }}
                   >
                     <option value="date">Sort: Date</option>
-                    <option value="item">Sort: Item Name</option>
-                    <option value="sku">Sort: SKU</option>
-                    <option value="price">Sort: Price</option>
+                    <option value="item">Sort: Name</option>
+                    <option value="price">Sort: Payout</option>
                   </select>
                   <button onClick={() => { 
-                    if (confirm(`Delete all pending sales and clear cache?`)) {
+                    if (confirm(`Clear all ${pendingCosts.length} pending items?`)) {
                       setPendingCosts([]);
                       setSelectedPending(new Set());
                       localStorage.removeItem('flipledger_pending');
-                      console.log('%c CLEARED ALL PENDING DATA ', 'background: red; color: white; font-size: 16px;');
                     }
-                  }} style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 10, color: c.red, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
-                    🗑️ Clear All
+                  }} style={{ padding: '6px 12px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 6, color: c.red, cursor: 'pointer', fontSize: 12 }}>
+                    Clear All
                   </button>
                 </div>
               </div>
 
               {/* Multi-Select Action Bar */}
               {selectedPending.size > 0 && (
-                <div style={{ padding: '12px 20px', background: 'rgba(16,185,129,0.15)', borderLeft: `1px solid ${c.border}`, borderRight: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <span style={{ fontWeight: 700, color: c.green, fontSize: 14 }}>
-                    {selectedPending.size} selected
-                  </span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
-                    <span style={{ fontSize: 13, color: c.textMuted }}>Cost each:</span>
+                <div style={{ padding: '12px 16px', background: 'rgba(16,185,129,0.08)', borderLeft: `1px solid ${c.border}`, borderRight: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <span style={{ fontWeight: 600, color: c.green, fontSize: 13 }}>{selectedPending.size} selected</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 13, color: c.textMuted }}>Apply cost:</span>
                     <input 
                       type="number" 
-                      placeholder="$0.00"
+                      placeholder="$0"
                       value={bulkCost}
                       onChange={e => setBulkCost(e.target.value)}
-                      style={{ width: 100, padding: '10px 14px', background: 'rgba(255,255,255,0.1)', border: `2px solid ${c.green}`, borderRadius: 8, color: c.text, fontSize: 15, fontWeight: 600, textAlign: 'center' }} 
+                      style={{ width: 100, padding: '8px 12px', background: 'rgba(255,255,255,0.08)', border: `1px solid ${c.green}`, borderRadius: 6, color: c.text, fontSize: 14, fontWeight: 600 }} 
                     />
                     <button 
                       onClick={() => {
@@ -2333,109 +2331,146 @@ Let me know if you need anything else.`;
                         setSelectedPending(new Set());
                         setBulkCost('');
                       }}
-                      style={{ padding: '10px 20px', ...btnPrimary, fontSize: 13 }}
+                      style={{ padding: '8px 20px', background: c.green, border: 'none', borderRadius: 6, color: '#000', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
                     >
-                      ✓ Apply to {selectedPending.size} Items
+                      Apply to All
                     </button>
                   </div>
-                  <button onClick={() => setSelectedPending(new Set())} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>
-                    Clear Selection
+                  <button onClick={() => setSelectedPending(new Set())} style={{ marginLeft: 'auto', padding: '8px 12px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 6, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>
+                    Cancel
                   </button>
                 </div>
               )}
 
-              {/* Pending Sales - Card Layout */}
+              {/* Pending Sales - ELITE Table */}
               <div style={{ border: `1px solid ${c.border}`, borderTop: selectedPending.size > 0 ? 'none' : `1px solid ${c.border}`, borderRadius: '0 0 12px 12px', overflow: 'hidden', background: c.card }}>
-                <div style={{ maxHeight: 600, overflowY: 'auto', padding: 16 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
-                    {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).map(s => (
-                      <div 
-                        key={s.id}
-                        onClick={() => setSelectedPendingItem(selectedPendingItem === s.id ? null : s.id)}
-                        style={{ 
-                          background: selectedPendingItem === s.id ? 'rgba(16,185,129,0.15)' : selectedPending.has(s.id) ? 'rgba(16,185,129,0.08)' : 'rgba(255,255,255,0.02)',
-                          border: selectedPendingItem === s.id ? `2px solid ${c.green}` : `1px solid ${c.border}`,
-                          borderRadius: 12,
-                          overflow: 'hidden',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease'
-                        }}
-                      >
-                        <div style={{ position: 'relative', height: 120, background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ maxHeight: 650, overflowY: 'auto' }}>
+                  {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).map((s, idx, arr) => (
+                    <div 
+                      key={s.id}
+                      onClick={() => setSelectedPendingItem(selectedPendingItem === s.id ? null : s.id)}
+                      style={{ 
+                        padding: '12px 16px',
+                        borderBottom: `1px solid ${c.border}`,
+                        background: selectedPendingItem === s.id ? 'rgba(16,185,129,0.1)' : selectedPending.has(s.id) ? 'rgba(16,185,129,0.05)' : 'transparent',
+                        cursor: 'pointer',
+                        transition: 'background 0.1s'
+                      }}
+                    >
+                      {/* Top Row: Checkbox, Image, Info, Payout */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+                        <div onClick={e => e.stopPropagation()}>
+                          <input 
+                            type="checkbox"
+                            checked={selectedPending.has(s.id)}
+                            onChange={(e) => {
+                              const newSet = new Set(selectedPending);
+                              if (e.target.checked) newSet.add(s.id);
+                              else newSet.delete(s.id);
+                              setSelectedPending(newSet);
+                            }}
+                            style={{ width: 18, height: 18, cursor: 'pointer', accentColor: c.green }}
+                          />
+                        </div>
+                        <div style={{ width: 60, height: 60, borderRadius: 8, overflow: 'hidden', background: '#0a0a0a', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {s.image ? (
-                            <img src={s.image} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none'; }} />
+                            <img src={s.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none'; }} />
                           ) : (
-                            <span style={{ fontSize: 40, opacity: 0.3 }}>📦</span>
+                            <span style={{ fontSize: 24, opacity: 0.3 }}>📦</span>
                           )}
-                          <div onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', top: 8, left: 8 }}>
-                            <input 
-                              type="checkbox"
-                              checked={selectedPending.has(s.id)}
-                              onChange={(e) => {
-                                const newSet = new Set(selectedPending);
-                                if (e.target.checked) newSet.add(s.id);
-                                else newSet.delete(s.id);
-                                setSelectedPending(newSet);
-                              }}
-                              style={{ width: 18, height: 18, cursor: 'pointer', accentColor: c.green }}
-                            />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 3 }}>{s.name}</div>
+                          <div style={{ fontSize: 12, color: c.textMuted, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span>{s.saleDate}</span>
+                            <span style={{ color: s.platform === 'eBay' ? '#3b82f6' : '#00c165', fontWeight: 600 }}>{s.platform || 'eBay'}</span>
+                            {s.size && <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>Size {s.size}</span>}
                           </div>
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontSize: 11, color: c.textMuted, marginBottom: 2 }}>PAYOUT</div>
+                          <div style={{ fontSize: 20, fontWeight: 700, color: c.green }}>{fmt(s.payout)}</div>
+                        </div>
+                        <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
                           <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
+                            onClick={() => {
                               setPendingCosts(prev => prev.filter(x => x.id !== s.id));
                               setSelectedPending(prev => { const n = new Set(prev); n.delete(s.id); return n; });
                             }} 
-                            style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.5)', border: 'none', color: '#fff', cursor: 'pointer', width: 24, height: 24, borderRadius: 12, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16, width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >×</button>
-                          <div style={{ position: 'absolute', bottom: 8, left: 8, background: s.platform === 'eBay' ? '#0064d2' : '#00c165', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600 }}>
-                            {s.platform || 'eBay'}
-                          </div>
-                        </div>
-                        <div style={{ padding: 12 }}>
-                          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
-                          <div style={{ fontSize: 11, color: c.textMuted, marginBottom: 8 }}>{s.saleDate} {s.size ? `• Size ${s.size}` : ''}</div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-                            <div>
-                              <div style={{ fontSize: 10, color: c.textMuted }}>SOLD</div>
-                              <div style={{ fontSize: 14, fontWeight: 600 }}>{fmt(s.salePrice)}</div>
-                            </div>
-                            <div style={{ textAlign: 'right' }}>
-                              <div style={{ fontSize: 10, color: c.textMuted }}>PAYOUT</div>
-                              <div style={{ fontSize: 16, fontWeight: 700, color: c.green }}>{fmt(s.payout)}</div>
-                            </div>
-                          </div>
-                          <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 8 }}>
-                            <input 
-                              type="number" 
-                              placeholder="Enter cost..."
-                              id={`cost-${s.id}`}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && e.target.value) {
-                                  confirmSaleWithCost(s.id, e.target.value, 'StockX Standard');
-                                  e.target.value = '';
-                                }
-                              }}
-                              style={{ flex: 1, padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 13 }} 
-                            />
-                            <button
-                              onClick={() => {
-                                const inp = document.getElementById(`cost-${s.id}`);
-                                if (inp && inp.value) {
-                                  confirmSaleWithCost(s.id, inp.value, 'StockX Standard');
-                                  inp.value = '';
-                                }
-                              }}
-                              style={{ padding: '10px 16px', background: c.green, border: 'none', borderRadius: 8, color: '#000', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}
-                            >✓</button>
-                          </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
+                      
+                      {/* Bottom Row: Cost Input + Live Profit */}
+                      <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 30 }}>
+                        <span style={{ fontSize: 13, color: c.textMuted, fontWeight: 500 }}>Cost:</span>
+                        <input 
+                          type="number" 
+                          placeholder="Enter cost..."
+                          id={`cost-${s.id}`}
+                          data-idx={idx}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && e.target.value) {
+                              confirmSaleWithCost(s.id, e.target.value, 'StockX Standard');
+                              e.target.value = '';
+                              // Jump to next row
+                              const nextIdx = idx + 1;
+                              if (nextIdx < arr.length) {
+                                const nextInput = document.getElementById(`cost-${arr[nextIdx].id}`);
+                                if (nextInput) nextInput.focus();
+                              }
+                            } else if (e.key === 'Tab' && !e.shiftKey) {
+                              e.preventDefault();
+                              const nextIdx = idx + 1;
+                              if (nextIdx < arr.length) {
+                                const nextInput = document.getElementById(`cost-${arr[nextIdx].id}`);
+                                if (nextInput) nextInput.focus();
+                              }
+                            }
+                          }}
+                          onInput={(e) => {
+                            const profitEl = document.getElementById(`profit-${s.id}`);
+                            if (profitEl && e.target.value) {
+                              const cost = parseFloat(e.target.value) || 0;
+                              const profit = (s.payout || 0) - cost;
+                              profitEl.textContent = fmt(profit);
+                              profitEl.style.color = profit >= 0 ? c.green : c.red;
+                              profitEl.parentElement.style.opacity = '1';
+                            } else if (profitEl) {
+                              profitEl.parentElement.style.opacity = '0.4';
+                              profitEl.textContent = '--';
+                            }
+                          }}
+                          style={{ 
+                            width: 140, 
+                            padding: '10px 14px', 
+                            background: 'rgba(255,255,255,0.05)', 
+                            border: `2px solid ${c.border}`, 
+                            borderRadius: 8, 
+                            color: c.text, 
+                            fontSize: 15,
+                            fontWeight: 600,
+                            transition: 'border-color 0.15s'
+                          }}
+                          onFocus={(e) => { e.target.style.borderColor = c.green; }}
+                          onBlur={(e) => { e.target.style.borderColor = c.border; }}
+                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: 0.4, transition: 'opacity 0.15s' }}>
+                          <span style={{ fontSize: 18, color: c.textMuted }}>→</span>
+                          <span style={{ fontSize: 13, color: c.textMuted }}>Profit:</span>
+                          <span id={`profit-${s.id}`} style={{ fontSize: 18, fontWeight: 700, color: c.green, minWidth: 70 }}>--</span>
+                        </div>
+                        <div style={{ marginLeft: 'auto', fontSize: 11, color: c.textMuted, opacity: 0.6 }}>
+                          Enter ↵
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div style={{ padding: '12px 16px', background: 'rgba(255,255,255,0.02)', borderTop: `1px solid ${c.border}`, fontSize: 11, color: c.textMuted }}>
-                  💡 Click a card, then click an inventory item on the right to auto-fill cost & mark sold
+                <div style={{ padding: '12px 16px', background: 'rgba(255,255,255,0.02)', borderTop: `1px solid ${c.border}`, fontSize: 12, color: c.textMuted, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>💡 Type cost → see profit → Enter to save → auto-jump to next</span>
+                  <span style={{ fontWeight: 600 }}>{pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} items</span>
                 </div>
               </div>
             </div>
