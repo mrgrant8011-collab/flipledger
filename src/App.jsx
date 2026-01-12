@@ -2994,13 +2994,25 @@ Let me know if you need anything else.`;
                   <div>
                     <div style={{ fontWeight: 600, marginBottom: 2 }}>StockX</div>
                     <div style={{ fontSize: 12, color: c.textMuted }}>
-                      {stockxConnected ? '✓ Connected' : 'Coming soon - use CSV import for now'}
+                      {stockxConnected ? '✓ Connected' : 'Auto-import your StockX sales'}
                     </div>
                   </div>
                 </div>
-                <div style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, fontWeight: 600, fontSize: 13 }}>
-                  {stockxConnected ? 'Connected' : 'CSV Import'}
-                </div>
+                {stockxConnected ? (
+                  <button 
+                    onClick={disconnectStockX}
+                    style={{ padding: '10px 20px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 8, color: '#ef4444', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+                  >
+                    Disconnect
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => window.location.href = '/api/stockx-auth'}
+                    style={{ padding: '10px 20px', background: '#00c165', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+                  >
+                    Connect
+                  </button>
+                )}
               </div>
             </div>
           </div>
