@@ -257,7 +257,9 @@ function App() {
     return localStorage.getItem('flipledger_ebay_token') || null;
   });
   const [qbConnected, setQbConnected] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+  const [stockxSyncing, setStockxSyncing] = useState(false);
+  const [ebaySyncing, setEbaySyncing] = useState(false);
+  const [goatSyncing, setGoatSyncing] = useState(false);
   const [pendingCosts, setPendingCosts] = useState(() => {
     try { return JSON.parse(localStorage.getItem('flipledger_pending')) || []; }
     catch { return []; }
@@ -336,7 +338,7 @@ function App() {
   // Fetch StockX sales
   const fetchStockXSales = async () => {
     if (!stockxToken) return;
-    setSyncing(true);
+    setStockxSyncing(true);
     try {
       // Build date range based on selected year/month
       const yr = parseInt(stockxApiFilter.year);
@@ -387,7 +389,7 @@ function App() {
       console.error('Failed to fetch StockX sales:', error);
       alert('Failed to sync StockX sales');
     }
-    setSyncing(false);
+    setStockxSyncing(false);
   };
 
   // Disconnect StockX
@@ -465,7 +467,7 @@ function App() {
   }, {});
 
   const syncPlatform = async (platform) => {
-    setSyncing(true);
+    setGoatSyncing(true);
     if (platform === 'StockX' && stockxToken) {
       await fetchStockXSales();
     } else {
@@ -477,7 +479,7 @@ function App() {
       ];
       setPendingCosts(prev => [...prev, ...mockSales]);
     }
-    setSyncing(false);
+    setGoatSyncing(false);
   };
 
   // Lookup product by SKU
@@ -2507,10 +2509,10 @@ Let me know if you need anything else.`;
                         <div style={{ display: 'flex', gap: 10 }}>
                           <button 
                             onClick={() => fetchStockXSales()} 
-                            disabled={syncing} 
-                            style={{ flex: 1, padding: '12px', background: '#00c165', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 13, cursor: syncing ? 'default' : 'pointer', opacity: syncing ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                            disabled={stockxSyncing} 
+                            style={{ flex: 1, padding: '12px', background: '#00c165', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 13, cursor: stockxSyncing ? 'default' : 'pointer', opacity: stockxSyncing ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
                           >
-                            {syncing ? '🔄 Syncing...' : '🔄 Sync StockX Sales'}
+                            {stockxSyncing ? '🔄 Syncing...' : '🔄 Sync StockX Sales'}
                           </button>
                           <button onClick={disconnectStockX} style={{ padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 8, color: '#ef4444', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
                             Disconnect
@@ -2632,7 +2634,7 @@ Let me know if you need anything else.`;
                         <div style={{ display: 'flex', gap: 10 }}>
                         <button
                           onClick={async () => {
-                            setSyncing(true);
+                            setEbaySyncing(true);
                             try {
                               // Build date range based on selected year/month
                               const year = parseInt(ebayApiFilter.year);
@@ -2709,12 +2711,12 @@ Let me know if you need anything else.`;
                             } catch (err) {
                               alert('Sync failed: ' + err.message);
                             }
-                            setSyncing(false);
+                            setEbaySyncing(false);
                           }}
-                          disabled={syncing}
-                          style={{ flex: 1, padding: '12px', background: 'linear-gradient(135deg, #e53238 0%, #c62828 100%)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, cursor: syncing ? 'wait' : 'pointer', fontWeight: 600, opacity: syncing ? 0.7 : 1 }}
+                          disabled={ebaySyncing}
+                          style={{ flex: 1, padding: '12px', background: 'linear-gradient(135deg, #e53238 0%, #c62828 100%)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, cursor: ebaySyncing ? 'wait' : 'pointer', fontWeight: 600, opacity: ebaySyncing ? 0.7 : 1 }}
                         >
-                          {syncing ? '⏳ Syncing...' : '🔄 Sync eBay Sales'}
+                          {ebaySyncing ? '⏳ Syncing...' : '🔄 Sync eBay Sales'}
                         </button>
                         <button
                           onClick={() => {
@@ -2805,8 +2807,8 @@ Let me know if you need anything else.`;
                 {p.connected ? (
                   <div style={{ display: 'flex', gap: 8 }}>
                     {p.name !== 'QuickBooks' && (
-                      <button onClick={() => syncPlatform(p.name)} disabled={syncing} style={{ padding: '10px 18px', ...btnPrimary, fontSize: 12, opacity: syncing ? 0.6 : 1 }}>
-                        {syncing ? '...' : 'Sync'}
+                      <button onClick={() => syncPlatform(p.name)} disabled={goatSyncing} style={{ padding: '10px 18px', ...btnPrimary, fontSize: 12, opacity: goatSyncing ? 0.6 : 1 }}>
+                        {goatSyncing ? '...' : 'Sync'}
                       </button>
                     )}
                     <button onClick={() => p.setConnected(false)} style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 10, color: c.red, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Disconnect</button>
