@@ -146,10 +146,11 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
         <button onClick={() => exportCSV(sorted, 'sales.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
       </div>
       
-      <div style={{ display: 'grid', gridTemplateColumns: '40px 85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '36px 52px 80px 1fr 100px 45px 90px 65px 65px 60px 70px 28px 28px', padding: '12px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', gap: 8, alignItems: 'center' }}>
         <div><input type="checkbox" checked={allSelected} onChange={e => setSelectedSales(e.target.checked ? new Set(itemIds) : new Set())} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }} /></div>
+        <span></span>
         <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'oldest' ? 'newest' : 'oldest' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'oldest' || sortBy === 'newest') ? c.green : c.textMuted, cursor: 'pointer' }}>DATE {sortBy === 'oldest' ? '▲' : sortBy === 'newest' ? '▼' : ''}</span>
-        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'nameAZ' ? 'nameZA' : 'nameAZ' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'nameAZ' || sortBy === 'nameZA') ? c.green : c.textMuted, cursor: 'pointer' }}>NAME {sortBy === 'nameAZ' ? '▲' : sortBy === 'nameZA' ? '▼' : ''}</span>
+        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'nameAZ' ? 'nameZA' : 'nameAZ' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'nameAZ' || sortBy === 'nameZA') ? c.green : c.textMuted, cursor: 'pointer' }}>ITEM {sortBy === 'nameAZ' ? '▲' : sortBy === 'nameZA' ? '▼' : ''}</span>
         <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'skuAZ' ? 'skuZA' : 'skuAZ' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'skuAZ' || sortBy === 'skuZA') ? c.green : c.textMuted, cursor: 'pointer' }}>SKU {sortBy === 'skuAZ' ? '▲' : sortBy === 'skuZA' ? '▼' : ''}</span>
         <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'sizeAsc' ? 'sizeDesc' : 'sizeAsc' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'sizeAsc' || sortBy === 'sizeDesc') ? c.green : c.textMuted, cursor: 'pointer' }}>SIZE {sortBy === 'sizeAsc' ? '▲' : sortBy === 'sizeDesc' ? '▼' : ''}</span>
         <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>PLATFORM</span>
@@ -161,19 +162,23 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
       </div>
 
       {items.length > 0 ? items.map(s => (
-        <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '40px 85px 1fr 110px 50px 100px 70px 70px 65px 75px 30px 30px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : 'transparent' }}>
+        <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '36px 52px 80px 1fr 100px 45px 90px 65px 65px 60px 70px 28px 28px', padding: '12px 16px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', gap: 8, background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : 'transparent' }}>
           <div><input type="checkbox" checked={selectedSales.has(s.id)} onChange={e => { const n = new Set(selectedSales); e.target.checked ? n.add(s.id) : n.delete(s.id); setSelectedSales(n); }} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }} /></div>
-          <span style={{ fontSize: 12, color: c.textMuted }}>{s.saleDate}</span>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</span>
-          <span style={{ fontSize: 11, color: c.green }}>{s.sku || '-'}</span>
-          <span style={{ fontSize: 13 }}>{s.size || '-'}</span>
-          <span style={{ fontSize: 11, color: c.textMuted }}>{s.platform}</span>
-          <span style={{ fontSize: 12, textAlign: 'right', color: c.textMuted }}>{fmt(s.cost)}</span>
-          <span style={{ fontSize: 12, textAlign: 'right' }}>{fmt(s.salePrice)}</span>
-          <span style={{ fontSize: 12, textAlign: 'right', color: c.red }}>{fmt(s.fees)}</span>
-          <span style={{ fontSize: 13, fontWeight: 700, textAlign: 'right', color: s.profit >= 0 ? c.green : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</span>
-          <button onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14 }}>✏️</button>
-          <button onClick={() => { setSales(sales.filter(x => x.id !== s.id)); setSelectedSales(prev => { const n = new Set(prev); n.delete(s.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16 }}>×</button>
+          <div style={{ width: 44, height: 44, borderRadius: 8, overflow: 'hidden', background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            {s.image ? <img src={s.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; }} /> : null}
+            <span style={{ fontSize: 18, display: s.image ? 'none' : 'block' }}>📦</span>
+          </div>
+          <span style={{ fontSize: 11, color: c.textMuted }}>{s.saleDate}</span>
+          <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
+          <span style={{ fontSize: 10, color: c.green }}>{s.sku || '-'}</span>
+          <span style={{ fontSize: 12, textAlign: 'center' }}>{s.size || '-'}</span>
+          <span style={{ fontSize: 10, color: c.textMuted }}>{s.platform}</span>
+          <span style={{ fontSize: 11, textAlign: 'right', color: c.textMuted }}>{fmt(s.cost)}</span>
+          <span style={{ fontSize: 11, textAlign: 'right' }}>{fmt(s.salePrice)}</span>
+          <span style={{ fontSize: 11, textAlign: 'right', color: c.red }}>{fmt(s.fees)}</span>
+          <span style={{ fontSize: 12, fontWeight: 700, textAlign: 'right', color: s.profit >= 0 ? c.green : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</span>
+          <button onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, saleImage: s.image, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14, padding: 4 }}>✏️</button>
+          <button onClick={() => { setSales(sales.filter(x => x.id !== s.id)); setSelectedSales(prev => { const n = new Set(prev); n.delete(s.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16, padding: 4 }}>×</button>
         </div>
       )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💵</div><p style={{ color: c.textMuted }}>No sales</p></div>}
       
@@ -2343,7 +2348,7 @@ Let me know if you need anything else.`;
               <div style={{ border: `1px solid ${c.border}`, borderTop: selectedPending.size > 0 ? 'none' : `1px solid ${c.border}`, borderRadius: '0 0 12px 12px', overflow: 'hidden', background: c.card }}>
                 <div style={{ maxHeight: 500, overflowY: 'auto' }}>
                   {/* Table Header */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '36px 1fr 50px 70px 70px 80px 30px', padding: '10px 12px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', position: 'sticky', top: 0 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '32px 48px 1fr 45px 65px 65px 70px 28px', padding: '10px 12px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', position: 'sticky', top: 0, gap: 8 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <input 
                         type="checkbox"
@@ -2359,6 +2364,7 @@ Let me know if you need anything else.`;
                           style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }}
                         />
                       </div>
+                      <span></span>
                       <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>ITEM</span>
                       <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'center' }}>SIZE</span>
                       <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>SOLD</span>
@@ -2374,12 +2380,13 @@ Let me know if you need anything else.`;
                         onClick={() => setSelectedPendingItem(selectedPendingItem === s.id ? null : s.id)}
                         style={{ 
                           display: 'grid', 
-                          gridTemplateColumns: '36px 1fr 50px 70px 70px 80px 30px', 
+                          gridTemplateColumns: '32px 48px 1fr 45px 65px 65px 70px 28px', 
                           padding: '10px 12px', 
                           borderBottom: `1px solid ${c.border}`,
                           background: selectedPendingItem === s.id ? 'rgba(16,185,129,0.15)' : selectedPending.has(s.id) ? 'rgba(16,185,129,0.08)' : 'transparent',
                           cursor: 'pointer',
-                          alignItems: 'center'
+                          alignItems: 'center',
+                          gap: 8
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
@@ -2395,13 +2402,19 @@ Let me know if you need anything else.`;
                             style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }}
                           />
                         </div>
+                        <div style={{ width: 44, height: 44, borderRadius: 6, overflow: 'hidden', background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          {s.image ? (
+                            <img src={s.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; e.target.nextSibling && (e.target.nextSibling.style.display = 'block'); }} />
+                          ) : null}
+                          <span style={{ fontSize: 18, display: s.image ? 'none' : 'block' }}>📦</span>
+                        </div>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
                           <div style={{ fontSize: 10, color: c.green }}>{s.sku}</div>
                           <div style={{ fontSize: 9, color: c.textMuted }}>{s.saleDate}</div>
                         </div>
                         <span style={{ fontSize: 12, fontWeight: 600, textAlign: 'center' }}>{s.size || '-'}</span>
-                        <span style={{ fontSize: 12, textAlign: 'right' }}>{fmt(s.salePrice)}</span>
+                        <span style={{ fontSize: 11, textAlign: 'right' }}>{fmt(s.salePrice)}</span>
                         <span style={{ fontSize: 12, fontWeight: 700, color: c.green, textAlign: 'right' }}>{fmt(s.payout)}</span>
                         <div style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
                           <input 
@@ -2413,7 +2426,7 @@ Let me know if you need anything else.`;
                                 e.target.value = '';
                               }
                             }}
-                            style={{ width: 65, padding: '8px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: c.text, fontSize: 12, textAlign: 'center' }} 
+                            style={{ width: 60, padding: '8px 4px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: c.text, fontSize: 12, textAlign: 'center' }} 
                           />
                         </div>
                         <div style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>

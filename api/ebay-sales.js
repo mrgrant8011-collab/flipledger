@@ -1,4 +1,4 @@
-// eBay Sales - v122 - Pagination + Year/Month filters
+// eBay Sales - v128 - Fetches images via Browse API
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -161,7 +161,43 @@ export default async function handler(req, res) {
       console.log('Finances NON_SALE_CHARGE API failed:', e.message);
     }
     
-    // 4. Build sales from orders
+    // 4. Fetch images for unique item IDs via Browse API
+    const uniqueItemIds = [...new Set(
+      allOrders.flatMap(o => (o.lineItems || []).map(li => li.legacyItemId).filter(Boolean))
+    )];
+    
+    const imageMap = new Map();
+    
+    // Fetch images in batches of 5 to avoid rate limiting
+    const batchSize = 5;
+    for (let i = 0; i < uniqueItemIds.length && i < 100; i += batchSize) {
+      const batch = uniqueItemIds.slice(i, i + batchSize);
+      
+      await Promise.all(batch.map(async (itemId) => {
+        try {
+          const browseUrl = `https://api.ebay.com/buy/browse/v1/item/get_item_by_legacy_id?legacy_item_id=${itemId}`;
+          const browseRes = await fetch(browseUrl, {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+              'X-EBAY-C-ENDUSERCTX': 'affiliateCampaignId=<ePNCampaignId>,affiliateReferenceId=<referenceId>'
+            }
+          });
+          
+          if (browseRes.ok) {
+            const browseData = await browseRes.json();
+            const imageUrl = browseData.image?.imageUrl || browseData.primaryImage?.imageUrl || '';
+            if (imageUrl) {
+              imageMap.set(itemId, imageUrl);
+            }
+          }
+        } catch (e) {
+          // Silently fail for individual image fetches
+        }
+      }));
+    }
+    
+    // 5. Build sales from orders
     const sales = [];
     for (const order of allOrders) {
       // Only include orders that were actually paid - skip cancelled, refunded, pending
@@ -214,7 +250,7 @@ export default async function handler(req, res) {
           adFee: adFee,
           cost: 0,
           profit: payout,
-          image: lineItem.image?.imageUrl || '',
+          image: imageMap.get(itemId) || lineItem.image?.imageUrl || '',
           source: 'api',
           note: note
         });
@@ -224,8 +260,6 @@ export default async function handler(req, res) {
     res.status(200).json({ 
       success: true, 
       count: sales.length,
-      financesWorked: financesWorked,
-      adFeesMatched: adFeesByOrderId.size,
       dateRange: { start, end },
       sales 
     });
