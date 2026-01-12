@@ -194,6 +194,7 @@ function App() {
   const [year, setYear] = useState('2025');
   const [stockxImport, setStockxImport] = useState({ show: false, data: [], year: 'all', month: 'all', headers: [] });
   const [ebayImport, setEbayImport] = useState({ show: false, data: [], year: 'all', month: 'all', headers: [] });
+  const [ebayApiFilter, setEbayApiFilter] = useState({ year: new Date().getFullYear().toString(), month: 'all' });
   const [purchases, setPurchases] = useState(() => {
     const saved = localStorage.getItem('flipledger_purchases');
     return saved ? JSON.parse(saved) : [];
@@ -2281,18 +2282,55 @@ function App() {
                   
                   {/* API Sync Section */}
                   <div style={{ marginTop: 20, padding: 16, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: `1px solid ${c.border}` }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                       🔄 eBay API Sync
-                      <span style={{ fontSize: 10, color: c.textMuted, fontWeight: 400 }}>Get images + payouts automatically</span>
+                      <span style={{ fontSize: 10, color: c.textMuted, fontWeight: 400 }}>Get images + exact payouts</span>
                     </div>
                     {ebayConnected ? (
-                      <div style={{ display: 'flex', gap: 10 }}>
+                      <div>
+                        {/* Year/Month Filters */}
+                        <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+                          <select 
+                            value={ebayApiFilter.year} 
+                            onChange={e => setEbayApiFilter({ ...ebayApiFilter, year: e.target.value })} 
+                            style={{ flex: 1, padding: 10, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 12 }}
+                          >
+                            {[2026, 2025, 2024, 2023, 2022, 2021].map(y => <option key={y} value={y}>{y}</option>)}
+                          </select>
+                          <select 
+                            value={ebayApiFilter.month} 
+                            onChange={e => setEbayApiFilter({ ...ebayApiFilter, month: e.target.value })} 
+                            style={{ flex: 1, padding: 10, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 12 }}
+                          >
+                            <option value="all">All Months</option>
+                            {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => 
+                              <option key={m} value={String(i+1).padStart(2,'0')}>{m}</option>
+                            )}
+                          </select>
+                        </div>
+                        <div style={{ display: 'flex', gap: 10 }}>
                         <button
                           onClick={async () => {
                             setSyncing(true);
                             try {
+                              // Build date range based on selected year/month
+                              const year = parseInt(ebayApiFilter.year);
+                              let startDate, endDate;
+                              
+                              if (ebayApiFilter.month === 'all') {
+                                // Full year
+                                startDate = `${year}-01-01T00:00:00.000Z`;
+                                endDate = `${year}-12-31T23:59:59.000Z`;
+                              } else {
+                                // Specific month
+                                const month = parseInt(ebayApiFilter.month);
+                                const lastDay = new Date(year, month, 0).getDate();
+                                startDate = `${year}-${ebayApiFilter.month}-01T00:00:00.000Z`;
+                                endDate = `${year}-${ebayApiFilter.month}-${lastDay}T23:59:59.000Z`;
+                              }
+                              
                               let token = localStorage.getItem('flipledger_ebay_token');
-                              let res = await fetch('/api/ebay-sales', {
+                              let res = await fetch(`/api/ebay-sales?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`, {
                                 headers: { 'Authorization': `Bearer ${token}` }
                               });
                               
@@ -2309,7 +2347,7 @@ function App() {
                                   if (refreshData.access_token) {
                                     token = refreshData.access_token;
                                     localStorage.setItem('flipledger_ebay_token', token);
-                                    res = await fetch('/api/ebay-sales', {
+                                    res = await fetch(`/api/ebay-sales?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`, {
                                       headers: { 'Authorization': `Bearer ${token}` }
                                     });
                                   }
@@ -2339,12 +2377,12 @@ function App() {
                                 if (fresh.length > 0) {
                                   setPendingCosts(prev => [...prev, ...fresh]);
                                   localStorage.setItem('flipledger_pending', JSON.stringify([...pendingCosts, ...fresh]));
-                                  alert(`✓ Imported ${fresh.length} eBay sales!`);
+                                  alert(`✓ Imported ${fresh.length} eBay sales from ${ebayApiFilter.month === 'all' ? ebayApiFilter.year : ebayApiFilter.month + '/' + ebayApiFilter.year}!`);
                                 } else {
                                   alert('All caught up! No new sales to import.');
                                 }
                               } else {
-                                alert('No sales found.');
+                                alert(`No sales found for ${ebayApiFilter.month === 'all' ? ebayApiFilter.year : ebayApiFilter.month + '/' + ebayApiFilter.year}.`);
                               }
                             } catch (err) {
                               alert('Sync failed: ' + err.message);
@@ -2367,6 +2405,7 @@ function App() {
                         >
                           Disconnect
                         </button>
+                        </div>
                       </div>
                     ) : (
                       <button
@@ -2377,7 +2416,8 @@ function App() {
                       </button>
                     )}
                     <div style={{ fontSize: 10, color: c.textMuted, marginTop: 10 }}>
-                      Pulls last 90 days of orders with images. Uses new apiz.ebay.com endpoint.
+                      Select year/month and sync. Up to 5 years of history available.
+                    </div>
                     </div>
                   </div>
                 </div>
