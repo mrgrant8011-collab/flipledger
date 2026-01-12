@@ -2295,7 +2295,7 @@ function App() {
                             onChange={e => setEbayApiFilter({ ...ebayApiFilter, year: e.target.value })} 
                             style={{ flex: 1, padding: 10, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 12 }}
                           >
-                            {[2026, 2025, 2024, 2023, 2022, 2021].map(y => <option key={y} value={y}>{y}</option>)}
+                            {['2026', '2025', '2024', '2023', '2022', '2021'].map(y => <option key={y} value={y}>{y}</option>)}
                           </select>
                           <select 
                             value={ebayApiFilter.month} 

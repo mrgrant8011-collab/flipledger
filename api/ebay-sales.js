@@ -1,4 +1,4 @@
-// eBay Sales - v117 - Match AD_FEE by ORDER_ID (not Item ID!)
+// eBay Sales - v122 - Pagination + Year/Month filters
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -13,92 +13,148 @@ export default async function handler(req, res) {
   
   const accessToken = authHeader.replace('Bearer ', '');
   const { startDate, endDate } = req.query;
-  const end = endDate || new Date().toISOString();
-  const start = startDate || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  
+  // Default to last 90 days if no dates provided
+  const now = new Date();
+  const end = endDate || now.toISOString();
+  const start = startDate || new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString();
   
   try {
-    // 1. Get orders from Fulfillment API
-    const ordersResponse = await fetch(
-      `https://api.ebay.com/sell/fulfillment/v1/order?filter=creationdate:[${start}..${end}]&limit=200`,
-      {
+    // 1. Get ALL orders with pagination
+    let allOrders = [];
+    let offset = 0;
+    const limit = 200;
+    let hasMore = true;
+    
+    while (hasMore) {
+      const ordersUrl = `https://api.ebay.com/sell/fulfillment/v1/order?filter=creationdate:[${start}..${end}]&limit=${limit}&offset=${offset}`;
+      
+      const ordersResponse = await fetch(ordersUrl, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
           'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
         }
+      });
+      
+      if (!ordersResponse.ok) {
+        const errorText = await ordersResponse.text();
+        return res.status(ordersResponse.status).json({ 
+          error: 'Failed to fetch orders', 
+          details: errorText,
+          url: ordersUrl 
+        });
       }
-    );
-    
-    if (!ordersResponse.ok) {
-      const errorText = await ordersResponse.text();
-      return res.status(ordersResponse.status).json({ error: 'Failed to fetch orders', details: errorText });
+      
+      const ordersData = await ordersResponse.json();
+      const orders = ordersData.orders || [];
+      allOrders = allOrders.concat(orders);
+      
+      // Check if there are more pages
+      if (orders.length < limit) {
+        hasMore = false;
+      } else {
+        offset += limit;
+        // Safety limit - max 1000 orders
+        if (offset >= 1000) hasMore = false;
+      }
     }
     
-    const ordersData = await ordersResponse.json();
-    const orders = ordersData.orders || [];
-    
-    // 2. Get SALE transactions from Finances API
+    // 2. Get SALE transactions from Finances API (with pagination)
     let salesTxMap = new Map();
     let financesWorked = false;
+    
     try {
-      const salesResponse = await fetch(
-        `https://apiz.ebay.com/sell/finances/v1/transaction?filter=transactionDate:[${start}..${end}]&filter=transactionType:{SALE}&limit=200`,
-        {
+      let txOffset = 0;
+      let txHasMore = true;
+      
+      while (txHasMore) {
+        const salesUrl = `https://apiz.ebay.com/sell/finances/v1/transaction?filter=transactionDate:[${start}..${end}]&filter=transactionType:{SALE}&limit=${limit}&offset=${txOffset}`;
+        
+        const salesResponse = await fetch(salesUrl, {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
             'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
           }
-        }
-      );
-      
-      if (salesResponse.ok) {
-        const salesData = await salesResponse.json();
-        financesWorked = true;
-        if (salesData.transactions) {
-          for (const tx of salesData.transactions) {
-            if (tx.orderId && tx.amount) {
-              salesTxMap.set(tx.orderId, {
-                payout: parseFloat(tx.amount.value || 0),
-                totalFees: parseFloat(tx.totalFeeAmount?.value || 0)
-              });
+        });
+        
+        if (salesResponse.ok) {
+          const salesData = await salesResponse.json();
+          financesWorked = true;
+          
+          if (salesData.transactions) {
+            for (const tx of salesData.transactions) {
+              if (tx.orderId && tx.amount) {
+                salesTxMap.set(tx.orderId, {
+                  payout: parseFloat(tx.amount.value || 0),
+                  totalFees: parseFloat(tx.totalFeeAmount?.value || 0)
+                });
+              }
             }
+            
+            if (salesData.transactions.length < limit) {
+              txHasMore = false;
+            } else {
+              txOffset += limit;
+              if (txOffset >= 1000) txHasMore = false;
+            }
+          } else {
+            txHasMore = false;
           }
+        } else {
+          txHasMore = false;
         }
       }
     } catch (e) {
       console.log('Finances SALE API failed:', e.message);
     }
     
-    // 3. Get NON_SALE_CHARGE transactions - map by ORDER_ID not Item ID!
+    // 3. Get NON_SALE_CHARGE transactions (AD_FEE) with pagination
     let adFeesByOrderId = new Map();
+    
     try {
-      const chargesResponse = await fetch(
-        `https://apiz.ebay.com/sell/finances/v1/transaction?filter=transactionDate:[${start}..${end}]&filter=transactionType:{NON_SALE_CHARGE}&limit=200`,
-        {
+      let chargeOffset = 0;
+      let chargeHasMore = true;
+      
+      while (chargeHasMore) {
+        const chargesUrl = `https://apiz.ebay.com/sell/finances/v1/transaction?filter=transactionDate:[${start}..${end}]&filter=transactionType:{NON_SALE_CHARGE}&limit=${limit}&offset=${chargeOffset}`;
+        
+        const chargesResponse = await fetch(chargesUrl, {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
             'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
           }
-        }
-      );
-      
-      if (chargesResponse.ok) {
-        const chargesData = await chargesResponse.json();
-        if (chargesData.transactions) {
-          for (const tx of chargesData.transactions) {
-            if (tx.feeType === 'AD_FEE' && tx.references) {
-              // Find ORDER_ID in references
-              for (const ref of tx.references) {
-                if (ref.referenceType === 'ORDER_ID') {
-                  const orderId = ref.referenceId;
-                  const fee = Math.abs(parseFloat(tx.amount?.value || 0));
-                  adFeesByOrderId.set(orderId, (adFeesByOrderId.get(orderId) || 0) + fee);
+        });
+        
+        if (chargesResponse.ok) {
+          const chargesData = await chargesResponse.json();
+          
+          if (chargesData.transactions) {
+            for (const tx of chargesData.transactions) {
+              if (tx.feeType === 'AD_FEE' && tx.references) {
+                for (const ref of tx.references) {
+                  if (ref.referenceType === 'ORDER_ID') {
+                    const orderId = ref.referenceId;
+                    const fee = Math.abs(parseFloat(tx.amount?.value || 0));
+                    adFeesByOrderId.set(orderId, (adFeesByOrderId.get(orderId) || 0) + fee);
+                  }
                 }
               }
             }
+            
+            if (chargesData.transactions.length < limit) {
+              chargeHasMore = false;
+            } else {
+              chargeOffset += limit;
+              if (chargeOffset >= 1000) chargeHasMore = false;
+            }
+          } else {
+            chargeHasMore = false;
           }
+        } else {
+          chargeHasMore = false;
         }
       }
     } catch (e) {
@@ -107,7 +163,7 @@ export default async function handler(req, res) {
     
     // 4. Build sales from orders
     const sales = [];
-    for (const order of orders) {
+    for (const order of allOrders) {
       if (order.orderPaymentStatus !== 'PAID' && order.orderPaymentStatus !== 'FULLY_REFUNDED') continue;
       
       for (const lineItem of order.lineItems || []) {
@@ -167,6 +223,7 @@ export default async function handler(req, res) {
       count: sales.length,
       financesWorked: financesWorked,
       adFeesMatched: adFeesByOrderId.size,
+      dateRange: { start, end },
       sales 
     });
     
