@@ -1794,97 +1794,251 @@ function App() {
 
         {/* MILEAGE */}
         {/* CPA REPORTS */}
-        {page === 'reports' && <div style={{ maxWidth: 900 }}>
-          {/* PRINT BUTTON */}
-          <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'flex-end' }}>
+        {page === 'reports' && <div style={{ maxWidth: 1000 }}>
+          {/* ACTION BUTTONS */}
+          <div style={{ marginBottom: 20, display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+            <button className="btn-hover" onClick={() => {
+              // Export CPA-ready Excel with multiple sheets
+              const wb = XLSX.utils.book_new();
+              
+              // Sheet 1: Schedule C Summary
+              const scheduleC = [
+                ['SCHEDULE C - PROFIT OR LOSS FROM BUSINESS', ''],
+                ['Tax Year:', year],
+                ['Generated:', new Date().toLocaleDateString()],
+                ['', ''],
+                ['LINE', 'DESCRIPTION', 'AMOUNT'],
+                ['Line 1', 'Gross receipts or sales', totalRevenue],
+                ['Line 4', 'Cost of goods sold', totalCOGS],
+                ['Line 5', 'Gross profit (Line 1 - Line 4)', totalRevenue - totalCOGS],
+                ['Line 10', 'Commissions and fees', totalFees],
+                ['Line 27a', 'Other expenses (see detail)', totalExp],
+                ['Line 31', 'NET PROFIT', totalRevenue - totalCOGS - totalFees - totalExp],
+              ];
+              const ws1 = XLSX.utils.aoa_to_sheet(scheduleC);
+              XLSX.utils.book_append_sheet(wb, ws1, 'Schedule C');
+              
+              // Sheet 2: Platform Breakdown
+              const platforms = {};
+              filteredSales.forEach(s => {
+                const p = s.platform || 'Other';
+                if (!platforms[p]) platforms[p] = { sales: 0, revenue: 0, cogs: 0, fees: 0 };
+                platforms[p].sales++;
+                platforms[p].revenue += s.salePrice || 0;
+                platforms[p].cogs += s.cost || 0;
+                platforms[p].fees += s.fees || 0;
+              });
+              const platformRows = [['PLATFORM', 'SALES', 'GROSS REVENUE', 'COGS', 'FEES', 'NET PROFIT']];
+              Object.entries(platforms).forEach(([p, d]) => {
+                platformRows.push([p, d.sales, d.revenue, d.cogs, d.fees, d.revenue - d.cogs - d.fees]);
+              });
+              platformRows.push(['TOTAL', filteredSales.length, totalRevenue, totalCOGS, totalFees, totalRevenue - totalCOGS - totalFees]);
+              const ws2 = XLSX.utils.aoa_to_sheet(platformRows);
+              XLSX.utils.book_append_sheet(wb, ws2, 'By Platform');
+              
+              // Sheet 3: Monthly Breakdown
+              const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+              const monthlyRows = [['MONTH', 'SALES', 'GROSS REVENUE', 'COGS', 'FEES', 'NET PROFIT']];
+              months.forEach((month, i) => {
+                const monthNum = String(i + 1).padStart(2, '0');
+                const monthSales = filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === monthNum);
+                if (monthSales.length > 0) {
+                  const rev = monthSales.reduce((sum, s) => sum + (s.salePrice || 0), 0);
+                  const cogs = monthSales.reduce((sum, s) => sum + (s.cost || 0), 0);
+                  const fees = monthSales.reduce((sum, s) => sum + (s.fees || 0), 0);
+                  monthlyRows.push([month, monthSales.length, rev, cogs, fees, rev - cogs - fees]);
+                }
+              });
+              monthlyRows.push(['TOTAL', filteredSales.length, totalRevenue, totalCOGS, totalFees, totalRevenue - totalCOGS - totalFees]);
+              const ws3 = XLSX.utils.aoa_to_sheet(monthlyRows);
+              XLSX.utils.book_append_sheet(wb, ws3, 'By Month');
+              
+              // Sheet 4: Fee Breakdown
+              const feeRows = [['FEE TYPE', 'AMOUNT']];
+              const feeByPlatform = {};
+              filteredSales.forEach(s => {
+                const p = s.platform || 'Other';
+                feeByPlatform[p + ' Fees'] = (feeByPlatform[p + ' Fees'] || 0) + (s.fees || 0);
+                if (s.adFee) feeByPlatform[p + ' Promoted/Ad Fees'] = (feeByPlatform[p + ' Promoted/Ad Fees'] || 0) + s.adFee;
+              });
+              Object.entries(feeByPlatform).filter(([k,v]) => v > 0).forEach(([k, v]) => feeRows.push([k, v]));
+              feeRows.push(['TOTAL DEDUCTIBLE FEES', totalFees]);
+              const ws4 = XLSX.utils.aoa_to_sheet(feeRows);
+              XLSX.utils.book_append_sheet(wb, ws4, 'Fee Breakdown');
+              
+              // Sheet 5: All Transactions
+              const txRows = [['DATE', 'PLATFORM', 'ITEM', 'SKU', 'SIZE', 'SALE PRICE', 'COGS', 'FEES', 'NET PROFIT']];
+              filteredSales.forEach(s => {
+                txRows.push([s.saleDate, s.platform, s.name, s.sku, s.size, s.salePrice || 0, s.cost || 0, s.fees || 0, (s.salePrice || 0) - (s.cost || 0) - (s.fees || 0)]);
+              });
+              const ws5 = XLSX.utils.aoa_to_sheet(txRows);
+              XLSX.utils.book_append_sheet(wb, ws5, 'All Transactions');
+              
+              XLSX.writeFile(wb, `FlipLedger_TaxReport_${year}.xlsx`);
+            }} style={{ padding: '12px 24px', background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)', border: 'none', borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+              📊 Export CPA Package (Excel)
+            </button>
             <button className="btn-hover" onClick={printTaxPackage} style={{ padding: '12px 24px', ...btnPrimary, fontSize: 13 }}>🖨️ Print Tax Summary</button>
           </div>
           
-          {/* PRINTABLE REPORT - Single clean page */}
-          <div className="print-report" style={{ ...cardStyle, padding: 32 }}>
-            {/* HEADER */}
-            <div style={{ textAlign: 'center', marginBottom: 32, paddingBottom: 20, borderBottom: '2px solid #333' }}>
-              <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800 }}>TAX SUMMARY</h1>
-              <p style={{ margin: '8px 0 0', fontSize: 14, color: c.textMuted }}>Tax Year {year} • Generated {new Date().toLocaleDateString()}</p>
+          {/* SCHEDULE C MAPPING - THE KEY SECTION */}
+          <div className="print-report" style={{ ...cardStyle, padding: 32, marginBottom: 20 }}>
+            <div style={{ textAlign: 'center', marginBottom: 24, paddingBottom: 16, borderBottom: '2px solid #333' }}>
+              <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>📋 SCHEDULE C SUMMARY</h1>
+              <p style={{ margin: '8px 0 0', fontSize: 13, color: c.textMuted }}>Tax Year {year} • Maps directly to IRS Schedule C</p>
             </div>
             
-            {/* INCOME SECTION */}
-            <div style={{ marginBottom: 24 }}>
-              <h3 style={{ margin: '0 0 12px', fontSize: 12, fontWeight: 700, color: c.textMuted, letterSpacing: '0.15em', borderBottom: `1px solid ${c.border}`, paddingBottom: 8 }}>INCOME</h3>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
-                <span>Gross Sales (Revenue)</span>
-                <span style={{ fontWeight: 600 }}>{fmt(totalRevenue)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
-                <span>Cost of Goods Sold (COGS)</span>
-                <span style={{ fontWeight: 600 }}>({fmt(totalCOGS)})</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
-                <span>Platform Fees</span>
-                <span style={{ fontWeight: 600 }}>({fmt(totalFees)})</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', marginTop: 8, borderTop: `1px solid ${c.border}` }}>
-                <span style={{ fontWeight: 700 }}>Net Sales Income</span>
-                <span style={{ fontWeight: 800, fontSize: 16 }}>{fmt(totalRevenue - totalCOGS - totalFees)}</span>
-              </div>
+            <div style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 12, padding: 20, marginBottom: 24 }}>
+              <p style={{ margin: 0, fontSize: 13, color: '#93c5fd' }}>
+                💡 <strong>For your CPA:</strong> These numbers map directly to Schedule C. Export the CPA Package (Excel) for complete documentation with all supporting details.
+              </p>
             </div>
             
-            {/* DEDUCTIONS SECTION */}
-            <div style={{ marginBottom: 24 }}>
-              <h3 style={{ margin: '0 0 12px', fontSize: 12, fontWeight: 700, color: c.textMuted, letterSpacing: '0.15em', borderBottom: `1px solid ${c.border}`, paddingBottom: 8 }}>DEDUCTIONS</h3>
-              
-              {/* Expense Categories */}
-              {(() => {
-                const categories = {};
-                filteredExpenses.forEach(e => {
-                  categories[e.category] = (categories[e.category] || 0) + (e.amount || 0);
-                });
-                const sorted = Object.entries(categories).sort((a, b) => b[1] - a[1]);
-                if (sorted.length === 0) {
-                  return (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
-                      <span>Business Expenses</span>
-                      <span style={{ fontWeight: 600 }}>$0.00</span>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: `2px solid ${c.border}` }}>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: c.textMuted }}>LINE</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'left', fontSize: 12, fontWeight: 700, color: c.textMuted }}>DESCRIPTION</th>
+                  <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: 12, fontWeight: 700, color: c.textMuted }}>AMOUNT</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style={{ borderBottom: `1px solid ${c.border}` }}>
+                  <td style={{ padding: '14px 16px', fontWeight: 600, color: '#60a5fa' }}>Line 1</td>
+                  <td style={{ padding: '14px 16px' }}>Gross receipts or sales</td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 15 }}>{fmt(totalRevenue)}</td>
+                </tr>
+                <tr style={{ borderBottom: `1px solid ${c.border}` }}>
+                  <td style={{ padding: '14px 16px', fontWeight: 600, color: '#60a5fa' }}>Line 4</td>
+                  <td style={{ padding: '14px 16px' }}>Cost of goods sold</td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 15, color: c.gold }}>{fmt(totalCOGS)}</td>
+                </tr>
+                <tr style={{ borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
+                  <td style={{ padding: '14px 16px', fontWeight: 600, color: '#60a5fa' }}>Line 5</td>
+                  <td style={{ padding: '14px 16px', fontWeight: 600 }}>Gross profit (Line 1 − Line 4)</td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 15, fontWeight: 700 }}>{fmt(totalRevenue - totalCOGS)}</td>
+                </tr>
+                <tr style={{ borderBottom: `1px solid ${c.border}` }}>
+                  <td style={{ padding: '14px 16px', fontWeight: 600, color: '#60a5fa' }}>Line 10</td>
+                  <td style={{ padding: '14px 16px' }}>Commissions and fees</td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 15, color: c.red }}>{fmt(totalFees)}</td>
+                </tr>
+                <tr style={{ borderBottom: `1px solid ${c.border}` }}>
+                  <td style={{ padding: '14px 16px', fontWeight: 600, color: '#60a5fa' }}>Line 27a</td>
+                  <td style={{ padding: '14px 16px' }}>Other expenses</td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 15, color: c.red }}>{fmt(totalExp)}</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr style={{ background: 'rgba(16,185,129,0.15)' }}>
+                  <td style={{ padding: '18px 16px', fontWeight: 800, color: c.green }}>Line 31</td>
+                  <td style={{ padding: '18px 16px', fontWeight: 800 }}>NET PROFIT (or Loss)</td>
+                  <td style={{ padding: '18px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 24, fontWeight: 800, color: (totalRevenue - totalCOGS - totalFees - totalExp) >= 0 ? c.green : c.red }}>
+                    {fmt(totalRevenue - totalCOGS - totalFees - totalExp)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          
+          {/* PLATFORM BREAKDOWN + 1099-K RECONCILIATION */}
+          <div className="no-print" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+            {/* Platform Breakdown */}
+            <div className="card-hover" style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}` }}>
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>📊 By Platform</h3>
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: c.textMuted }}>PLATFORM</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>SALES</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>GROSS</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: c.textMuted }}>FEES</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const platforms = {};
+                    filteredSales.forEach(s => {
+                      const p = s.platform || 'Other';
+                      if (!platforms[p]) platforms[p] = { sales: 0, revenue: 0, fees: 0 };
+                      platforms[p].sales++;
+                      platforms[p].revenue += s.salePrice || 0;
+                      platforms[p].fees += s.fees || 0;
+                    });
+                    return Object.entries(platforms).sort((a,b) => b[1].revenue - a[1].revenue).map(([platform, data]) => (
+                      <tr key={platform} style={{ borderBottom: `1px solid ${c.border}` }}>
+                        <td style={{ padding: '12px 16px' }}>
+                          <span style={{ 
+                            display: 'inline-block', 
+                            padding: '4px 10px', 
+                            borderRadius: 20, 
+                            fontSize: 11, 
+                            fontWeight: 600,
+                            background: platform === 'eBay' ? 'rgba(229,50,56,0.2)' : platform === 'StockX' ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.1)',
+                            color: platform === 'eBay' ? '#e53238' : platform === 'StockX' ? '#22c55e' : c.text
+                          }}>{platform}</span>
+                        </td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right' }}>{data.sales}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'monospace' }}>{fmt(data.revenue)}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'right', fontFamily: 'monospace', color: c.red }}>{fmt(data.fees)}</td>
+                      </tr>
+                    ));
+                  })()}
+                </tbody>
+                <tfoot>
+                  <tr style={{ background: 'rgba(16,185,129,0.1)' }}>
+                    <td style={{ padding: '12px 16px', fontWeight: 700 }}>Total</td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700 }}>{filteredSales.length}</td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace' }}>{fmt(totalRevenue)}</td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: c.red }}>{fmt(totalFees)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+            
+            {/* 1099-K Reconciliation */}
+            <div className="card-hover" style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}` }}>
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>🔗 1099-K Reconciliation</h3>
+              </div>
+              <div style={{ padding: 16 }}>
+                <p style={{ margin: '0 0 16px', fontSize: 12, color: c.textMuted }}>
+                  Compare FlipLedger totals with your 1099-K forms from each platform.
+                </p>
+                {(() => {
+                  const platforms = {};
+                  filteredSales.forEach(s => {
+                    const p = s.platform || 'Other';
+                    if (!platforms[p]) platforms[p] = 0;
+                    platforms[p] += s.salePrice || 0;
+                  });
+                  return Object.entries(platforms).sort((a,b) => b[1] - a[1]).map(([platform, gross]) => (
+                    <div key={platform} style={{ padding: '12px 0', borderBottom: `1px solid ${c.border}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <span style={{ fontWeight: 600 }}>{platform}</span>
+                        <span style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700 }}>{fmt(gross)}</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: c.textMuted }}>
+                        Should match Box 1a on your {platform} 1099-K
+                      </div>
                     </div>
-                  );
-                }
-                return sorted.map(([cat, amt]) => (
-                  <div key={cat} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0' }}>
-                    <span>{cat}</span>
-                    <span style={{ fontWeight: 600 }}>({fmt(amt)})</span>
-                  </div>
-                ));
-              })()}
-              
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', marginTop: 8, borderTop: `1px solid ${c.border}` }}>
-                <span style={{ fontWeight: 700 }}>Total Deductions</span>
-                <span style={{ fontWeight: 800, fontSize: 16 }}>({fmt(totalExp)})</span>
-              </div>
-            </div>
-            
-            {/* NET PROFIT - THE BIG NUMBER */}
-            <div style={{ background: 'rgba(16,185,129,0.1)', borderRadius: 12, padding: 20, marginTop: 24, border: `2px solid ${c.green}` }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <span style={{ fontSize: 14, fontWeight: 700 }}>NET PROFIT (Schedule C, Line 31)</span>
-                  <p style={{ margin: '4px 0 0', fontSize: 11, color: c.textMuted }}>Gross Sales − COGS − Fees − Expenses</p>
+                  ));
+                })()}
+                <div style={{ marginTop: 16, padding: 12, background: 'rgba(251,191,36,0.1)', borderRadius: 8, border: '1px solid rgba(251,191,36,0.2)' }}>
+                  <p style={{ margin: 0, fontSize: 11, color: c.gold }}>
+                    ⚠️ Small differences may occur due to timing (orders placed in Dec, paid in Jan). Document any discrepancies.
+                  </p>
                 </div>
-                <span style={{ fontSize: 32, fontWeight: 800, color: (totalRevenue - totalCOGS - totalFees - totalExp) >= 0 ? c.green : c.red }}>
-                  {fmt(totalRevenue - totalCOGS - totalFees - totalExp)}
-                </span>
               </div>
-            </div>
-            
-            {/* FOOTER */}
-            <div style={{ marginTop: 32, paddingTop: 16, borderTop: `1px solid ${c.border}`, textAlign: 'center' }}>
-              <p style={{ margin: 0, fontSize: 11, color: c.textMuted }}>Generated by FlipLedger • {filteredSales.length} sales recorded</p>
             </div>
           </div>
           
-          {/* MONTHLY BREAKDOWN - Screen only */}
-          <div className="card-hover no-print" style={{ ...cardStyle, marginTop: 20, marginBottom: 20 }}>
+          {/* MONTHLY BREAKDOWN */}
+          <div className="card-hover no-print" style={{ ...cardStyle, marginBottom: 20 }}>
             <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, fontStyle: 'italic' }}>📅 MONTHLY BREAKDOWN</h3>
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>📅 MONTHLY BREAKDOWN</h3>
               <button className="btn-hover" onClick={() => {
                 const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
                 const rows = months.map((month, i) => {
@@ -1925,31 +2079,81 @@ function App() {
                       <tr key={month} className="row-hover" style={{ borderBottom: `1px solid ${c.border}`, cursor: 'pointer' }}>
                         <td style={{ padding: '14px 16px', fontWeight: 600 }}>{month}</td>
                         <td style={{ padding: '14px 16px', textAlign: 'right' }}>{monthSales.length}</td>
-                        <td style={{ padding: '14px 16px', textAlign: 'right' }}>{fmt(monthRevenue)}</td>
-                        <td style={{ padding: '14px 16px', textAlign: 'right', color: c.gold }}>{fmt(monthCOGS)}</td>
-                        <td style={{ padding: '14px 16px', textAlign: 'right', color: c.red }}>{fmt(monthFees)}</td>
-                        <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, color: monthProfit >= 0 ? c.green : c.red }}>{fmt(monthProfit)}</td>
+                        <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace' }}>{fmt(monthRevenue)}</td>
+                        <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', color: c.gold }}>{fmt(monthCOGS)}</td>
+                        <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', color: c.red }}>{fmt(monthFees)}</td>
+                        <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700, color: monthProfit >= 0 ? c.green : c.red }}>{fmt(monthProfit)}</td>
                       </tr>
                     );
                   })}
                 </tbody>
                 <tfoot>
                   <tr style={{ background: 'rgba(16,185,129,0.1)' }}>
-                    <td style={{ padding: '16px', fontWeight: 800, fontStyle: 'italic' }}>YEARLY TOTAL</td>
+                    <td style={{ padding: '16px', fontWeight: 800 }}>YEARLY TOTAL</td>
                     <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700 }}>{filteredSales.length}</td>
-                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700 }}>{fmt(totalRevenue)}</td>
-                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700, color: c.gold }}>{fmt(totalCOGS)}</td>
-                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700, color: c.red }}>{fmt(totalFees)}</td>
-                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 800, fontSize: 16, color: (totalRevenue - totalCOGS - totalFees) >= 0 ? c.green : c.red }}>{fmt(totalRevenue - totalCOGS - totalFees)}</td>
+                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace' }}>{fmt(totalRevenue)}</td>
+                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: c.gold }}>{fmt(totalCOGS)}</td>
+                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: c.red }}>{fmt(totalFees)}</td>
+                    <td style={{ padding: '16px', textAlign: 'right', fontWeight: 800, fontFamily: 'monospace', fontSize: 16, color: (totalRevenue - totalCOGS - totalFees) >= 0 ? c.green : c.red }}>{fmt(totalRevenue - totalCOGS - totalFees)}</td>
                   </tr>
                 </tfoot>
               </table>
             </div>
           </div>
           
-          {/* EXPORT SECTION - Screen only */}
+          {/* QUICK EMAIL TEMPLATE */}
+          <div className="card-hover no-print" style={{ ...cardStyle, padding: 24, marginBottom: 20 }}>
+            <h4 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700 }}>✉️ COPY FOR YOUR CPA</h4>
+            <p style={{ margin: '0 0 12px', fontSize: 12, color: c.textMuted }}>Click to copy a ready-to-send summary for your accountant:</p>
+            <div 
+              onClick={() => {
+                const text = `Hi,
+
+Here are my reselling business numbers for ${year}:
+
+SCHEDULE C SUMMARY:
+• Gross Sales (Line 1): ${fmt(totalRevenue)}
+• Cost of Goods Sold (Line 4): ${fmt(totalCOGS)}
+• Gross Profit (Line 5): ${fmt(totalRevenue - totalCOGS)}
+• Platform Fees (Line 10): ${fmt(totalFees)}
+• Other Expenses (Line 27a): ${fmt(totalExp)}
+• Net Profit (Line 31): ${fmt(totalRevenue - totalCOGS - totalFees - totalExp)}
+
+I've attached the detailed Excel report with:
+- Schedule C line mapping
+- Platform breakdown (for 1099-K reconciliation)
+- Monthly breakdown
+- All ${filteredSales.length} transactions
+
+Please let me know if you need anything else.`;
+                navigator.clipboard.writeText(text);
+                alert('Copied to clipboard! Paste into your email.');
+              }}
+              style={{ 
+                padding: 16, 
+                background: 'rgba(255,255,255,0.03)', 
+                border: `1px solid ${c.border}`, 
+                borderRadius: 12, 
+                cursor: 'pointer',
+                fontSize: 13,
+                lineHeight: 1.6,
+                fontFamily: 'monospace',
+                whiteSpace: 'pre-wrap'
+              }}
+            >
+{`SCHEDULE C SUMMARY (${year}):
+• Gross Sales (Line 1): ${fmt(totalRevenue)}
+• Cost of Goods Sold (Line 4): ${fmt(totalCOGS)}  
+• Platform Fees (Line 10): ${fmt(totalFees)}
+• Net Profit (Line 31): ${fmt(totalRevenue - totalCOGS - totalFees - totalExp)}
+
+📋 Click to copy full email template`}
+            </div>
+          </div>
+          
+          {/* EXPORT DETAIL REPORTS */}
           <div className="card-hover no-print" style={{ ...cardStyle, padding: 24 }}>
-            <h4 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, fontStyle: 'italic' }}>📎 EXPORT DETAIL REPORTS</h4>
+            <h4 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700 }}>📎 EXPORT DETAIL REPORTS</h4>
             <p style={{ margin: '0 0 16px', fontSize: 12, color: c.textMuted }}>Download detailed data if your CPA needs backup documentation</p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
               <button className="btn-hover" onClick={() => exportCSV(filteredSales, 'sales-detail.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: 16, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', cursor: 'pointer', textAlign: 'center' }}>
