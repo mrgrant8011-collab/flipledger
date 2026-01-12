@@ -161,75 +161,52 @@ export default async function handler(req, res) {
       console.log('Finances NON_SALE_CHARGE API failed:', e.message);
     }
     
-    // 4. Fetch images - try multiple methods
+    // 4. Fetch images - GetItem for each itemId (works for ended items the seller owned)
     const uniqueItemIds = [...new Set(
       allOrders.flatMap(o => (o.lineItems || []).map(li => li.legacyItemId).filter(Boolean))
     )];
     
-    // Also collect SKUs for Inventory API
-    const skuMap = new Map();
-    allOrders.forEach(o => {
-      (o.lineItems || []).forEach(li => {
-        if (li.sku && li.legacyItemId) {
-          skuMap.set(li.legacyItemId, li.sku);
-        }
-      });
-    });
-    
     const imageMap = new Map();
     
-    // Method 1: Try Inventory API first (works for seller's own items, even ended)
-    for (const [itemId, sku] of skuMap.entries()) {
-      if (imageMap.has(itemId)) continue;
-      try {
-        const invRes = await fetch(
-          `https://api.ebay.com/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        );
-        if (invRes.ok) {
-          const invData = await invRes.json();
-          const imgUrl = invData.product?.imageUrls?.[0] || '';
-          if (imgUrl) {
-            imageMap.set(itemId, imgUrl);
-          }
-        }
-      } catch (e) {}
-    }
-    
-    // Method 2: Browse API for any remaining (active listings)
-    const batchSize = 10;
-    const remaining = uniqueItemIds.filter(id => !imageMap.has(id));
-    
-    for (let i = 0; i < remaining.length; i += batchSize) {
-      const batch = remaining.slice(i, i + batchSize);
+    // GetItem on each itemId - this works for seller's own items even if ended
+    // Process in parallel batches of 5 to speed up
+    const batchSize = 5;
+    for (let i = 0; i < uniqueItemIds.length; i += batchSize) {
+      const batch = uniqueItemIds.slice(i, i + batchSize);
       
       await Promise.all(batch.map(async (itemId) => {
-        if (imageMap.has(itemId)) return;
         try {
-          const browseRes = await fetch(
-            `https://api.ebay.com/buy/browse/v1/item/get_item_by_legacy_id?legacy_item_id=${itemId}`,
-            {
-              headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
-                'X-EBAY-C-ENDUSERCTX': 'contextualLocation=country=US'
-              }
-            }
-          );
+          const res = await fetch('https://api.ebay.com/ws/api.dll', {
+            method: 'POST',
+            headers: {
+              'X-EBAY-API-SITEID': '0',
+              'X-EBAY-API-COMPATIBILITY-LEVEL': '1225',
+              'X-EBAY-API-CALL-NAME': 'GetItem',
+              'X-EBAY-API-IAF-TOKEN': accessToken,
+              'Content-Type': 'text/xml'
+            },
+            body: `<?xml version="1.0" encoding="utf-8"?>
+<GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <ItemID>${itemId}</ItemID>
+  <DetailLevel>ReturnAll</DetailLevel>
+  <OutputSelector>PictureDetails</OutputSelector>
+</GetItemRequest>`
+          });
           
-          if (browseRes.ok) {
-            const data = await browseRes.json();
-            const imgUrl = data.image?.imageUrl || data.primaryImage?.imageUrl || '';
-            if (imgUrl) {
-              imageMap.set(itemId, imgUrl);
+          if (res.ok) {
+            const xml = await res.text();
+            // Try PictureURL first, then GalleryURL
+            const picMatch = xml.match(/<PictureURL>([^<]+)<\/PictureURL>/);
+            const galMatch = xml.match(/<GalleryURL>([^<]+)<\/GalleryURL>/);
+            if (picMatch?.[1]) {
+              imageMap.set(itemId, picMatch[1]);
+            } else if (galMatch?.[1]) {
+              imageMap.set(itemId, galMatch[1]);
             }
           }
-        } catch (e) {}
+        } catch (e) {
+          // Item may be deleted/unavailable
+        }
       }));
     }
     
@@ -297,6 +274,15 @@ export default async function handler(req, res) {
       success: true, 
       count: sales.length,
       imagesFound: imageMap.size,
+      debug: {
+        uniqueItems: uniqueItemIds.length,
+        // Show what the fulfillment API actually returns
+        sampleLineItem: allOrders[0]?.lineItems?.[0] || null,
+        sampleOrder: allOrders[0] ? {
+          orderId: allOrders[0].orderId,
+          lineItemKeys: allOrders[0].lineItems?.[0] ? Object.keys(allOrders[0].lineItems[0]) : []
+        } : null
+      },
       sales 
     });
     
