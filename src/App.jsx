@@ -200,6 +200,7 @@ function App() {
   const [stockxImport, setStockxImport] = useState({ show: false, data: [], year: 'all', month: 'all', headers: [] });
   const [ebayImport, setEbayImport] = useState({ show: false, data: [], year: 'all', month: 'all', headers: [] });
   const [ebayApiFilter, setEbayApiFilter] = useState({ year: new Date().getFullYear().toString(), month: 'all' });
+  const [stockxApiFilter, setStockxApiFilter] = useState({ year: new Date().getFullYear().toString(), month: 'all' });
   const [purchases, setPurchases] = useState(() => {
     const saved = localStorage.getItem('flipledger_purchases');
     return saved ? JSON.parse(saved) : [];
@@ -337,7 +338,23 @@ function App() {
     if (!stockxToken) return;
     setSyncing(true);
     try {
-      const response = await fetch(`/api/stockx-sales?year=${year}`, {
+      // Build date range based on selected year/month
+      const yr = parseInt(stockxApiFilter.year);
+      let startDate, endDate;
+      
+      if (stockxApiFilter.month === 'all') {
+        // Full year
+        startDate = `${yr}-01-01`;
+        endDate = `${yr}-12-31`;
+      } else {
+        // Specific month
+        const month = parseInt(stockxApiFilter.month);
+        const lastDay = new Date(yr, month, 0).getDate();
+        startDate = `${yr}-${stockxApiFilter.month}-01`;
+        endDate = `${yr}-${stockxApiFilter.month}-${lastDay}`;
+      }
+      
+      const response = await fetch(`/api/stockx-sales?startDate=${startDate}&endDate=${endDate}`, {
         headers: {
           'Authorization': `Bearer ${stockxToken}`
         }
@@ -354,16 +371,17 @@ function App() {
         
         if (newSales.length > 0) {
           setPendingCosts(prev => [...prev, ...newSales]);
+          const dateRange = stockxApiFilter.month === 'all' ? stockxApiFilter.year : `${stockxApiFilter.month}/${stockxApiFilter.year}`;
           if (data.sales.length - newSales.length > 0) {
-            alert(`Synced ${newSales.length} NEW sales from ${year}! (${data.sales.length - newSales.length} already existed)`);
+            alert(`Synced ${newSales.length} NEW sales from ${dateRange}! (${data.sales.length - newSales.length} already existed)`);
           } else {
-            alert(`Synced ${newSales.length} sales from ${year}!`);
+            alert(`Synced ${newSales.length} sales from ${dateRange}!`);
           }
         } else {
-          alert(`All ${data.sales.length} sales from ${year} already imported - nothing new to add.`);
+          alert(`All ${data.sales.length} sales from ${stockxApiFilter.year} already imported - nothing new to add.`);
         }
       } else {
-        alert(`No sales found on StockX for ${year}`);
+        alert(`No sales found on StockX for ${stockxApiFilter.year}`);
       }
     } catch (error) {
       console.error('Failed to fetch StockX sales:', error);
@@ -2257,18 +2275,6 @@ Let me know if you need anything else.`;
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20 }}>
             {/* LEFT SIDE - Main Content */}
             <div>
-          {(stockxConnected || goatConnected || ebayConnected) && (
-            <div style={{ ...cardStyle, padding: 20, marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>🔄 Sync All Platforms</h3>
-                <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Pull latest sales from connected platforms</p>
-              </div>
-              <button onClick={() => { if (stockxConnected) syncPlatform('StockX'); if (goatConnected) syncPlatform('GOAT'); if (ebayConnected) syncPlatform('eBay'); }} disabled={syncing} style={{ padding: '12px 24px', ...btnPrimary, opacity: syncing ? 0.6 : 1 }}>
-                {syncing ? <><span className="spin-icon">🔄</span> Syncing...</> : '🔄 Sync Now'}
-              </button>
-            </div>
-          )}
-
           {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length > 0 && (
             <div style={{ marginBottom: 20 }}>
               {/* Header */}
@@ -2458,12 +2464,7 @@ Let me know if you need anything else.`;
                 <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Auto-import your StockX sales</p>
               </div>
               {stockxConnected ? (
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => syncPlatform('StockX')} disabled={syncing} style={{ padding: '10px 18px', ...btnPrimary, fontSize: 12, opacity: syncing ? 0.6 : 1 }}>
-                    {syncing ? 'Syncing...' : 'Sync Sales'}
-                  </button>
-                  <button onClick={disconnectStockX} style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 10, color: c.red, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Disconnect</button>
-                </div>
+                <button onClick={disconnectStockX} style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 10, color: c.red, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Disconnect</button>
               ) : (
                 <button onClick={() => window.location.href = '/api/stockx-auth'} style={{ padding: '12px 22px', ...btnPrimary }}>Connect</button>
               )}
@@ -2471,6 +2472,37 @@ Let me know if you need anything else.`;
             {stockxConnected && (
               <div style={{ padding: '12px 20px', borderTop: `1px solid ${c.border}`, background: 'rgba(0,193,101,0.1)' }}>
                 <span style={{ color: c.green, fontWeight: 600, fontSize: 12 }}>✓ Connected to StockX</span>
+                
+                {/* Year/Month Filters */}
+                <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
+                  <select 
+                    value={stockxApiFilter.year} 
+                    onChange={e => setStockxApiFilter({ ...stockxApiFilter, year: e.target.value })} 
+                    style={{ flex: 1, padding: 10, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 12 }}
+                  >
+                    {['2026', '2025', '2024', '2023', '2022', '2021'].map(y => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                  <select 
+                    value={stockxApiFilter.month} 
+                    onChange={e => setStockxApiFilter({ ...stockxApiFilter, month: e.target.value })} 
+                    style={{ flex: 1, padding: 10, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 12 }}
+                  >
+                    <option value="all">All Months</option>
+                    {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => 
+                      <option key={m} value={String(i+1).padStart(2,'0')}>{m}</option>
+                    )}
+                  </select>
+                </div>
+                <button 
+                  onClick={() => fetchStockXSales()} 
+                  disabled={syncing} 
+                  style={{ marginTop: 10, width: '100%', padding: '12px', background: '#00c165', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 13, cursor: syncing ? 'default' : 'pointer', opacity: syncing ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                >
+                  {syncing ? '🔄 Syncing...' : '🔄 Sync StockX Sales'}
+                </button>
+                <div style={{ marginTop: 8, fontSize: 11, color: c.textMuted }}>
+                  Select year/month and sync. Up to 5 years of history available.
+                </div>
               </div>
             )}
           </div>

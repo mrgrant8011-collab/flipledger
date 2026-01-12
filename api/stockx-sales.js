@@ -1,6 +1,7 @@
 export default async function handler(req, res) {
   const authHeader = req.headers.authorization;
-  const year = req.query.year || new Date().getFullYear().toString();
+  const startDate = req.query.startDate || `${new Date().getFullYear()}-01-01`;
+  const endDate = req.query.endDate || `${new Date().getFullYear()}-12-31`;
   
   if (!authHeader) {
     return res.status(401).json({ error: 'No authorization token provided' });
@@ -47,14 +48,14 @@ export default async function handler(req, res) {
       }
     }
     
-    // Filter by selected year
-    const yearOrders = allOrders.filter(o => {
-      const date = o.createdAt || o.completedAt || '';
-      return date.startsWith(year);
+    // Filter by date range
+    const filteredOrders = allOrders.filter(o => {
+      const date = (o.createdAt || o.completedAt || '').split('T')[0];
+      return date >= startDate && date <= endDate;
     });
     
     // Transform with images from SKU
-    const sales = yearOrders.map(order => {
+    const sales = filteredOrders.map(order => {
       const product = order.product || order.listing?.product || {};
       const variant = order.variant || order.listing?.variant || {};
       const payout = order.payout || {};
@@ -74,17 +75,19 @@ export default async function handler(req, res) {
         size: String(size || ''),
         salePrice: Number(salePrice) || 0,
         payout: Number(payoutAmount) || 0,
-        saleDate
+        saleDate,
+        platform: 'StockX'
       };
     });
     
     // Remove duplicates
-    const uniqueSales = [...new Map(sales.map(s => [s.orderNumber, s])).values()];
+    const uniqueSales = [...new Map(sales.map(s => [s.id, s])).values()];
     
     res.status(200).json({ 
       sales: uniqueSales,
       total: uniqueSales.length,
-      year,
+      startDate,
+      endDate,
       totalFetched: allOrders.length
     });
     
