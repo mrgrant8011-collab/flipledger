@@ -2665,7 +2665,8 @@ Let me know if you need anything else.`;
                                 if (fresh.length > 0) {
                                   setPendingCosts(prev => [...prev, ...fresh]);
                                   localStorage.setItem('flipledger_pending', JSON.stringify([...pendingCosts, ...fresh]));
-                                  alert(`✓ Imported ${fresh.length} eBay sales from ${ebayApiFilter.month === 'all' ? ebayApiFilter.year : ebayApiFilter.month + '/' + ebayApiFilter.year}!`);
+                                  const withImages = fresh.filter(s => s.image).length;
+                                  alert(`✓ Imported ${fresh.length} eBay sales (${withImages} with images)`);
                                 } else {
                                   alert('All caught up! No new sales to import.');
                                 }

@@ -161,39 +161,75 @@ export default async function handler(req, res) {
       console.log('Finances NON_SALE_CHARGE API failed:', e.message);
     }
     
-    // 4. Fetch images for unique item IDs via Browse API
+    // 4. Fetch images - try multiple methods
     const uniqueItemIds = [...new Set(
       allOrders.flatMap(o => (o.lineItems || []).map(li => li.legacyItemId).filter(Boolean))
     )];
     
+    // Also collect SKUs for Inventory API
+    const skuMap = new Map();
+    allOrders.forEach(o => {
+      (o.lineItems || []).forEach(li => {
+        if (li.sku && li.legacyItemId) {
+          skuMap.set(li.legacyItemId, li.sku);
+        }
+      });
+    });
+    
     const imageMap = new Map();
     
-    // Fetch images in batches of 5 to avoid rate limiting
-    const batchSize = 5;
-    for (let i = 0; i < uniqueItemIds.length && i < 100; i += batchSize) {
-      const batch = uniqueItemIds.slice(i, i + batchSize);
-      
-      await Promise.all(batch.map(async (itemId) => {
-        try {
-          const browseUrl = `https://api.ebay.com/buy/browse/v1/item/get_item_by_legacy_id?legacy_item_id=${itemId}`;
-          const browseRes = await fetch(browseUrl, {
+    // Method 1: Try Inventory API first (works for seller's own items, even ended)
+    for (const [itemId, sku] of skuMap.entries()) {
+      if (imageMap.has(itemId)) continue;
+      try {
+        const invRes = await fetch(
+          `https://api.ebay.com/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,
+          {
             headers: {
               'Authorization': `Bearer ${accessToken}`,
-              'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
-              'X-EBAY-C-ENDUSERCTX': 'affiliateCampaignId=<ePNCampaignId>,affiliateReferenceId=<referenceId>'
-            }
-          });
-          
-          if (browseRes.ok) {
-            const browseData = await browseRes.json();
-            const imageUrl = browseData.image?.imageUrl || browseData.primaryImage?.imageUrl || '';
-            if (imageUrl) {
-              imageMap.set(itemId, imageUrl);
+              'Content-Type': 'application/json'
             }
           }
-        } catch (e) {
-          // Silently fail for individual image fetches
+        );
+        if (invRes.ok) {
+          const invData = await invRes.json();
+          const imgUrl = invData.product?.imageUrls?.[0] || '';
+          if (imgUrl) {
+            imageMap.set(itemId, imgUrl);
+          }
         }
+      } catch (e) {}
+    }
+    
+    // Method 2: Browse API for any remaining (active listings)
+    const batchSize = 10;
+    const remaining = uniqueItemIds.filter(id => !imageMap.has(id));
+    
+    for (let i = 0; i < remaining.length; i += batchSize) {
+      const batch = remaining.slice(i, i + batchSize);
+      
+      await Promise.all(batch.map(async (itemId) => {
+        if (imageMap.has(itemId)) return;
+        try {
+          const browseRes = await fetch(
+            `https://api.ebay.com/buy/browse/v1/item/get_item_by_legacy_id?legacy_item_id=${itemId}`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+                'X-EBAY-C-ENDUSERCTX': 'contextualLocation=country=US'
+              }
+            }
+          );
+          
+          if (browseRes.ok) {
+            const data = await browseRes.json();
+            const imgUrl = data.image?.imageUrl || data.primaryImage?.imageUrl || '';
+            if (imgUrl) {
+              imageMap.set(itemId, imgUrl);
+            }
+          }
+        } catch (e) {}
       }));
     }
     
@@ -260,7 +296,7 @@ export default async function handler(req, res) {
     res.status(200).json({ 
       success: true, 
       count: sales.length,
-      dateRange: { start, end },
+      imagesFound: imageMap.size,
       sales 
     });
     
