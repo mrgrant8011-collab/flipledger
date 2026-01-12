@@ -164,7 +164,10 @@ export default async function handler(req, res) {
     // 4. Build sales from orders
     const sales = [];
     for (const order of allOrders) {
-      if (order.orderPaymentStatus !== 'PAID' && order.orderPaymentStatus !== 'FULLY_REFUNDED') continue;
+      // Only include orders that were actually paid - skip cancelled, refunded, pending
+      if (order.orderPaymentStatus !== 'PAID') continue;
+      // Skip cancelled orders
+      if (order.cancelStatus?.cancelState === 'CANCELED') continue;
       
       for (const lineItem of order.lineItems || []) {
         const salePrice = parseFloat(order.pricingSummary?.total?.value || lineItem.total?.value || 0);
