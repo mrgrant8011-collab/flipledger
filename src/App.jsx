@@ -2455,66 +2455,14 @@ Let me know if you need anything else.`;
             </div>
           )}
 
-          {/* StockX Integration - Real OAuth */}
-          <div style={{ ...cardStyle, marginBottom: 16 }}>
-            <div style={{ padding: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
-              <div style={{ width: 54, height: 54, background: '#00c165', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: '#fff' }}>SX</div>
-              <div style={{ flex: 1 }}>
-                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>STOCKX</h3>
-                <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Auto-import your StockX sales</p>
-              </div>
-              {stockxConnected ? (
-                <button onClick={disconnectStockX} style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 10, color: c.red, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Disconnect</button>
-              ) : (
-                <button onClick={() => window.location.href = '/api/stockx-auth'} style={{ padding: '12px 22px', ...btnPrimary }}>Connect</button>
-              )}
-            </div>
-            {stockxConnected && (
-              <div style={{ padding: '12px 20px', borderTop: `1px solid ${c.border}`, background: 'rgba(0,193,101,0.1)' }}>
-                <span style={{ color: c.green, fontWeight: 600, fontSize: 12 }}>✓ Connected to StockX</span>
-                
-                {/* Year/Month Filters */}
-                <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
-                  <select 
-                    value={stockxApiFilter.year} 
-                    onChange={e => setStockxApiFilter({ ...stockxApiFilter, year: e.target.value })} 
-                    style={{ flex: 1, padding: 10, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 12 }}
-                  >
-                    {['2026', '2025', '2024', '2023', '2022', '2021'].map(y => <option key={y} value={y}>{y}</option>)}
-                  </select>
-                  <select 
-                    value={stockxApiFilter.month} 
-                    onChange={e => setStockxApiFilter({ ...stockxApiFilter, month: e.target.value })} 
-                    style={{ flex: 1, padding: 10, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 12 }}
-                  >
-                    <option value="all">All Months</option>
-                    {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => 
-                      <option key={m} value={String(i+1).padStart(2,'0')}>{m}</option>
-                    )}
-                  </select>
-                </div>
-                <button 
-                  onClick={() => fetchStockXSales()} 
-                  disabled={syncing} 
-                  style={{ marginTop: 10, width: '100%', padding: '12px', background: '#00c165', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 13, cursor: syncing ? 'default' : 'pointer', opacity: syncing ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
-                >
-                  {syncing ? '🔄 Syncing...' : '🔄 Sync StockX Sales'}
-                </button>
-                <div style={{ marginTop: 8, fontSize: 11, color: c.textMuted }}>
-                  Select year/month and sync. Up to 5 years of history available.
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* StockX CSV Import Section */}
+          {/* StockX Import Section - Unified */}
           <div style={{ ...cardStyle, marginBottom: 16 }}>
             <div style={{ padding: 20 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
-                <div style={{ width: 54, height: 54, background: 'linear-gradient(135deg, #00c165 0%, #009e52 100%)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: '#fff' }}>SX</div>
+                <div style={{ width: 54, height: 54, background: '#00c165', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, color: '#fff' }}>SX</div>
                 <div style={{ flex: 1 }}>
-                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>STOCKX CSV</h3>
-                  <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Upload StockX historical sales CSV</p>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>STOCKX IMPORT</h3>
+                  <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Upload Historical Sales CSV</p>
                 </div>
               </div>
               
@@ -2527,6 +2475,60 @@ Let me know if you need anything else.`;
                     <div style={{ fontWeight: 600, marginBottom: 4, color: '#00c165' }}>Click or drag StockX CSV</div>
                     <div style={{ fontSize: 11, color: c.textMuted }}>Download from StockX → Seller Tools → Historical Sales</div>
                   </label>
+                  
+                  {/* API Sync Section */}
+                  <div style={{ marginTop: 20, padding: 16, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: `1px solid ${c.border}` }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      🔄 StockX API Sync
+                      <span style={{ fontSize: 10, color: c.textMuted, fontWeight: 400 }}>Get images + exact payouts</span>
+                    </div>
+                    {stockxConnected ? (
+                      <div>
+                        {/* Year/Month Filters */}
+                        <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+                          <select 
+                            value={stockxApiFilter.year} 
+                            onChange={e => setStockxApiFilter({ ...stockxApiFilter, year: e.target.value })} 
+                            style={{ flex: 1, padding: 10, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 12 }}
+                          >
+                            {['2026', '2025', '2024', '2023', '2022', '2021'].map(y => <option key={y} value={y}>{y}</option>)}
+                          </select>
+                          <select 
+                            value={stockxApiFilter.month} 
+                            onChange={e => setStockxApiFilter({ ...stockxApiFilter, month: e.target.value })} 
+                            style={{ flex: 1, padding: 10, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 12 }}
+                          >
+                            <option value="all">All Months</option>
+                            {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => 
+                              <option key={m} value={String(i+1).padStart(2,'0')}>{m}</option>
+                            )}
+                          </select>
+                        </div>
+                        <div style={{ display: 'flex', gap: 10 }}>
+                          <button 
+                            onClick={() => fetchStockXSales()} 
+                            disabled={syncing} 
+                            style={{ flex: 1, padding: '12px', background: '#00c165', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 13, cursor: syncing ? 'default' : 'pointer', opacity: syncing ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                          >
+                            {syncing ? '🔄 Syncing...' : '🔄 Sync StockX Sales'}
+                          </button>
+                          <button onClick={disconnectStockX} style={{ padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 8, color: '#ef4444', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+                            Disconnect
+                          </button>
+                        </div>
+                        <div style={{ marginTop: 8, fontSize: 11, color: c.textMuted }}>
+                          Select year/month and sync. Up to 5 years of history available.
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => window.location.href = '/api/stockx-auth'}
+                        style={{ width: '100%', padding: '12px', background: '#00c165', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+                      >
+                        Connect StockX
+                      </button>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div>
