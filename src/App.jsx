@@ -362,6 +362,8 @@ function App() {
         }
       });
       const data = await response.json();
+      console.log('StockX API Response:', data);
+      
       if (data.sales && data.sales.length > 0) {
         // Filter out duplicates - check pending (by id) AND confirmed sales (by orderId)
         const existingIds = new Set([
@@ -383,11 +385,23 @@ function App() {
           alert(`All ${data.sales.length} sales from ${stockxApiFilter.year} already imported - nothing new to add.`);
         }
       } else {
-        alert(`No sales found on StockX for ${stockxApiFilter.year}`);
+        // Show debug info if available
+        let debugMsg = `No sales found on StockX for ${stockxApiFilter.year}`;
+        if (data.debug) {
+          console.log('StockX Debug:', data.debug);
+          debugMsg += `\n\nDebug: ${data.debug.message}`;
+          if (data.debug.responseKeys?.length > 0) {
+            debugMsg += `\nAPI returned: ${data.debug.responseKeys.join(', ')}`;
+          }
+          if (data.debug.rawSample) {
+            debugMsg += `\n\nRaw: ${data.debug.rawSample.substring(0, 200)}...`;
+          }
+        }
+        alert(debugMsg);
       }
     } catch (error) {
       console.error('Failed to fetch StockX sales:', error);
-      alert('Failed to sync StockX sales');
+      alert('Failed to sync StockX sales: ' + error.message);
     }
     setStockxSyncing(false);
   };
