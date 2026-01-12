@@ -2273,28 +2273,11 @@ Let me know if you need anything else.`;
             <div style={{ marginBottom: 20 }}>
               {/* Header */}
               <div style={{ padding: '16px 20px', background: 'rgba(251,191,36,0.1)', border: `1px solid rgba(251,191,36,0.2)`, borderRadius: '12px 12px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: c.gold }}>⚡ Bulk Cost Entry</h3>
-                    <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>
-                      {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} items awaiting costs
-                    </p>
-                  </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: c.gold }}>⚡ Bulk Cost Entry</h3>
+                  <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Enter costs manually or lookup from your inventory</p>
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <button 
-                    onClick={() => {
-                      const allIds = pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).map(s => s.id);
-                      if (selectedPending.size === allIds.length) {
-                        setSelectedPending(new Set());
-                      } else {
-                        setSelectedPending(new Set(allIds));
-                      }
-                    }}
-                    style={{ padding: '10px 14px', background: selectedPending.size > 0 ? 'rgba(16,185,129,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${selectedPending.size > 0 ? c.green : c.border}`, borderRadius: 10, color: selectedPending.size > 0 ? c.green : c.text, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
-                  >
-                    {selectedPending.size === pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length ? '☑️ Deselect All' : '☐ Select All'}
-                  </button>
                   <select 
                     defaultValue="date"
                     onChange={(e) => {
@@ -2364,8 +2347,7 @@ Let me know if you need anything else.`;
               {/* Pending Sales - Card Layout */}
               <div style={{ border: `1px solid ${c.border}`, borderTop: selectedPending.size > 0 ? 'none' : `1px solid ${c.border}`, borderRadius: '0 0 12px 12px', overflow: 'hidden', background: c.card }}>
                 <div style={{ maxHeight: 600, overflowY: 'auto', padding: 16 }}>
-                  {/* Card Grid */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
                     {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).map(s => (
                       <div 
                         key={s.id}
@@ -2376,62 +2358,44 @@ Let me know if you need anything else.`;
                           borderRadius: 12,
                           overflow: 'hidden',
                           cursor: 'pointer',
-                          transition: 'all 0.2s ease'
+                          transition: 'all 0.15s ease'
                         }}
                       >
-                        {/* Image Section */}
-                        <div style={{ position: 'relative', height: 140, background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ position: 'relative', height: 120, background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                           {s.image ? (
-                            <img src={s.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 8 }} onError={e => { e.target.style.display = 'none'; }} />
+                            <img src={s.image} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none'; }} />
                           ) : (
-                            <span style={{ fontSize: 48, opacity: 0.3 }}>📦</span>
+                            <span style={{ fontSize: 40, opacity: 0.3 }}>📦</span>
                           )}
-                          
-                          {/* Checkbox overlay */}
-                          <div 
-                            onClick={e => e.stopPropagation()}
-                            style={{ position: 'absolute', top: 8, left: 8 }}
-                          >
+                          <div onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', top: 8, left: 8 }}>
                             <input 
                               type="checkbox"
                               checked={selectedPending.has(s.id)}
                               onChange={(e) => {
-                                const newSelected = new Set(selectedPending);
-                                if (e.target.checked) newSelected.add(s.id);
-                                else newSelected.delete(s.id);
-                                setSelectedPending(newSelected);
+                                const newSet = new Set(selectedPending);
+                                if (e.target.checked) newSet.add(s.id);
+                                else newSet.delete(s.id);
+                                setSelectedPending(newSet);
                               }}
                               style={{ width: 18, height: 18, cursor: 'pointer', accentColor: c.green }}
                             />
                           </div>
-                          
-                          {/* Delete button */}
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
                               setPendingCosts(prev => prev.filter(x => x.id !== s.id));
                               setSelectedPending(prev => { const n = new Set(prev); n.delete(s.id); return n; });
                             }} 
-                            style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, width: 24, height: 24, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.5)', border: 'none', color: '#fff', cursor: 'pointer', width: 24, height: 24, borderRadius: 12, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                           >×</button>
-                          
-                          {/* Platform badge */}
-                          <div style={{ position: 'absolute', bottom: 8, left: 8, background: s.platform === 'eBay' ? '#0064d2' : c.green, padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600 }}>
+                          <div style={{ position: 'absolute', bottom: 8, left: 8, background: s.platform === 'eBay' ? '#0064d2' : '#00c165', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600 }}>
                             {s.platform || 'eBay'}
                           </div>
                         </div>
-                        
-                        {/* Info Section */}
                         <div style={{ padding: 12 }}>
-                          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {s.name}
-                          </div>
-                          <div style={{ fontSize: 11, color: c.textMuted, marginBottom: 8 }}>
-                            {s.saleDate} {s.size && `• Size ${s.size}`}
-                          </div>
-                          
-                          {/* Price Row */}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
+                          <div style={{ fontSize: 11, color: c.textMuted, marginBottom: 8 }}>{s.saleDate} {s.size ? `• Size ${s.size}` : ''}</div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
                             <div>
                               <div style={{ fontSize: 10, color: c.textMuted }}>SOLD</div>
                               <div style={{ fontSize: 14, fontWeight: 600 }}>{fmt(s.salePrice)}</div>
@@ -2441,12 +2405,11 @@ Let me know if you need anything else.`;
                               <div style={{ fontSize: 16, fontWeight: 700, color: c.green }}>{fmt(s.payout)}</div>
                             </div>
                           </div>
-                          
-                          {/* Cost Input */}
-                          <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 8 }}>
+                          <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 8 }}>
                             <input 
                               type="number" 
                               placeholder="Enter cost..."
+                              id={`cost-${s.id}`}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter' && e.target.value) {
                                   confirmSaleWithCost(s.id, e.target.value, 'StockX Standard');
@@ -2456,37 +2419,27 @@ Let me know if you need anything else.`;
                               style={{ flex: 1, padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 13 }} 
                             />
                             <button
-                              onClick={(e) => {
-                                const input = e.target.parentElement.querySelector('input');
-                                if (input.value) {
-                                  confirmSaleWithCost(s.id, input.value, 'StockX Standard');
-                                  input.value = '';
+                              onClick={() => {
+                                const inp = document.getElementById(`cost-${s.id}`);
+                                if (inp && inp.value) {
+                                  confirmSaleWithCost(s.id, inp.value, 'StockX Standard');
+                                  inp.value = '';
                                 }
                               }}
                               style={{ padding: '10px 16px', background: c.green, border: 'none', borderRadius: 8, color: '#000', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}
-                            >
-                              ✓
-                            </button>
+                            >✓</button>
                           </div>
                         </div>
                       </div>
                     ))}
                   </div>
-                  
-                  {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length === 0 && (
-                    <div style={{ textAlign: 'center', padding: 40, color: c.textMuted }}>
-                      <div style={{ fontSize: 48, marginBottom: 16 }}>✨</div>
-                      <div style={{ fontSize: 14 }}>All caught up! No pending costs.</div>
-                    </div>
-                  )}
                 </div>
-
-                {/* Footer */}
                 <div style={{ padding: '12px 16px', background: 'rgba(255,255,255,0.02)', borderTop: `1px solid ${c.border}`, fontSize: 11, color: c.textMuted }}>
                   💡 Click a card, then click an inventory item on the right to auto-fill cost & mark sold
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
           {/* StockX Integration - Real OAuth */}
           <div style={{ ...cardStyle, marginBottom: 16 }}>
