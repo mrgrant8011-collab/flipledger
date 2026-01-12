@@ -2271,14 +2271,12 @@ Let me know if you need anything else.`;
 
           {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length > 0 && (
             <div style={{ marginBottom: 20 }}>
-              {/* Header - Clean */}
-              <div style={{ padding: '14px 20px', background: c.card, border: `1px solid ${c.border}`, borderRadius: '12px 12px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: 18 }}>📋</span>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Pending Costs</h3>
-                    <span style={{ fontSize: 12, color: c.textMuted }}>{pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} items need cost entry</span>
-                  </div>
+              {/* Header */}
+              <div style={{ padding: '12px 16px', background: 'rgba(251,191,36,0.08)', border: `1px solid rgba(251,191,36,0.15)`, borderRadius: '12px 12px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 16 }}>⚡</span>
+                  <span style={{ fontWeight: 700, fontSize: 14 }}>Pending Costs</span>
+                  <span style={{ background: 'rgba(251,191,36,0.2)', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600, color: c.gold }}>{pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <select 
@@ -2293,143 +2291,131 @@ Let me know if you need anything else.`;
                         return sorted;
                       });
                     }}
-                    style={{ padding: '6px 10px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: c.text, fontSize: 12, cursor: 'pointer' }}
+                    style={{ padding: '5px 8px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 4, color: c.text, fontSize: 11, cursor: 'pointer' }}
                   >
-                    <option value="date">Sort: Date</option>
-                    <option value="item">Sort: Name</option>
-                    <option value="price">Sort: Payout</option>
+                    <option value="date">Date</option>
+                    <option value="item">Name</option>
+                    <option value="price">Payout</option>
                   </select>
                   <button onClick={() => { 
-                    if (confirm(`Clear all ${pendingCosts.length} pending items?`)) {
+                    if (confirm(`Clear all?`)) {
                       setPendingCosts([]);
                       setSelectedPending(new Set());
                       localStorage.removeItem('flipledger_pending');
                     }
-                  }} style={{ padding: '6px 12px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 6, color: c.red, cursor: 'pointer', fontSize: 12 }}>
-                    Clear All
+                  }} style={{ padding: '5px 10px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 4, color: c.red, cursor: 'pointer', fontSize: 11 }}>
+                    Clear
                   </button>
                 </div>
               </div>
 
-              {/* Multi-Select Action Bar */}
+              {/* Multi-Select Bar */}
               {selectedPending.size > 0 && (
-                <div style={{ padding: '12px 16px', background: 'rgba(16,185,129,0.08)', borderLeft: `1px solid ${c.border}`, borderRight: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 16 }}>
-                  <span style={{ fontWeight: 600, color: c.green, fontSize: 13 }}>{selectedPending.size} selected</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 13, color: c.textMuted }}>Apply cost:</span>
-                    <input 
-                      type="number" 
-                      placeholder="$0"
-                      value={bulkCost}
-                      onChange={e => setBulkCost(e.target.value)}
-                      style={{ width: 100, padding: '8px 12px', background: 'rgba(255,255,255,0.08)', border: `1px solid ${c.green}`, borderRadius: 6, color: c.text, fontSize: 14, fontWeight: 600 }} 
-                    />
-                    <button 
-                      onClick={() => {
-                        if (!bulkCost) { alert('Enter a cost first'); return; }
-                        selectedPending.forEach(id => confirmSaleWithCost(id, bulkCost, 'StockX Standard'));
-                        setSelectedPending(new Set());
-                        setBulkCost('');
-                      }}
-                      style={{ padding: '8px 20px', background: c.green, border: 'none', borderRadius: 6, color: '#000', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
-                    >
-                      Apply to All
-                    </button>
-                  </div>
-                  <button onClick={() => setSelectedPending(new Set())} style={{ marginLeft: 'auto', padding: '8px 12px', background: 'transparent', border: `1px solid ${c.border}`, borderRadius: 6, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>
+                <div style={{ padding: '8px 12px', background: 'rgba(16,185,129,0.1)', borderLeft: `1px solid ${c.border}`, borderRight: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontWeight: 600, color: c.green, fontSize: 12 }}>{selectedPending.size} selected</span>
+                  <input 
+                    type="number" 
+                    placeholder="Cost"
+                    value={bulkCost}
+                    onChange={e => setBulkCost(e.target.value)}
+                    style={{ width: 70, padding: '5px 8px', background: 'rgba(255,255,255,0.08)', border: `1px solid ${c.green}`, borderRadius: 4, color: c.text, fontSize: 12, textAlign: 'center' }} 
+                  />
+                  <button 
+                    onClick={() => {
+                      if (!bulkCost) { alert('Enter cost'); return; }
+                      selectedPending.forEach(id => confirmSaleWithCost(id, bulkCost, 'StockX Standard'));
+                      setSelectedPending(new Set());
+                      setBulkCost('');
+                    }}
+                    style={{ padding: '5px 12px', background: c.green, border: 'none', borderRadius: 4, color: '#000', fontWeight: 600, fontSize: 11, cursor: 'pointer' }}
+                  >
+                    Apply
+                  </button>
+                  <button onClick={() => setSelectedPending(new Set())} style={{ padding: '5px 8px', background: 'transparent', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 11 }}>
                     Cancel
                   </button>
                 </div>
               )}
 
-              {/* Pending Sales - ELITE Table */}
+              {/* Pending Sales - Compact Table */}
               <div style={{ border: `1px solid ${c.border}`, borderTop: selectedPending.size > 0 ? 'none' : `1px solid ${c.border}`, borderRadius: '0 0 12px 12px', overflow: 'hidden', background: c.card }}>
-                <div style={{ maxHeight: 650, overflowY: 'auto' }}>
+                <div style={{ maxHeight: 500, overflowY: 'auto' }}>
+                  {/* Table Header */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '32px 50px 1fr 60px 75px 90px 32px', padding: '10px 12px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.03)', position: 'sticky', top: 0, gap: 10, alignItems: 'center', fontSize: 10, fontWeight: 600, color: c.textMuted }}>
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      <input 
+                        type="checkbox"
+                        checked={selectedPending.size === pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length && selectedPending.size > 0}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedPending(new Set(pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).map(s => s.id)));
+                          } else {
+                            setSelectedPending(new Set());
+                          }
+                        }}
+                        style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }}
+                      />
+                    </div>
+                    <span></span>
+                    <span>ITEM</span>
+                    <span style={{ textAlign: 'center' }}>SIZE</span>
+                    <span style={{ textAlign: 'right' }}>PAYOUT</span>
+                    <span style={{ textAlign: 'center' }}>COST</span>
+                    <span></span>
+                  </div>
+
+                  {/* Table Rows */}
                   {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).map((s, idx, arr) => (
                     <div 
                       key={s.id}
                       onClick={() => setSelectedPendingItem(selectedPendingItem === s.id ? null : s.id)}
                       style={{ 
-                        padding: '12px 16px',
+                        display: 'grid', 
+                        gridTemplateColumns: '32px 50px 1fr 60px 75px 90px 32px', 
+                        padding: '8px 12px', 
                         borderBottom: `1px solid ${c.border}`,
                         borderLeft: selectedPendingItem === s.id ? `3px solid ${c.green}` : '3px solid transparent',
-                        background: selectedPendingItem === s.id ? 'rgba(16,185,129,0.15)' : selectedPending.has(s.id) ? 'rgba(16,185,129,0.05)' : 'transparent',
+                        background: selectedPendingItem === s.id ? 'rgba(16,185,129,0.12)' : selectedPending.has(s.id) ? 'rgba(16,185,129,0.05)' : 'transparent',
                         cursor: 'pointer',
-                        transition: 'all 0.15s ease'
+                        alignItems: 'center',
+                        gap: 10
                       }}
                     >
-                      {/* Selected indicator */}
-                      {selectedPendingItem === s.id && (
-                        <div style={{ marginBottom: 8, padding: '6px 10px', background: 'rgba(16,185,129,0.2)', borderRadius: 6, fontSize: 11, color: c.green, fontWeight: 600, display: 'inline-block' }}>
-                          👆 Now click an inventory item on the right →
-                        </div>
-                      )}
-                      
-                      {/* Top Row: Checkbox, Image, Info, Payout */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-                        <div onClick={e => e.stopPropagation()}>
-                          <input 
-                            type="checkbox"
-                            checked={selectedPending.has(s.id)}
-                            onChange={(e) => {
-                              const newSet = new Set(selectedPending);
-                              if (e.target.checked) newSet.add(s.id);
-                              else newSet.delete(s.id);
-                              setSelectedPending(newSet);
-                            }}
-                            style={{ width: 18, height: 18, cursor: 'pointer', accentColor: c.green }}
-                          />
-                        </div>
-                        <div style={{ width: 60, height: 60, borderRadius: 8, overflow: 'hidden', background: '#0a0a0a', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: selectedPendingItem === s.id ? `2px solid ${c.green}` : '2px solid transparent' }}>
-                          {s.image ? (
-                            <img src={s.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none'; }} />
-                          ) : (
-                            <span style={{ fontSize: 24, opacity: 0.3 }}>📦</span>
-                          )}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 3 }}>{s.name}</div>
-                          <div style={{ fontSize: 12, color: c.textMuted, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <span>{s.saleDate}</span>
-                            <span style={{ color: s.platform === 'eBay' ? '#3b82f6' : '#00c165', fontWeight: 600 }}>{s.platform || 'eBay'}</span>
-                            {s.size && <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>Size {s.size}</span>}
-                          </div>
-                        </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <div style={{ fontSize: 11, color: c.textMuted, marginBottom: 2 }}>PAYOUT</div>
-                          <div style={{ fontSize: 20, fontWeight: 700, color: c.green }}>{fmt(s.payout)}</div>
-                        </div>
-                        <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
-                          <button 
-                            onClick={() => {
-                              setPendingCosts(prev => prev.filter(x => x.id !== s.id));
-                              setSelectedPending(prev => { const n = new Set(prev); n.delete(s.id); return n; });
-                            }} 
-                            style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16, width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                          >×</button>
-                        </div>
+                      <div style={{ display: 'flex', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
+                        <input 
+                          type="checkbox"
+                          checked={selectedPending.has(s.id)}
+                          onChange={(e) => {
+                            const newSet = new Set(selectedPending);
+                            if (e.target.checked) newSet.add(s.id);
+                            else newSet.delete(s.id);
+                            setSelectedPending(newSet);
+                          }}
+                          style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }}
+                        />
                       </div>
-                      
-                      {/* Bottom Row: Cost Input + Live Profit */}
-                      <div onClick={e => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 30 }}>
-                        <span style={{ fontSize: 13, color: c.textMuted, fontWeight: 500 }}>Cost:</span>
+                      <div style={{ width: 44, height: 44, borderRadius: 6, overflow: 'hidden', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {s.image ? (
+                          <img src={s.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none'; }} />
+                        ) : (
+                          <span style={{ fontSize: 18, opacity: 0.3 }}>📦</span>
+                        )}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
+                        <div style={{ fontSize: 10, color: c.textMuted }}>{s.saleDate} <span style={{ color: s.platform === 'eBay' ? '#3b82f6' : '#00c165', fontWeight: 600 }}>• {s.platform || 'eBay'}</span></div>
+                      </div>
+                      <div style={{ textAlign: 'center', fontWeight: 600, fontSize: 12 }}>{s.size || '-'}</div>
+                      <div style={{ textAlign: 'right', fontWeight: 700, color: c.green, fontSize: 13 }}>{fmt(s.payout)}</div>
+                      <div onClick={e => e.stopPropagation()}>
                         <input 
                           type="number" 
-                          placeholder="Enter cost..."
+                          placeholder="$"
                           id={`cost-${s.id}`}
-                          data-idx={idx}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' && e.target.value) {
                               confirmSaleWithCost(s.id, e.target.value, 'StockX Standard');
                               e.target.value = '';
-                              // Jump to next row
-                              const nextIdx = idx + 1;
-                              if (nextIdx < arr.length) {
-                                const nextInput = document.getElementById(`cost-${arr[nextIdx].id}`);
-                                if (nextInput) nextInput.focus();
-                              }
-                            } else if (e.key === 'Tab' && !e.shiftKey) {
-                              e.preventDefault();
                               const nextIdx = idx + 1;
                               if (nextIdx < arr.length) {
                                 const nextInput = document.getElementById(`cost-${arr[nextIdx].id}`);
@@ -2437,51 +2423,24 @@ Let me know if you need anything else.`;
                               }
                             }
                           }}
-                          onInput={(e) => {
-                            const profitEl = document.getElementById(`profit-${s.id}`);
-                            if (profitEl && e.target.value) {
-                              const cost = parseFloat(e.target.value) || 0;
-                              const profit = (s.payout || 0) - cost;
-                              profitEl.textContent = fmt(profit);
-                              profitEl.style.color = profit >= 0 ? c.green : c.red;
-                              profitEl.parentElement.style.opacity = '1';
-                            } else if (profitEl) {
-                              profitEl.parentElement.style.opacity = '0.4';
-                              profitEl.textContent = '--';
-                            }
-                          }}
-                          style={{ 
-                            width: 140, 
-                            padding: '10px 14px', 
-                            background: 'rgba(255,255,255,0.05)', 
-                            border: `2px solid ${c.border}`, 
-                            borderRadius: 8, 
-                            color: c.text, 
-                            fontSize: 15,
-                            fontWeight: 600,
-                            transition: 'border-color 0.15s'
-                          }}
-                          onFocus={(e) => { e.target.style.borderColor = c.green; }}
-                          onBlur={(e) => { e.target.style.borderColor = c.border; }}
+                          style={{ width: '100%', padding: '6px 8px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 4, color: c.text, fontSize: 12, textAlign: 'center' }} 
                         />
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, opacity: 0.4, transition: 'opacity 0.15s' }}>
-                          <span style={{ fontSize: 18, color: c.textMuted }}>→</span>
-                          <span style={{ fontSize: 13, color: c.textMuted }}>Profit:</span>
-                          <span id={`profit-${s.id}`} style={{ fontSize: 18, fontWeight: 700, color: c.green, minWidth: 70 }}>--</span>
-                        </div>
-                        <div style={{ marginLeft: 'auto', fontSize: 11, color: c.textMuted, opacity: 0.6 }}>
-                          Enter ↵
-                        </div>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
+                        <button 
+                          onClick={() => {
+                            setPendingCosts(prev => prev.filter(x => x.id !== s.id));
+                            setSelectedPending(prev => { const n = new Set(prev); n.delete(s.id); return n; });
+                          }} 
+                          style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16, padding: 2 }}
+                        >×</button>
                       </div>
                     </div>
                   ))}
                 </div>
-                <div style={{ padding: '12px 16px', background: 'rgba(255,255,255,0.02)', borderTop: `1px solid ${c.border}`, fontSize: 12, color: c.textMuted, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', gap: 16 }}>
-                    <span>⌨️ <strong style={{ color: c.text }}>Manual:</strong> Type cost → Enter</span>
-                    <span>🖱️ <strong style={{ color: c.text }}>Inventory:</strong> Click row → Click item on right</span>
-                  </div>
-                  <span style={{ fontWeight: 600 }}>{pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} items</span>
+                <div style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderTop: `1px solid ${c.border}`, fontSize: 11, color: c.textMuted, display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{selectedPendingItem ? '👆 Click inventory item on right →' : 'Click row to match with inventory'}</span>
+                  <span>{pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} items</span>
                 </div>
               </div>
             </div>
@@ -2828,21 +2787,19 @@ Let me know if you need anything else.`;
           ))}
             </div>
 
-            {/* RIGHT SIDE - Inventory Lookup (ALWAYS VISIBLE) */}
-            <div style={{ background: c.card, border: selectedPendingItem ? `2px solid ${c.green}` : `1px solid ${c.border}`, borderRadius: 16, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 20, transition: 'border-color 0.2s' }}>
-              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${c.border}`, background: selectedPendingItem ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.02)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: 700, fontSize: 14, color: selectedPendingItem ? c.green : c.text }}>
-                  {selectedPendingItem ? '👆 SELECT ITEM' : '📦 YOUR INVENTORY'}
-                </span>
+            {/* RIGHT SIDE - Inventory Lookup */}
+            <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 20 }}>
+              <div style={{ padding: '12px', borderBottom: `1px solid ${c.border}`, background: selectedPendingItem ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.02)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 700, fontSize: 13 }}>{selectedPendingItem ? '👆 Select Item' : '📦 Inventory'}</span>
                 {selectedInvLookup.size > 0 && (
                   <button 
                     onClick={() => {
-                      if (confirm(`Mark ${selectedInvLookup.size} item${selectedInvLookup.size > 1 ? 's' : ''} as sold?`)) {
+                      if (confirm(`Mark ${selectedInvLookup.size} sold?`)) {
                         setPurchases(prev => prev.map(p => selectedInvLookup.has(p.id) ? { ...p, sold: true } : p));
                         setSelectedInvLookup(new Set());
                       }
                     }}
-                    style={{ padding: '6px 12px', background: 'rgba(251,191,36,0.2)', border: '1px solid rgba(251,191,36,0.4)', borderRadius: 6, color: c.gold, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                    style={{ padding: '4px 8px', background: 'rgba(251,191,36,0.2)', border: 'none', borderRadius: 4, color: c.gold, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
                   >
                     Mark {selectedInvLookup.size} Sold
                   </button>
@@ -2860,8 +2817,8 @@ Let me know if you need anything else.`;
               </div>
 
               {selectedPendingItem && (
-                <div style={{ padding: '12px', background: 'rgba(16,185,129,0.15)', borderBottom: `1px solid ${c.border}`, fontSize: 12, color: c.green, fontWeight: 600, textAlign: 'center' }}>
-                  ✨ Click any item below to auto-fill its cost
+                <div style={{ padding: '8px 12px', background: 'rgba(16,185,129,0.15)', borderBottom: `1px solid ${c.border}`, fontSize: 11, color: c.green, fontWeight: 600 }}>
+                  Click item to use its cost
                 </div>
               )}
 
@@ -2928,12 +2885,10 @@ Let me know if you need anything else.`;
                       <div 
                         key={p.id}
                         style={{ 
-                          padding: '10px 12px', 
+                          padding: '8px 12px', 
                           borderBottom: `1px solid ${c.border}`,
-                          borderLeft: selectedPendingItem ? '3px solid transparent' : 'none',
                           cursor: selectedPendingItem ? 'pointer' : 'default',
-                          transition: 'all 0.15s',
-                          background: selectedInvLookup.has(p.id) ? 'rgba(251,191,36,0.1)' : selectedPendingItem ? 'rgba(16,185,129,0.03)' : 'transparent'
+                          background: selectedInvLookup.has(p.id) ? 'rgba(251,191,36,0.1)' : 'transparent'
                         }}
                         onClick={() => {
                           if (selectedPendingItem) {
@@ -2942,8 +2897,8 @@ Let me know if you need anything else.`;
                             setSelectedPendingItem(null);
                           }
                         }}
-                        onMouseEnter={e => { if (selectedPendingItem) { e.currentTarget.style.background = 'rgba(16,185,129,0.15)'; e.currentTarget.style.borderLeftColor = c.green; } }}
-                        onMouseLeave={e => { e.currentTarget.style.background = selectedInvLookup.has(p.id) ? 'rgba(251,191,36,0.1)' : selectedPendingItem ? 'rgba(16,185,129,0.03)' : 'transparent'; e.currentTarget.style.borderLeftColor = 'transparent'; }}
+                        onMouseEnter={e => { if (selectedPendingItem) e.currentTarget.style.background = 'rgba(16,185,129,0.1)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = selectedInvLookup.has(p.id) ? 'rgba(251,191,36,0.1)' : 'transparent'; }}
                       >
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                           {!selectedPendingItem && (
