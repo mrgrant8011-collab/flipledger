@@ -2337,11 +2337,11 @@ Let me know if you need anything else.`;
                 </div>
               )}
 
-              {/* Pending Sales - Compact Table */}
+              {/* Pending Sales Table */}
               <div style={{ border: `1px solid ${c.border}`, borderTop: selectedPending.size > 0 ? 'none' : `1px solid ${c.border}`, borderRadius: '0 0 12px 12px', overflow: 'hidden', background: c.card }}>
-                <div style={{ maxHeight: 500, overflowY: 'auto' }}>
+                <div style={{ maxHeight: 520, overflowY: 'auto' }}>
                   {/* Table Header */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '32px 50px 1fr 60px 75px 90px 32px', padding: '10px 12px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.03)', position: 'sticky', top: 0, gap: 10, alignItems: 'center', fontSize: 10, fontWeight: 600, color: c.textMuted }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '36px 56px 1fr 70px 85px 100px 36px', padding: '12px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.03)', position: 'sticky', top: 0, gap: 12, alignItems: 'center', fontSize: 11, fontWeight: 600, color: c.textMuted }}>
                     <div style={{ display: 'flex', justifyContent: 'center' }}>
                       <input 
                         type="checkbox"
@@ -2353,14 +2353,14 @@ Let me know if you need anything else.`;
                             setSelectedPending(new Set());
                           }
                         }}
-                        style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }}
+                        style={{ width: 18, height: 18, cursor: 'pointer', accentColor: c.green }}
                       />
                     </div>
                     <span></span>
-                    <span>ITEM</span>
-                    <span style={{ textAlign: 'center' }}>SIZE</span>
-                    <span style={{ textAlign: 'right' }}>PAYOUT</span>
-                    <span style={{ textAlign: 'center' }}>COST</span>
+                    <span>Item</span>
+                    <span style={{ textAlign: 'center' }}>Size</span>
+                    <span style={{ textAlign: 'right' }}>Payout</span>
+                    <span style={{ textAlign: 'center' }}>Cost</span>
                     <span></span>
                   </div>
 
@@ -2371,14 +2371,14 @@ Let me know if you need anything else.`;
                       onClick={() => setSelectedPendingItem(selectedPendingItem === s.id ? null : s.id)}
                       style={{ 
                         display: 'grid', 
-                        gridTemplateColumns: '32px 50px 1fr 60px 75px 90px 32px', 
-                        padding: '8px 12px', 
+                        gridTemplateColumns: '36px 56px 1fr 70px 85px 100px 36px', 
+                        padding: '14px 16px', 
                         borderBottom: `1px solid ${c.border}`,
                         borderLeft: selectedPendingItem === s.id ? `3px solid ${c.green}` : '3px solid transparent',
                         background: selectedPendingItem === s.id ? 'rgba(16,185,129,0.12)' : selectedPending.has(s.id) ? 'rgba(16,185,129,0.05)' : 'transparent',
                         cursor: 'pointer',
                         alignItems: 'center',
-                        gap: 10
+                        gap: 12
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
@@ -2391,22 +2391,22 @@ Let me know if you need anything else.`;
                             else newSet.delete(s.id);
                             setSelectedPending(newSet);
                           }}
-                          style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }}
+                          style={{ width: 18, height: 18, cursor: 'pointer', accentColor: c.green }}
                         />
                       </div>
-                      <div style={{ width: 44, height: 44, borderRadius: 6, overflow: 'hidden', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div style={{ width: 52, height: 52, borderRadius: 8, overflow: 'hidden', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {s.image ? (
                           <img src={s.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none'; }} />
                         ) : (
-                          <span style={{ fontSize: 18, opacity: 0.3 }}>📦</span>
+                          <span style={{ fontSize: 22, opacity: 0.3 }}>📦</span>
                         )}
                       </div>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
-                        <div style={{ fontSize: 10, color: c.textMuted }}>{s.saleDate} <span style={{ color: s.platform === 'eBay' ? '#3b82f6' : '#00c165', fontWeight: 600 }}>• {s.platform || 'eBay'}</span></div>
+                        <div style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 4 }}>{s.name}</div>
+                        <div style={{ fontSize: 12, color: c.textMuted }}>{s.saleDate} <span style={{ color: s.platform === 'eBay' ? '#3b82f6' : '#00c165', fontWeight: 600 }}>• {s.platform || 'eBay'}</span></div>
                       </div>
-                      <div style={{ textAlign: 'center', fontWeight: 600, fontSize: 12 }}>{s.size || '-'}</div>
-                      <div style={{ textAlign: 'right', fontWeight: 700, color: c.green, fontSize: 13 }}>{fmt(s.payout)}</div>
+                      <div style={{ textAlign: 'center', fontWeight: 700, fontSize: 14 }}>{s.size || '-'}</div>
+                      <div style={{ textAlign: 'right', fontWeight: 700, color: c.green, fontSize: 16 }}>{fmt(s.payout)}</div>
                       <div onClick={e => e.stopPropagation()}>
                         <input 
                           type="number" 
@@ -2423,7 +2423,7 @@ Let me know if you need anything else.`;
                               }
                             }
                           }}
-                          style={{ width: '100%', padding: '6px 8px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 4, color: c.text, fontSize: 12, textAlign: 'center' }} 
+                          style={{ width: '100%', padding: '10px 8px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: c.text, fontSize: 14, textAlign: 'center', fontWeight: 600 }} 
                         />
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
@@ -2432,15 +2432,15 @@ Let me know if you need anything else.`;
                             setPendingCosts(prev => prev.filter(x => x.id !== s.id));
                             setSelectedPending(prev => { const n = new Set(prev); n.delete(s.id); return n; });
                           }} 
-                          style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16, padding: 2 }}
+                          style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 20, padding: 4 }}
                         >×</button>
                       </div>
                     </div>
                   ))}
                 </div>
-                <div style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.02)', borderTop: `1px solid ${c.border}`, fontSize: 11, color: c.textMuted, display: 'flex', justifyContent: 'space-between' }}>
+                <div style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.02)', borderTop: `1px solid ${c.border}`, fontSize: 12, color: c.textMuted, display: 'flex', justifyContent: 'space-between' }}>
                   <span>{selectedPendingItem ? '👆 Click inventory item on right →' : 'Click row to match with inventory'}</span>
-                  <span>{pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} items</span>
+                  <span style={{ fontWeight: 600 }}>{pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} items</span>
                 </div>
               </div>
             </div>
