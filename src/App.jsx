@@ -2418,7 +2418,6 @@ function App() {
                     <div style={{ fontSize: 10, color: c.textMuted, marginTop: 10 }}>
                       Select year/month and sync. Up to 5 years of history available.
                     </div>
-                    </div>
                   </div>
                 </div>
               ) : (
