@@ -423,6 +423,70 @@ export default async function handler(req, res) {
       } catch (e) {}
     }
     
+    // METHOD 7: Browse API search by item title - find image from similar listings
+    // Build a map of itemId -> title for items still missing images
+    const titleMap = new Map();
+    allOrders.forEach(o => {
+      (o.lineItems || []).forEach(li => {
+        if (li.legacyItemId && li.title && !imageMap.has(li.legacyItemId)) {
+          // Clean up title for search - take first 50 chars, remove special chars
+          let searchTitle = li.title.substring(0, 50).replace(/[^\w\s]/g, ' ').trim();
+          if (searchTitle.length > 10) {
+            titleMap.set(li.legacyItemId, searchTitle);
+          }
+        }
+      });
+    });
+    
+    // Search for each missing item by title (limit to 20 to avoid timeout)
+    let searchCount = 0;
+    for (const [itemId, title] of titleMap.entries()) {
+      if (imageMap.has(itemId) || searchCount >= 20) continue;
+      searchCount++;
+      
+      try {
+        const searchRes = await fetch(
+          `https://api.ebay.com/buy/browse/v1/item_summary/search?q=${encodeURIComponent(title)}&limit=1`,
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
+            }
+          }
+        );
+        
+        if (searchRes.ok) {
+          const data = await searchRes.json();
+          if (data.itemSummaries && data.itemSummaries[0]) {
+            const img = data.itemSummaries[0].image?.imageUrl || 
+                       data.itemSummaries[0].thumbnailImages?.[0]?.imageUrl;
+            if (img) imageMap.set(itemId, img);
+          }
+        }
+      } catch (e) {}
+    }
+    
+    // METHOD 8: Finding API findItemsByKeywords - another search approach
+    const remaining7 = [...titleMap.entries()].filter(([id]) => !imageMap.has(id)).slice(0, 15);
+    for (const [itemId, title] of remaining7) {
+      try {
+        const findRes = await fetch(
+          `https://svcs.ebay.com/services/search/FindingService/v1?OPERATION-NAME=findItemsByKeywords&SERVICE-VERSION=1.0.0&SECURITY-APPNAME=${clientId}&RESPONSE-DATA-FORMAT=JSON&keywords=${encodeURIComponent(title)}&paginationInput.entriesPerPage=1`
+        );
+        
+        if (findRes.ok) {
+          const data = await findRes.json();
+          const items = data.findItemsByKeywordsResponse?.[0]?.searchResult?.[0]?.item;
+          if (items && items[0]) {
+            const img = items[0].galleryURL?.[0];
+            if (img && !img.includes('no-image')) {
+              imageMap.set(itemId, img);
+            }
+          }
+        }
+      } catch (e) {}
+    }
+    
     // 5. Build sales from orders
     const sales = [];
     for (const order of allOrders) {
