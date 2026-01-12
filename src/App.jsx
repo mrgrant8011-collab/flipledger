@@ -365,7 +365,7 @@ function App() {
           alert(`All ${data.sales.length} recent sales already imported.`);
         }
       } else {
-        alert('No recent sales found.');
+        alert('No recent completed sales found.');
       }
     } catch (error) {
       console.error('Failed to fetch StockX sales:', error);
