@@ -161,20 +161,38 @@ export default async function handler(req, res) {
       console.log('Finances NON_SALE_CHARGE API failed:', e.message);
     }
     
-    // 4. Fetch images - GetItem for each itemId (works for ended items the seller owned)
+    // 4. Fetch images - Multiple methods for maximum coverage
     const uniqueItemIds = [...new Set(
       allOrders.flatMap(o => (o.lineItems || []).map(li => li.legacyItemId).filter(Boolean))
     )];
     
     const imageMap = new Map();
+    const clientId = process.env.EBAY_CLIENT_ID;
     
-    // GetItem on each itemId - this works for seller's own items even if ended
-    // Process in parallel batches of 5 to speed up
-    const batchSize = 5;
-    for (let i = 0; i < uniqueItemIds.length; i += batchSize) {
-      const batch = uniqueItemIds.slice(i, i + batchSize);
+    // First, check if lineItems already have images embedded
+    for (const order of allOrders) {
+      for (const li of order.lineItems || []) {
+        const itemId = li.legacyItemId;
+        if (!itemId || imageMap.has(itemId)) continue;
+        
+        // Check all possible image locations in lineItem
+        const img = li.image?.imageUrl || li.imageUrl || li.pictureURL || 
+                   li.galleryURL || li.thumbnailImageUrl || li.mainImage?.imageUrl ||
+                   (li.images && li.images[0]?.imageUrl) ||
+                   (li.pictureDetails?.pictureURL && li.pictureDetails.pictureURL[0]);
+        if (img) imageMap.set(itemId, img);
+      }
+    }
+    
+    // METHOD 1: GetItem (Trading API) - works for seller's own ended items
+    const remaining0 = uniqueItemIds.filter(id => !imageMap.has(id));
+    const relistedMap = new Map(); // Track relisted item IDs
+    
+    for (let i = 0; i < remaining0.length; i += 10) {
+      const batch = remaining0.slice(i, i + 10);
       
       await Promise.all(batch.map(async (itemId) => {
+        if (imageMap.has(itemId)) return;
         try {
           const res = await fetch('https://api.ebay.com/ws/api.dll', {
             method: 'POST',
@@ -189,25 +207,220 @@ export default async function handler(req, res) {
 <GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
   <ItemID>${itemId}</ItemID>
   <DetailLevel>ReturnAll</DetailLevel>
-  <OutputSelector>PictureDetails</OutputSelector>
 </GetItemRequest>`
           });
           
           if (res.ok) {
             const xml = await res.text();
-            // Try PictureURL first, then GalleryURL
+            // Try multiple image locations
             const picMatch = xml.match(/<PictureURL>([^<]+)<\/PictureURL>/);
             const galMatch = xml.match(/<GalleryURL>([^<]+)<\/GalleryURL>/);
+            const varPicMatch = xml.match(/<VariationSpecificPictureSet>[\s\S]*?<PictureURL>([^<]+)<\/PictureURL>/);
+            
             if (picMatch?.[1]) {
               imageMap.set(itemId, picMatch[1]);
+            } else if (varPicMatch?.[1]) {
+              imageMap.set(itemId, varPicMatch[1]);
             } else if (galMatch?.[1]) {
               imageMap.set(itemId, galMatch[1]);
             }
+            
+            // Check for relisted item ID - we can try that later
+            const relistedMatch = xml.match(/<RelistedItemID>(\d+)<\/RelistedItemID>/);
+            if (relistedMatch?.[1] && !imageMap.has(itemId)) {
+              relistedMap.set(itemId, relistedMatch[1]);
+            }
           }
-        } catch (e) {
-          // Item may be deleted/unavailable
-        }
+        } catch (e) {}
       }));
+    }
+    
+    // Try to get images from relisted items
+    for (const [origId, relistedId] of relistedMap.entries()) {
+      if (imageMap.has(origId)) continue;
+      try {
+        const res = await fetch('https://api.ebay.com/ws/api.dll', {
+          method: 'POST',
+          headers: {
+            'X-EBAY-API-SITEID': '0',
+            'X-EBAY-API-COMPATIBILITY-LEVEL': '1225',
+            'X-EBAY-API-CALL-NAME': 'GetItem',
+            'X-EBAY-API-IAF-TOKEN': accessToken,
+            'Content-Type': 'text/xml'
+          },
+          body: `<?xml version="1.0" encoding="utf-8"?>
+<GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <ItemID>${relistedId}</ItemID>
+  <DetailLevel>ReturnAll</DetailLevel>
+</GetItemRequest>`
+        });
+        
+        if (res.ok) {
+          const xml = await res.text();
+          const picMatch = xml.match(/<PictureURL>([^<]+)<\/PictureURL>/);
+          const galMatch = xml.match(/<GalleryURL>([^<]+)<\/GalleryURL>/);
+          if (picMatch?.[1]) {
+            imageMap.set(origId, picMatch[1]);
+          } else if (galMatch?.[1]) {
+            imageMap.set(origId, galMatch[1]);
+          }
+        }
+      } catch (e) {}
+    }
+    
+    // METHOD 2: GetSellerTransactions - gets sold items with more detail (go back 6 months)
+    const remaining1 = uniqueItemIds.filter(id => !imageMap.has(id));
+    if (remaining1.length > 0) {
+      // Try multiple 30-day windows since API limits to 30 days max
+      const windows = [0, 30, 60, 90, 120, 150]; // Go back up to 180 days
+      
+      for (const daysBack of windows) {
+        if (remaining1.filter(id => !imageMap.has(id)).length === 0) break;
+        
+        try {
+          const endDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
+          const startDate = new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+          
+          const txRes = await fetch('https://api.ebay.com/ws/api.dll', {
+            method: 'POST',
+            headers: {
+              'X-EBAY-API-SITEID': '0',
+              'X-EBAY-API-COMPATIBILITY-LEVEL': '1225',
+              'X-EBAY-API-CALL-NAME': 'GetSellerTransactions',
+              'X-EBAY-API-IAF-TOKEN': accessToken,
+              'Content-Type': 'text/xml'
+            },
+            body: `<?xml version="1.0" encoding="utf-8"?>
+<GetSellerTransactionsRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <ModTimeFrom>${startDate.toISOString()}</ModTimeFrom>
+  <ModTimeTo>${endDate.toISOString()}</ModTimeTo>
+  <Pagination>
+    <EntriesPerPage>200</EntriesPerPage>
+    <PageNumber>1</PageNumber>
+  </Pagination>
+  <DetailLevel>ReturnAll</DetailLevel>
+</GetSellerTransactionsRequest>`
+          });
+          
+          if (txRes.ok) {
+            const xml = await txRes.text();
+            const txBlocks = xml.split('<Transaction>').slice(1);
+            for (const block of txBlocks) {
+              const itemIdMatch = block.match(/<ItemID>(\d+)<\/ItemID>/);
+              const picMatch = block.match(/<PictureURL>([^<]+)<\/PictureURL>/) ||
+                              block.match(/<GalleryURL>([^<]+)<\/GalleryURL>/);
+              if (itemIdMatch?.[1] && picMatch?.[1] && !imageMap.has(itemIdMatch[1])) {
+                imageMap.set(itemIdMatch[1], picMatch[1]);
+              }
+            }
+          }
+        } catch (e) {}
+      }
+    }
+    
+    // METHOD 3: Shopping API GetMultipleItems - public API, batch fetch up to 20
+    const remaining2 = uniqueItemIds.filter(id => !imageMap.has(id));
+    if (remaining2.length > 0) {
+      for (let i = 0; i < remaining2.length; i += 20) {
+        const batch = remaining2.slice(i, i + 20);
+        try {
+          const shopRes = await fetch(
+            `https://open.api.ebay.com/shopping?callname=GetMultipleItems&responseencoding=JSON&appid=${clientId}&siteid=0&version=967&ItemID=${batch.join(',')}&IncludeSelector=Details,Variations`
+          );
+          if (shopRes.ok) {
+            const data = await shopRes.json();
+            const items = Array.isArray(data.Item) ? data.Item : (data.Item ? [data.Item] : []);
+            for (const item of items) {
+              if (item.ItemID && !imageMap.has(item.ItemID)) {
+                let pic = (item.PictureURL && item.PictureURL[0]) || item.GalleryURL;
+                if (!pic && item.Variations?.Pictures?.VariationSpecificPictureSet) {
+                  const varSet = item.Variations.Pictures.VariationSpecificPictureSet;
+                  const sets = Array.isArray(varSet) ? varSet : [varSet];
+                  pic = sets[0]?.PictureURL?.[0];
+                }
+                if (pic) imageMap.set(item.ItemID, pic);
+              }
+            }
+          }
+        } catch (e) {}
+      }
+    }
+    
+    // METHOD 4: Browse API - for any still missing
+    const remaining3 = uniqueItemIds.filter(id => !imageMap.has(id));
+    for (let i = 0; i < remaining3.length; i += 10) {
+      const batch = remaining3.slice(i, i + 10);
+      await Promise.all(batch.map(async (itemId) => {
+        if (imageMap.has(itemId)) return;
+        try {
+          const res = await fetch(
+            `https://api.ebay.com/buy/browse/v1/item/get_item_by_legacy_id?legacy_item_id=${itemId}`,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
+              }
+            }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            const img = data.image?.imageUrl || data.primaryImage?.imageUrl || 
+                       (data.additionalImages && data.additionalImages[0]?.imageUrl);
+            if (img) imageMap.set(itemId, img);
+          }
+        } catch (e) {}
+      }));
+    }
+    
+    // METHOD 5: Shopping API GetSingleItem with all selectors
+    const remaining4 = uniqueItemIds.filter(id => !imageMap.has(id));
+    for (let i = 0; i < remaining4.length; i += 5) {
+      const batch = remaining4.slice(i, i + 5);
+      await Promise.all(batch.map(async (itemId) => {
+        if (imageMap.has(itemId)) return;
+        try {
+          const res = await fetch(
+            `https://open.api.ebay.com/shopping?callname=GetSingleItem&responseencoding=JSON&appid=${clientId}&siteid=0&version=967&ItemID=${itemId}&IncludeSelector=Details,ItemSpecifics,Variations`
+          );
+          if (res.ok) {
+            const data = await res.json();
+            if (data.Item) {
+              let pic = (data.Item.PictureURL && data.Item.PictureURL[0]) || data.Item.GalleryURL;
+              if (!pic && data.Item.Variations?.Pictures?.VariationSpecificPictureSet) {
+                const varSet = data.Item.Variations.Pictures.VariationSpecificPictureSet;
+                const sets = Array.isArray(varSet) ? varSet : [varSet];
+                pic = sets[0]?.PictureURL?.[0];
+              }
+              if (pic) imageMap.set(itemId, pic);
+            }
+          }
+        } catch (e) {}
+      }));
+    }
+    
+    // METHOD 6: Try Inventory API by SKU if available
+    const skuMap = new Map();
+    allOrders.forEach(o => {
+      (o.lineItems || []).forEach(li => {
+        if (li.sku && li.legacyItemId && !imageMap.has(li.legacyItemId)) {
+          skuMap.set(li.legacyItemId, li.sku);
+        }
+      });
+    });
+    
+    for (const [itemId, sku] of skuMap.entries()) {
+      if (imageMap.has(itemId)) continue;
+      try {
+        const res = await fetch(
+          `https://api.ebay.com/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,
+          { headers: { 'Authorization': `Bearer ${accessToken}` } }
+        );
+        if (res.ok) {
+          const data = await res.json();
+          const img = data.product?.imageUrls?.[0];
+          if (img) imageMap.set(itemId, img);
+        }
+      } catch (e) {}
     }
     
     // 5. Build sales from orders
@@ -263,7 +476,8 @@ export default async function handler(req, res) {
           adFee: adFee,
           cost: 0,
           profit: payout,
-          image: imageMap.get(itemId) || lineItem.image?.imageUrl || '',
+          image: imageMap.get(itemId) || lineItem.image?.imageUrl || lineItem.imageUrl || 
+                 lineItem.pictureURL || lineItem.galleryURL || lineItem.thumbnailImageUrl || '',
           source: 'api',
           note: note
         });
@@ -274,15 +488,7 @@ export default async function handler(req, res) {
       success: true, 
       count: sales.length,
       imagesFound: imageMap.size,
-      debug: {
-        uniqueItems: uniqueItemIds.length,
-        // Show what the fulfillment API actually returns
-        sampleLineItem: allOrders[0]?.lineItems?.[0] || null,
-        sampleOrder: allOrders[0] ? {
-          orderId: allOrders[0].orderId,
-          lineItemKeys: allOrders[0].lineItems?.[0] ? Object.keys(allOrders[0].lineItems[0]) : []
-        } : null
-      },
+      totalItems: uniqueItemIds.length,
       sales 
     });
     
