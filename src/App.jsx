@@ -2352,11 +2352,19 @@ Let me know if you need anything else.`;
                       style={{ 
                         padding: '12px 16px',
                         borderBottom: `1px solid ${c.border}`,
-                        background: selectedPendingItem === s.id ? 'rgba(16,185,129,0.1)' : selectedPending.has(s.id) ? 'rgba(16,185,129,0.05)' : 'transparent',
+                        borderLeft: selectedPendingItem === s.id ? `3px solid ${c.green}` : '3px solid transparent',
+                        background: selectedPendingItem === s.id ? 'rgba(16,185,129,0.15)' : selectedPending.has(s.id) ? 'rgba(16,185,129,0.05)' : 'transparent',
                         cursor: 'pointer',
-                        transition: 'background 0.1s'
+                        transition: 'all 0.15s ease'
                       }}
                     >
+                      {/* Selected indicator */}
+                      {selectedPendingItem === s.id && (
+                        <div style={{ marginBottom: 8, padding: '6px 10px', background: 'rgba(16,185,129,0.2)', borderRadius: 6, fontSize: 11, color: c.green, fontWeight: 600, display: 'inline-block' }}>
+                          👆 Now click an inventory item on the right →
+                        </div>
+                      )}
+                      
                       {/* Top Row: Checkbox, Image, Info, Payout */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
                         <div onClick={e => e.stopPropagation()}>
@@ -2372,7 +2380,7 @@ Let me know if you need anything else.`;
                             style={{ width: 18, height: 18, cursor: 'pointer', accentColor: c.green }}
                           />
                         </div>
-                        <div style={{ width: 60, height: 60, borderRadius: 8, overflow: 'hidden', background: '#0a0a0a', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <div style={{ width: 60, height: 60, borderRadius: 8, overflow: 'hidden', background: '#0a0a0a', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: selectedPendingItem === s.id ? `2px solid ${c.green}` : '2px solid transparent' }}>
                           {s.image ? (
                             <img src={s.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none'; }} />
                           ) : (
@@ -2381,7 +2389,7 @@ Let me know if you need anything else.`;
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 3 }}>{s.name}</div>
-                          <div style={{ fontSize: 12, color: c.textMuted, display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ fontSize: 12, color: c.textMuted, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                             <span>{s.saleDate}</span>
                             <span style={{ color: s.platform === 'eBay' ? '#3b82f6' : '#00c165', fontWeight: 600 }}>{s.platform || 'eBay'}</span>
                             {s.size && <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 8px', borderRadius: 4, fontSize: 11, fontWeight: 600 }}>Size {s.size}</span>}
@@ -2469,7 +2477,10 @@ Let me know if you need anything else.`;
                   ))}
                 </div>
                 <div style={{ padding: '12px 16px', background: 'rgba(255,255,255,0.02)', borderTop: `1px solid ${c.border}`, fontSize: 12, color: c.textMuted, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>💡 Type cost → see profit → Enter to save → auto-jump to next</span>
+                  <div style={{ display: 'flex', gap: 16 }}>
+                    <span>⌨️ <strong style={{ color: c.text }}>Manual:</strong> Type cost → Enter</span>
+                    <span>🖱️ <strong style={{ color: c.text }}>Inventory:</strong> Click row → Click item on right</span>
+                  </div>
                   <span style={{ fontWeight: 600 }}>{pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} items</span>
                 </div>
               </div>
@@ -2818,9 +2829,11 @@ Let me know if you need anything else.`;
             </div>
 
             {/* RIGHT SIDE - Inventory Lookup (ALWAYS VISIBLE) */}
-            <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 20 }}>
-              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: 700, fontSize: 14 }}>📦 YOUR INVENTORY</span>
+            <div style={{ background: c.card, border: selectedPendingItem ? `2px solid ${c.green}` : `1px solid ${c.border}`, borderRadius: 16, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 20, transition: 'border-color 0.2s' }}>
+              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${c.border}`, background: selectedPendingItem ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.02)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontWeight: 700, fontSize: 14, color: selectedPendingItem ? c.green : c.text }}>
+                  {selectedPendingItem ? '👆 SELECT ITEM' : '📦 YOUR INVENTORY'}
+                </span>
                 {selectedInvLookup.size > 0 && (
                   <button 
                     onClick={() => {
@@ -2847,8 +2860,8 @@ Let me know if you need anything else.`;
               </div>
 
               {selectedPendingItem && (
-                <div style={{ padding: '10px 12px', background: 'rgba(16,185,129,0.1)', borderBottom: `1px solid ${c.border}`, fontSize: 11, color: c.green, fontWeight: 600 }}>
-                  👆 Click an item below to use its cost
+                <div style={{ padding: '12px', background: 'rgba(16,185,129,0.15)', borderBottom: `1px solid ${c.border}`, fontSize: 12, color: c.green, fontWeight: 600, textAlign: 'center' }}>
+                  ✨ Click any item below to auto-fill its cost
                 </div>
               )}
 
@@ -2917,9 +2930,10 @@ Let me know if you need anything else.`;
                         style={{ 
                           padding: '10px 12px', 
                           borderBottom: `1px solid ${c.border}`,
+                          borderLeft: selectedPendingItem ? '3px solid transparent' : 'none',
                           cursor: selectedPendingItem ? 'pointer' : 'default',
-                          transition: 'background 0.15s',
-                          background: selectedInvLookup.has(p.id) ? 'rgba(251,191,36,0.1)' : 'transparent'
+                          transition: 'all 0.15s',
+                          background: selectedInvLookup.has(p.id) ? 'rgba(251,191,36,0.1)' : selectedPendingItem ? 'rgba(16,185,129,0.03)' : 'transparent'
                         }}
                         onClick={() => {
                           if (selectedPendingItem) {
@@ -2928,8 +2942,8 @@ Let me know if you need anything else.`;
                             setSelectedPendingItem(null);
                           }
                         }}
-                        onMouseEnter={e => { if (selectedPendingItem) e.currentTarget.style.background = 'rgba(16,185,129,0.1)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = selectedInvLookup.has(p.id) ? 'rgba(251,191,36,0.1)' : 'transparent'; }}
+                        onMouseEnter={e => { if (selectedPendingItem) { e.currentTarget.style.background = 'rgba(16,185,129,0.15)'; e.currentTarget.style.borderLeftColor = c.green; } }}
+                        onMouseLeave={e => { e.currentTarget.style.background = selectedInvLookup.has(p.id) ? 'rgba(251,191,36,0.1)' : selectedPendingItem ? 'rgba(16,185,129,0.03)' : 'transparent'; e.currentTarget.style.borderLeftColor = 'transparent'; }}
                       >
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                           {!selectedPendingItem && (
