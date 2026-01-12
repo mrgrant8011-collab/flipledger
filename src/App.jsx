@@ -335,28 +335,12 @@ function App() {
   useEffect(() => { safeSave('flipledger_settings', settings); }, [settings]);
   useEffect(() => { safeSave('flipledger_pending', pendingCosts); }, [pendingCosts]);
 
-  // Fetch StockX sales
+  // Fetch StockX sales - Recent only (up to 1,000 orders)
   const fetchStockXSales = async () => {
     if (!stockxToken) return;
     setStockxSyncing(true);
     try {
-      // Build date range based on selected year/month
-      const yr = parseInt(stockxApiFilter.year);
-      let startDate, endDate;
-      
-      if (stockxApiFilter.month === 'all') {
-        // Full year
-        startDate = `${yr}-01-01`;
-        endDate = `${yr}-12-31`;
-      } else {
-        // Specific month
-        const month = parseInt(stockxApiFilter.month);
-        const lastDay = new Date(yr, month, 0).getDate();
-        startDate = `${yr}-${stockxApiFilter.month}-01`;
-        endDate = `${yr}-${stockxApiFilter.month}-${lastDay}`;
-      }
-      
-      const response = await fetch(`/api/stockx-sales?startDate=${startDate}&endDate=${endDate}`, {
+      const response = await fetch(`/api/stockx-sales`, {
         headers: {
           'Authorization': `Bearer ${stockxToken}`
         }
@@ -365,43 +349,27 @@ function App() {
       console.log('StockX API Response:', data);
       
       if (data.sales && data.sales.length > 0) {
-        // Filter out duplicates - check pending (by id) AND confirmed sales (by orderId)
+        // Filter out duplicates
         const existingIds = new Set([
           ...pendingCosts.map(p => p.id),
-          ...sales.map(s => s.orderId || s.id) // orderId is the original order number
+          ...sales.map(s => s.orderId || s.id)
         ]);
         
         const newSales = data.sales.filter(s => !existingIds.has(s.id));
         
         if (newSales.length > 0) {
           setPendingCosts(prev => [...prev, ...newSales]);
-          const dateRange = stockxApiFilter.month === 'all' ? stockxApiFilter.year : `${stockxApiFilter.month}/${stockxApiFilter.year}`;
-          if (data.sales.length - newSales.length > 0) {
-            alert(`Synced ${newSales.length} NEW sales from ${dateRange}! (${data.sales.length - newSales.length} already existed)`);
-          } else {
-            alert(`Synced ${newSales.length} sales from ${dateRange}!`);
-          }
+          const withImages = newSales.filter(s => s.image).length;
+          alert(`✓ Synced ${newSales.length} sales! (${withImages} with images)${data.sales.length - newSales.length > 0 ? `\n${data.sales.length - newSales.length} already existed` : ''}`);
         } else {
-          alert(`All ${data.sales.length} sales from ${stockxApiFilter.year} already imported - nothing new to add.`);
+          alert(`All ${data.sales.length} recent sales already imported.`);
         }
       } else {
-        // Show debug info if available
-        let debugMsg = `No sales found on StockX for ${stockxApiFilter.year}`;
-        if (data.debug) {
-          console.log('StockX Debug:', data.debug);
-          debugMsg += `\n\nDebug: ${data.debug.message}`;
-          if (data.debug.responseKeys?.length > 0) {
-            debugMsg += `\nAPI returned: ${data.debug.responseKeys.join(', ')}`;
-          }
-          if (data.debug.rawSample) {
-            debugMsg += `\n\nRaw: ${data.debug.rawSample.substring(0, 200)}...`;
-          }
-        }
-        alert(debugMsg);
+        alert('No recent sales found.');
       }
     } catch (error) {
       console.error('Failed to fetch StockX sales:', error);
-      alert('Failed to sync StockX sales: ' + error.message);
+      alert('Failed to sync: ' + error.message);
     }
     setStockxSyncing(false);
   };
@@ -481,7 +449,7 @@ function App() {
   }, {});
 
   const syncPlatform = async (platform) => {
-    setGoatSyncing(true);
+    setEbaySyncing(true);
     if (platform === 'StockX' && stockxToken) {
       await fetchStockXSales();
     } else {
@@ -493,7 +461,7 @@ function App() {
       ];
       setPendingCosts(prev => [...prev, ...mockSales]);
     }
-    setGoatSyncing(false);
+    setEbaySyncing(false);
   };
 
   // Lookup product by SKU
@@ -2492,48 +2460,27 @@ Let me know if you need anything else.`;
                     <div style={{ fontSize: 11, color: c.textMuted }}>Download from StockX → Seller Tools → Historical Sales</div>
                   </label>
                   
-                  {/* API Sync Section */}
+                  {/* Quick Sync Section */}
                   <div style={{ marginTop: 20, padding: 16, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: `1px solid ${c.border}` }}>
                     <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                      🔄 StockX API Sync
-                      <span style={{ fontSize: 10, color: c.textMuted, fontWeight: 400 }}>Get images + exact payouts</span>
+                      🔄 Quick Sync
                     </div>
                     {stockxConnected ? (
                       <div>
-                        {/* Year/Month Filters */}
-                        <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
-                          <select 
-                            value={stockxApiFilter.year} 
-                            onChange={e => setStockxApiFilter({ ...stockxApiFilter, year: e.target.value })} 
-                            style={{ flex: 1, padding: 10, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 12 }}
-                          >
-                            {['2026', '2025', '2024', '2023', '2022', '2021'].map(y => <option key={y} value={y}>{y}</option>)}
-                          </select>
-                          <select 
-                            value={stockxApiFilter.month} 
-                            onChange={e => setStockxApiFilter({ ...stockxApiFilter, month: e.target.value })} 
-                            style={{ flex: 1, padding: 10, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 12 }}
-                          >
-                            <option value="all">All Months</option>
-                            {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => 
-                              <option key={m} value={String(i+1).padStart(2,'0')}>{m}</option>
-                            )}
-                          </select>
-                        </div>
                         <div style={{ display: 'flex', gap: 10 }}>
                           <button 
                             onClick={() => fetchStockXSales()} 
                             disabled={stockxSyncing} 
                             style={{ flex: 1, padding: '12px', background: '#00c165', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 13, cursor: stockxSyncing ? 'default' : 'pointer', opacity: stockxSyncing ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
                           >
-                            {stockxSyncing ? '🔄 Syncing...' : '🔄 Sync StockX Sales'}
+                            {stockxSyncing ? '🔄 Syncing...' : '🔄 Sync Recent Sales'}
                           </button>
                           <button onClick={disconnectStockX} style={{ padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 8, color: '#ef4444', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
                             Disconnect
                           </button>
                         </div>
                         <div style={{ marginTop: 8, fontSize: 11, color: c.textMuted }}>
-                          Select year/month and sync. Up to 5 years of history available.
+                          Adds new sales since last sync. Up to 1,000 orders with images.
                         </div>
                       </div>
                     ) : (
@@ -2544,6 +2491,15 @@ Let me know if you need anything else.`;
                         Connect StockX
                       </button>
                     )}
+                  </div>
+                  
+                  {/* Summary */}
+                  <div style={{ marginTop: 16, padding: 14, background: 'rgba(255,255,255,0.02)', borderRadius: 10, border: `1px solid ${c.border}` }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8, color: c.textMuted }}>Summary:</div>
+                    <div style={{ fontSize: 12, color: c.textMuted, lineHeight: 1.6 }}>
+                      <div><span style={{ color: '#00c165', fontWeight: 600 }}>CSV Import:</span> Any year, any month. Full history.</div>
+                      <div><span style={{ color: '#00c165', fontWeight: 600 }}>Quick Sync:</span> Recent sales only. For daily/weekly updates.</div>
+                    </div>
                   </div>
                 </div>
               ) : (
