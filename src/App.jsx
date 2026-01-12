@@ -2309,29 +2309,32 @@ Let me know if you need anything else.`;
                 </div>
               </div>
 
-              {/* Multi-Select Bar */}
+              {/* Multi-Select Bulk Action Bar */}
               {selectedPending.size > 0 && (
-                <div style={{ padding: '8px 12px', background: 'rgba(16,185,129,0.1)', borderLeft: `1px solid ${c.border}`, borderRight: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontWeight: 600, color: c.green, fontSize: 12 }}>{selectedPending.size} selected</span>
-                  <input 
-                    type="number" 
-                    placeholder="Cost"
-                    value={bulkCost}
-                    onChange={e => setBulkCost(e.target.value)}
-                    style={{ width: 70, padding: '5px 8px', background: 'rgba(255,255,255,0.08)', border: `1px solid ${c.green}`, borderRadius: 4, color: c.text, fontSize: 12, textAlign: 'center' }} 
-                  />
-                  <button 
-                    onClick={() => {
-                      if (!bulkCost) { alert('Enter cost'); return; }
-                      selectedPending.forEach(id => confirmSaleWithCost(id, bulkCost, 'StockX Standard'));
-                      setSelectedPending(new Set());
-                      setBulkCost('');
-                    }}
-                    style={{ padding: '5px 12px', background: c.green, border: 'none', borderRadius: 4, color: '#000', fontWeight: 600, fontSize: 11, cursor: 'pointer' }}
-                  >
-                    Apply
-                  </button>
-                  <button onClick={() => setSelectedPending(new Set())} style={{ padding: '5px 8px', background: 'transparent', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 11 }}>
+                <div style={{ padding: '14px 16px', background: 'rgba(16,185,129,0.15)', borderLeft: `1px solid ${c.green}`, borderRight: `1px solid ${c.green}`, display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <span style={{ fontWeight: 700, color: c.green, fontSize: 15 }}>{selectedPending.size} selected</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 14, color: c.textMuted }}>Cost each:</span>
+                    <input 
+                      type="number" 
+                      placeholder="$0"
+                      value={bulkCost}
+                      onChange={e => setBulkCost(e.target.value)}
+                      style={{ width: 100, padding: '10px 12px', background: 'rgba(255,255,255,0.1)', border: `2px solid ${c.green}`, borderRadius: 6, color: c.text, fontSize: 16, fontWeight: 700, textAlign: 'center' }} 
+                    />
+                    <button 
+                      onClick={() => {
+                        if (!bulkCost) { alert('Enter a cost first'); return; }
+                        selectedPending.forEach(id => confirmSaleWithCost(id, bulkCost, 'StockX Standard'));
+                        setSelectedPending(new Set());
+                        setBulkCost('');
+                      }}
+                      style={{ padding: '10px 24px', background: c.green, border: 'none', borderRadius: 6, color: '#000', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}
+                    >
+                      Apply to All
+                    </button>
+                  </div>
+                  <button onClick={() => setSelectedPending(new Set())} style={{ marginLeft: 'auto', padding: '8px 14px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: c.textMuted, cursor: 'pointer', fontSize: 13 }}>
                     Cancel
                   </button>
                 </div>
