@@ -406,8 +406,13 @@ function App() {
       if (data.sales && data.sales.length > 0) {
         // Generate image URLs from product names
         const salesWithImages = data.sales.map(s => {
-          // Create slug - keep capitals, just replace spaces with hyphens
-          const slug = (s.name || '')
+          // Add "Air" prefix for Jordan products if not already there
+          let nameForSlug = s.name || '';
+          if (/^Jordan\s/i.test(nameForSlug) && !/^Air\s+Jordan/i.test(nameForSlug)) {
+            nameForSlug = 'Air ' + nameForSlug;
+          }
+          
+          const slug = nameForSlug
             .replace(/\(Women's\)/gi, 'W')
             .replace(/\(Men's\)/gi, '')
             .replace(/\(GS\)/gi, 'GS')
@@ -1004,10 +1009,16 @@ function App() {
       const orderNum = row['Order Number'] || row['Order Id'] || row['Order #'] || '';
       const salePrice = parseFloat((row['Price'] || row['Sale Price'] || row['Order Total'] || '0').replace(/[$,]/g, '')) || 0;
       const payout = parseFloat((row['Final Payout Amount'] || row['Payout'] || row['Total Payout'] || '0').replace(/[$,]/g, '')) || 0;
-      const productName = row['Item'] || row['Product Name'] || 'Unknown Item';
+      let productName = row['Item'] || row['Product Name'] || 'Unknown Item';
       
-      // Generate image URL from product name (same as API sync)
-      const slug = productName
+      // Generate image URL from product name
+      // Add "Air" prefix for Jordan products if not already there
+      let nameForSlug = productName;
+      if (/^Jordan\s/i.test(nameForSlug) && !/^Air\s+Jordan/i.test(nameForSlug)) {
+        nameForSlug = 'Air ' + nameForSlug;
+      }
+      
+      const slug = nameForSlug
         .replace(/\(Women's\)/gi, 'W')
         .replace(/\(Men's\)/gi, '')
         .replace(/\(GS\)/gi, 'GS')
