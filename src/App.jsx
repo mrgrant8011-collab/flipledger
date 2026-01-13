@@ -1900,27 +1900,130 @@ function App() {
         />}
 
         {/* EXPENSES */}
-        {page === 'expenses' && <div style={cardStyle}>
-          <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>Total: <span style={{ color: c.red, fontWeight: 700 }}>{fmt(totalExp)}</span></span>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => exportCSV(filteredExpenses, 'expenses.csv', ['date','category','description','amount'])} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
-              <button onClick={() => { setFormData({}); setModal('expense'); }} style={{ padding: '8px 16px', ...btnPrimary, fontSize: 12 }}>+ Add Expense</button>
+        {page === 'expenses' && (() => {
+          // Category icons
+          const categoryIcons = {
+            'Shipping': '📦',
+            'Packaging & Supplies': '🛍️',
+            'Labels & Printing': '🏷️',
+            'Storage Unit': '🏠',
+            'Software & Subscriptions': '💻',
+            'Authentication Fees': '✅',
+            'Office Supplies': '📎',
+            'Travel & Meals': '🚗',
+            'Other': '📋'
+          };
+          
+          // Filter expenses
+          const expenseSearch = (formData.expenseSearch || '').toLowerCase().trim();
+          const expenseCatFilter = formData.expenseCatFilter || 'all';
+          
+          const filteredExp = filteredExpenses.filter(e => {
+            if (expenseSearch) {
+              const inCat = e.category?.toLowerCase().includes(expenseSearch);
+              const inDesc = e.description?.toLowerCase().includes(expenseSearch);
+              if (!inCat && !inDesc) return false;
+            }
+            if (expenseCatFilter !== 'all' && e.category !== expenseCatFilter) return false;
+            return true;
+          });
+          
+          // Monthly breakdown
+          const monthlyExpenses = {};
+          filteredExpenses.forEach(e => {
+            if (e.date) {
+              const month = e.date.substring(0, 7);
+              monthlyExpenses[month] = (monthlyExpenses[month] || 0) + (e.amount || 0);
+            }
+          });
+          const monthlyData = Object.entries(monthlyExpenses).sort((a, b) => a[0].localeCompare(b[0]));
+          
+          return <div style={{ maxWidth: 900 }}>
+          {/* STATS */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 20 }}>
+            <div style={{ ...cardStyle, padding: 16 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL EXPENSES</span>
+              <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: c.red }}>{fmt(totalExp)}</p>
+            </div>
+            <div style={{ ...cardStyle, padding: 16 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>THIS MONTH</span>
+              <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: c.gold }}>
+                {fmt(filteredExpenses.filter(e => e.date && e.date.startsWith(new Date().toISOString().substring(0, 7))).reduce((s, e) => s + (e.amount || 0), 0))}
+              </p>
+            </div>
+            <div style={{ ...cardStyle, padding: 16 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>ENTRIES</span>
+              <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: '#fff' }}>{filteredExpenses.length}</p>
             </div>
           </div>
-          {filteredExpenses.length ? filteredExpenses.map(e => (
-            <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 20px', borderBottom: `1px solid ${c.border}` }}>
-              <div>
-                <div style={{ fontWeight: 600 }}>{e.category}</div>
-                <div style={{ fontSize: 12, color: c.textMuted }}>{e.date} • {e.description || '-'}</div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ color: c.red, fontWeight: 700 }}>{fmt(e.amount)}</span>
-                <button onClick={() => setExpenses(expenses.filter(x => x.id !== e.id))} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 18 }}>×</button>
+          
+          {/* Monthly Chart */}
+          {monthlyData.length > 0 && (
+            <div style={{ ...cardStyle, padding: 20, marginBottom: 20 }}>
+              <h3 style={{ margin: '0 0 16px', fontSize: 14, fontWeight: 700 }}>📊 Monthly Breakdown</h3>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 120 }}>
+                {monthlyData.slice(-6).map(([month, amount]) => {
+                  const maxAmount = Math.max(...monthlyData.map(d => d[1]));
+                  const height = maxAmount > 0 ? (amount / maxAmount) * 100 : 0;
+                  return (
+                    <div key={month} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                      <span style={{ fontSize: 10, color: c.textMuted }}>{fmt(amount)}</span>
+                      <div style={{ width: '100%', height: height + '%', minHeight: 4, background: `linear-gradient(180deg, ${c.red} 0%, rgba(239,68,68,0.3) 100%)`, borderRadius: 4 }} />
+                      <span style={{ fontSize: 9, color: c.textMuted }}>{month.substring(5)}/{month.substring(2, 4)}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💳</div><p style={{ color: c.textMuted }}>No expenses</p></div>}
-        </div>}
+          )}
+          
+          {/* SEARCH & FILTER */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+            <input 
+              type="text" 
+              placeholder="🔍 Search expenses..." 
+              value={formData.expenseSearch || ''} 
+              onChange={e => setFormData({ ...formData, expenseSearch: e.target.value })}
+              style={{ flex: 1, minWidth: 200, padding: 14, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 14 }} 
+            />
+            <select value={formData.expenseCatFilter || 'all'} onChange={e => setFormData({ ...formData, expenseCatFilter: e.target.value })} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13, cursor: 'pointer' }}>
+              <option value="all">All Categories</option>
+              {expenseCategories.map(cat => <option key={cat} value={cat}>{categoryIcons[cat]} {cat}</option>)}
+            </select>
+            <button onClick={() => { setFormData({}); setModal('expense'); }} style={{ padding: '14px 24px', ...btnPrimary, fontSize: 13 }}>+ Add Expense</button>
+          </div>
+          
+          {/* EXPENSES TABLE */}
+          <div style={cardStyle}>
+            <div style={{ padding: '14px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 13, color: c.textMuted }}>
+                {filteredExp.length} expense{filteredExp.length !== 1 ? 's' : ''} 
+                {expenseCatFilter !== 'all' && ` in ${expenseCatFilter}`}
+              </span>
+              <button onClick={() => exportCSV(filteredExp, 'expenses.csv', ['date','category','description','amount'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
+            </div>
+            
+            {filteredExp.length ? filteredExp.map(e => (
+              <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: `1px solid ${c.border}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(239,68,68,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
+                    {categoryIcons[e.category] || '📋'}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>{e.category}</div>
+                    <div style={{ fontSize: 12, color: c.textMuted }}>{e.date} • {e.description || 'No description'}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  <span style={{ color: c.red, fontWeight: 700, fontSize: 16 }}>{fmt(e.amount)}</span>
+                  <button onClick={() => { setFormData({ editExpenseId: e.id, category: e.category, amount: e.amount, description: e.description, date: e.date }); setModal('editExpense'); }} style={{ background: 'none', border: 'none', color: c.green, cursor: 'pointer', fontSize: 14 }}>✏️</button>
+                  <button onClick={() => setExpenses(expenses.filter(x => x.id !== e.id))} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 18 }}>×</button>
+                </div>
+              </div>
+            )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💳</div><p style={{ color: c.textMuted }}>{expenseSearch || expenseCatFilter !== 'all' ? 'No matching expenses' : 'No expenses yet'}</p></div>}
+          </div>
+        </div>;
+        })()}
 
         {/* MILEAGE */}
         {/* CPA REPORTS */}
@@ -3241,6 +3344,143 @@ Let me know if you need anything else.`;
               </div>
             )}
           </div>
+
+          {/* Data Backup & Restore */}
+          <div style={{ ...cardStyle, padding: 24, marginTop: 16 }}>
+            <h3 style={{ margin: '0 0 16px', fontSize: 18, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10 }}>
+              💾 Data Backup & Restore
+            </h3>
+            <p style={{ fontSize: 13, color: c.textMuted, marginBottom: 20, lineHeight: 1.6 }}>
+              Export all your data as a backup file, or restore from a previous backup.
+            </p>
+            
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              {/* Export Backup */}
+              <button 
+                onClick={() => {
+                  const backup = {
+                    version: '1.0',
+                    exportDate: new Date().toISOString(),
+                    purchases,
+                    sales,
+                    expenses,
+                    pendingCosts,
+                    settings
+                  };
+                  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `FlipLedger_Backup_${new Date().toISOString().split('T')[0]}.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                style={{ padding: '12px 24px', background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+              >
+                📥 Export Backup
+              </button>
+              
+              {/* Import Backup */}
+              <label style={{ padding: '12px 24px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 10, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+                📤 Restore Backup
+                <input 
+                  type="file" 
+                  accept=".json"
+                  onChange={(e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                      try {
+                        const backup = JSON.parse(event.target.result);
+                        
+                        if (!backup.purchases && !backup.sales && !backup.expenses) {
+                          alert('Invalid backup file format');
+                          return;
+                        }
+                        
+                        const confirmRestore = confirm(
+                          `Restore backup from ${backup.exportDate ? new Date(backup.exportDate).toLocaleDateString() : 'unknown date'}?\n\n` +
+                          `This will replace:\n` +
+                          `• ${backup.purchases?.length || 0} inventory items\n` +
+                          `• ${backup.sales?.length || 0} sales\n` +
+                          `• ${backup.expenses?.length || 0} expenses\n` +
+                          `• ${backup.pendingCosts?.length || 0} pending costs\n\n` +
+                          `This cannot be undone!`
+                        );
+                        
+                        if (confirmRestore) {
+                          if (backup.purchases) setPurchases(backup.purchases);
+                          if (backup.sales) setSales(backup.sales);
+                          if (backup.expenses) setExpenses(backup.expenses);
+                          if (backup.pendingCosts) setPendingCosts(backup.pendingCosts);
+                          if (backup.settings) setSettings({ ...settings, ...backup.settings });
+                          alert('✅ Backup restored successfully!');
+                        }
+                      } catch (err) {
+                        alert('Error reading backup file: ' + err.message);
+                      }
+                    };
+                    reader.readAsText(file);
+                    e.target.value = '';
+                  }}
+                  style={{ display: 'none' }} 
+                />
+              </label>
+            </div>
+            
+            {/* Stats */}
+            <div style={{ marginTop: 20, padding: 16, background: 'rgba(255,255,255,0.02)', borderRadius: 10, border: `1px solid ${c.border}` }}>
+              <div style={{ fontSize: 11, color: c.textMuted, marginBottom: 8 }}>CURRENT DATA</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, fontSize: 12 }}>
+                <div><span style={{ color: c.textMuted }}>Inventory:</span> <strong>{purchases.length}</strong></div>
+                <div><span style={{ color: c.textMuted }}>Sales:</span> <strong>{sales.length}</strong></div>
+                <div><span style={{ color: c.textMuted }}>Expenses:</span> <strong>{expenses.length}</strong></div>
+                <div><span style={{ color: c.textMuted }}>Pending:</span> <strong>{pendingCosts.length}</strong></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Danger Zone */}
+          <div style={{ ...cardStyle, padding: 24, marginTop: 16, border: '1px solid rgba(239,68,68,0.3)' }}>
+            <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700, color: c.red }}>
+              ⚠️ Danger Zone
+            </h3>
+            <p style={{ fontSize: 13, color: c.textMuted, marginBottom: 16 }}>
+              Permanently delete all your data. This cannot be undone.
+            </p>
+            <button 
+              onClick={() => {
+                const confirmReset = confirm(
+                  '⚠️ DELETE ALL DATA?\n\n' +
+                  'This will permanently delete:\n' +
+                  `• ${purchases.length} inventory items\n` +
+                  `• ${sales.length} sales\n` +
+                  `• ${expenses.length} expenses\n` +
+                  `• ${pendingCosts.length} pending costs\n\n` +
+                  'This CANNOT be undone!\n\n' +
+                  'Type "DELETE" in the next prompt to confirm.'
+                );
+                
+                if (confirmReset) {
+                  const typed = prompt('Type DELETE to confirm:');
+                  if (typed === 'DELETE') {
+                    setPurchases([]);
+                    setSales([]);
+                    setExpenses([]);
+                    setPendingCosts([]);
+                    localStorage.clear();
+                    alert('All data has been deleted.');
+                    window.location.reload();
+                  }
+                }
+              }}
+              style={{ padding: '10px 20px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, color: c.red, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+            >
+              🗑️ Delete All Data
+            </button>
+          </div>
         </div>}
       </main>
 
@@ -3249,7 +3489,7 @@ Let me know if you need anything else.`;
         <div style={{ background: 'linear-gradient(180deg, #111 0%, #0a0a0a 100%)', border: `1px solid ${c.border}`, borderRadius: 20, width: 420, maxHeight: '90vh', overflow: 'auto' }}>
           <div style={{ padding: '18px 22px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#111' }}>
             <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>
-              {modal === 'purchase' ? 'ADD PURCHASE' : modal === 'bulkAdd' ? 'BULK ADD ITEMS' : modal === 'sale' ? 'RECORD SALE' : modal === 'editSale' ? 'EDIT SALE' : modal === 'editInventory' ? 'EDIT INVENTORY' : modal === 'expense' ? 'ADD EXPENSE' : modal === 'storage' ? 'ADD STORAGE FEE' : 'LOG MILEAGE'}
+              {modal === 'purchase' ? 'ADD PURCHASE' : modal === 'bulkAdd' ? 'BULK ADD ITEMS' : modal === 'sale' ? 'RECORD SALE' : modal === 'editSale' ? 'EDIT SALE' : modal === 'editInventory' ? 'EDIT INVENTORY' : modal === 'expense' ? 'ADD EXPENSE' : modal === 'editExpense' ? 'EDIT EXPENSE' : modal === 'storage' ? 'ADD STORAGE FEE' : 'LOG MILEAGE'}
             </h3>
             <button onClick={() => setModal(null)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 8, width: 32, height: 32, color: '#fff', fontSize: 18, cursor: 'pointer' }}>×</button>
           </div>
@@ -3426,6 +3666,14 @@ Let me know if you need anything else.`;
               <input value={formData.description || ''} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Description" style={{ ...inputStyle, marginBottom: 12 }} />
               <input type="date" value={formData.date || ''} onChange={e => setFormData({ ...formData, date: e.target.value })} style={inputStyle} />
             </>}
+            {modal === 'editExpense' && <>
+              <select value={formData.category || 'Shipping'} onChange={e => setFormData({ ...formData, category: e.target.value })} style={{ ...inputStyle, marginBottom: 12, cursor: 'pointer' }}>
+                {expenseCategories.map(cat => <option key={cat}>{cat}</option>)}
+              </select>
+              <input type="number" value={formData.amount || ''} onChange={e => setFormData({ ...formData, amount: e.target.value })} placeholder="Amount *" style={{ ...inputStyle, marginBottom: 12 }} />
+              <input value={formData.description || ''} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Description" style={{ ...inputStyle, marginBottom: 12 }} />
+              <input type="date" value={formData.date || ''} onChange={e => setFormData({ ...formData, date: e.target.value })} style={inputStyle} />
+            </>}
             {modal === 'storage' && <>
               <input type="month" value={formData.month || '2025-01'} onChange={e => setFormData({ ...formData, month: e.target.value })} style={{ ...inputStyle, marginBottom: 12 }} />
               <input type="number" value={formData.amount || ''} onChange={e => setFormData({ ...formData, amount: e.target.value })} placeholder="Amount *" style={{ ...inputStyle, marginBottom: 12 }} />
@@ -3543,10 +3791,22 @@ Let me know if you need anything else.`;
                 setFormData({});
               }
               else if (modal === 'expense') addExpense(); 
+              else if (modal === 'editExpense') {
+                // Update existing expense
+                setExpenses(expenses.map(e => e.id === formData.editExpenseId ? {
+                  ...e,
+                  category: formData.category,
+                  amount: parseFloat(formData.amount) || 0,
+                  description: formData.description,
+                  date: formData.date
+                } : e));
+                setModal(null);
+                setFormData({});
+              }
               else if (modal === 'storage') addStorage(); 
               else if (modal === 'mileage') addMileage(); 
             }} style={{ flex: 1, padding: 14, ...btnPrimary, fontSize: 13 }}>
-              {modal === 'purchase' ? 'ADD ITEM' : modal === 'bulkAdd' ? `ADD ${(formData.bulkRows || []).filter(r => r.size && r.cost).length} ITEMS` : modal === 'sale' ? 'RECORD 💰' : modal === 'editSale' ? 'SAVE CHANGES' : modal === 'editInventory' ? 'SAVE CHANGES' : modal === 'mileage' ? 'LOG TRIP' : 'ADD'}
+              {modal === 'purchase' ? 'ADD ITEM' : modal === 'bulkAdd' ? `ADD ${(formData.bulkRows || []).filter(r => r.size && r.cost).length} ITEMS` : modal === 'sale' ? 'RECORD 💰' : modal === 'editSale' ? 'SAVE CHANGES' : modal === 'editInventory' ? 'SAVE CHANGES' : modal === 'editExpense' ? 'SAVE CHANGES' : modal === 'mileage' ? 'LOG TRIP' : 'ADD'}
             </button>
           </div>
         </div>
