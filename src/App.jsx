@@ -1,5 +1,6 @@
 import { useState, useEffect, Component } from 'react';
 import * as XLSX from 'xlsx';
+import Tesseract from 'tesseract.js';
 
 // Helper: Get icon based on product name
 const getProductIcon = (name) => {
@@ -323,6 +324,11 @@ function App() {
   const [selectedPendingItem, setSelectedPendingItem] = useState(null);
   const [showInvCsvImport, setShowInvCsvImport] = useState(false);
   const [selectedInvLookup, setSelectedInvLookup] = useState(new Set());
+  const [nikeReceipt, setNikeReceipt] = useState({ scanning: false, items: [], image: null, date: '', orderNum: '' });
+  const [savedReceipts, setSavedReceipts] = useState(() => {
+    const saved = localStorage.getItem('flipledger_receipts');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   const ITEMS_PER_PAGE = 50;
 
@@ -384,6 +390,7 @@ function App() {
   useEffect(() => { safeSave('flipledger_goals', goals); }, [goals]);
   useEffect(() => { safeSave('flipledger_settings', settings); }, [settings]);
   useEffect(() => { safeSave('flipledger_pending', pendingCosts); }, [pendingCosts]);
+  useEffect(() => { safeSave('flipledger_receipts', savedReceipts); }, [savedReceipts]);
 
   // Fetch StockX sales - Filter by selected year
   const fetchStockXSales = async () => {
@@ -603,6 +610,218 @@ function App() {
   const addExpense = () => { if (!formData.amount) return; setExpenses([...expenses, { id: Date.now(), category: formData.category || 'Shipping', amount: parseFloat(formData.amount), description: formData.description || '', date: formData.date || new Date().toISOString().split('T')[0] }]); setModal(null); setFormData({}); };
   const addStorage = () => { if (!formData.amount) return; setStorageFees([...storageFees, { id: Date.now(), month: formData.month || '2025-01', amount: parseFloat(formData.amount), notes: formData.notes || '' }]); setModal(null); setFormData({}); };
   const addMileage = () => { if (!formData.miles) return; setMileage([...mileage, { id: Date.now(), date: formData.date || new Date().toISOString().split('T')[0], miles: parseFloat(formData.miles), purpose: formData.purpose || 'Pickup/Dropoff', from: formData.from || '', to: formData.to || '' }]); setModal(null); setFormData({}); };
+
+  // Nike Receipt Scanner
+  const parseNikeReceipt = async (imageFile) => {
+    setNikeReceipt(prev => ({ ...prev, scanning: true, items: [], image: null }));
+    
+    try {
+      // Convert image to base64 for storage
+      const reader = new FileReader();
+      const imageBase64 = await new Promise((resolve) => {
+        reader.onload = (e) => resolve(e.target.result);
+        reader.readAsDataURL(imageFile);
+      });
+      
+      // Run OCR
+      const { data: { text } } = await Tesseract.recognize(imageFile, 'eng', {
+        logger: m => console.log(m)
+      });
+      
+      console.log('OCR Result:', text);
+      
+      // Parse the text
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+      
+      // Extract date and order number
+      let orderDate = '';
+      let orderNum = '';
+      
+      for (const line of lines) {
+        // Date patterns: "Jan 08, 2026", "Dec 22, 2025", etc.
+        const dateMatch = line.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}/i);
+        if (dateMatch) {
+          const parsed = new Date(dateMatch[0]);
+          if (!isNaN(parsed)) {
+            orderDate = parsed.toISOString().split('T')[0];
+          }
+        }
+        
+        // Order number: T1C0000000A32EPF, T110000009YDB7Y
+        const orderMatch = line.match(/T[A-Z0-9]{10,}/i);
+        if (orderMatch) {
+          orderNum = orderMatch[0];
+        }
+      }
+      
+      // Extract items - look for patterns with style codes
+      const items = [];
+      let currentItem = null;
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        // Style code pattern: XX0000-000 or XXXX00-000
+        const styleMatch = line.match(/Style\s+([A-Z]{2,4}\d{3,5}-\d{3})/i) || line.match(/([A-Z]{2,4}\d{3,5}-\d{3})/);
+        
+        // Price pattern: $XX.XX
+        const priceMatch = line.match(/\$(\d+\.\d{2})/);
+        
+        // Size pattern: Size X, Size XX, Size X.X
+        const sizeMatch = line.match(/Size\s+(\d+\.?\d*|[XSMLX]{1,3})/i);
+        
+        // Product name patterns - Nike products
+        const namePatterns = [
+          /Nike\s+[\w\s\-"']+/i,
+          /Air\s+Jordan\s+[\w\s\-"']+/i,
+          /Jordan\s+\d+[\w\s\-"']+/i,
+          /Air\s+Max\s+[\w\s\-"']+/i,
+          /Air\s+Force\s+[\w\s\-"']+/i,
+          /Dunk\s+[\w\s\-"']+/i
+        ];
+        
+        let nameMatch = null;
+        for (const pattern of namePatterns) {
+          const match = line.match(pattern);
+          if (match) {
+            nameMatch = match[0].trim();
+            break;
+          }
+        }
+        
+        // Start new item when we find a name
+        if (nameMatch && !currentItem) {
+          currentItem = { name: nameMatch, sku: '', size: '', price: 0 };
+        }
+        
+        // Add details to current item
+        if (currentItem) {
+          if (styleMatch && !currentItem.sku) {
+            currentItem.sku = styleMatch[1] || styleMatch[0];
+          }
+          if (sizeMatch && !currentItem.size) {
+            currentItem.size = sizeMatch[1];
+          }
+          if (priceMatch && !currentItem.price) {
+            // Take the first price as sale price (discounted)
+            currentItem.price = parseFloat(priceMatch[1]);
+          }
+          
+          // If we have all required fields, save and reset
+          if (currentItem.sku && currentItem.size && currentItem.price > 0) {
+            items.push({ ...currentItem });
+            currentItem = null;
+          }
+        }
+      }
+      
+      // Handle case where last item wasn't closed
+      if (currentItem && currentItem.sku && currentItem.price > 0) {
+        items.push(currentItem);
+      }
+      
+      // If no items found with the above parsing, try alternative method
+      if (items.length === 0) {
+        // Look for style codes and associate nearby prices/sizes
+        const styleMatches = text.match(/([A-Z]{2,4}\d{3,5}-\d{3})/g) || [];
+        const priceMatches = text.match(/\$(\d+\.\d{2})/g) || [];
+        const sizeMatches = text.match(/Size\s+(\d+\.?\d*|[XSMLX]{1,3})/gi) || [];
+        
+        // Get unique style codes
+        const uniqueStyles = [...new Set(styleMatches)];
+        
+        // Try to match with prices
+        for (let i = 0; i < uniqueStyles.length; i++) {
+          const sku = uniqueStyles[i];
+          // Find name near SKU
+          const skuIndex = text.indexOf(sku);
+          const nearbyText = text.substring(Math.max(0, skuIndex - 200), skuIndex);
+          
+          let name = 'Nike Product';
+          for (const pattern of [/Nike\s+[\w\s\-"']+/i, /Air\s+Jordan\s+[\w\s\-"']+/i, /Jordan\s+\d+[\w\s\-"']+/i, /Air\s+Max\s+[\w\s\-"']+/i]) {
+            const match = nearbyText.match(pattern);
+            if (match) {
+              name = match[0].trim();
+              break;
+            }
+          }
+          
+          // Find size near SKU
+          const sizeNearby = nearbyText.match(/Size\s+(\d+\.?\d*|[XSMLX]{1,3})/i);
+          const size = sizeNearby ? sizeNearby[1] : '';
+          
+          // Find price near SKU (get the lower one if two exist - sale price)
+          const pricesNearby = nearbyText.match(/\$(\d+\.\d{2})/g) || [];
+          const prices = pricesNearby.map(p => parseFloat(p.replace('$', '')));
+          const price = prices.length > 0 ? Math.min(...prices) : 0;
+          
+          if (sku && price > 0) {
+            items.push({ name, sku, size: size || '', price });
+          }
+        }
+      }
+      
+      // Calculate tax split if applicable
+      const subtotalMatch = text.match(/Subtotal[:\s]*\$?(\d+\.\d{2})/i);
+      const totalMatch = text.match(/(?:Order\s+)?Total[:\s]*\$?(\d+\.\d{2})/i);
+      
+      if (subtotalMatch && totalMatch) {
+        const subtotal = parseFloat(subtotalMatch[1]);
+        const total = parseFloat(totalMatch[1]);
+        const tax = total - subtotal;
+        
+        if (tax > 0 && subtotal > 0) {
+          // Distribute tax proportionally
+          const itemsTotal = items.reduce((sum, item) => sum + item.price, 0);
+          items.forEach(item => {
+            const taxShare = (item.price / itemsTotal) * tax;
+            item.price = Math.round((item.price + taxShare) * 100) / 100;
+          });
+        }
+      }
+      
+      setNikeReceipt({ 
+        scanning: false, 
+        items, 
+        image: imageBase64, 
+        date: orderDate, 
+        orderNum 
+      });
+      
+    } catch (error) {
+      console.error('Receipt scan error:', error);
+      setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '', error: 'Failed to scan receipt. Try a clearer image.' });
+    }
+  };
+  
+  // Add scanned items to inventory
+  const addNikeItemsToInventory = () => {
+    const newItems = nikeReceipt.items.map((item, i) => ({
+      id: Date.now() + i,
+      name: item.name,
+      sku: item.sku,
+      size: item.size,
+      cost: item.price,
+      date: nikeReceipt.date || new Date().toISOString().split('T')[0],
+      image: '',
+      receiptId: nikeReceipt.orderNum || Date.now().toString()
+    }));
+    
+    // Save receipt
+    if (nikeReceipt.image) {
+      setSavedReceipts(prev => [...prev, {
+        id: nikeReceipt.orderNum || Date.now().toString(),
+        image: nikeReceipt.image,
+        date: nikeReceipt.date,
+        items: nikeReceipt.items.length,
+        total: nikeReceipt.items.reduce((sum, item) => sum + item.price, 0),
+        createdAt: new Date().toISOString()
+      }]);
+    }
+    
+    setPurchases(prev => [...prev, ...newItems]);
+    setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '' });
+  };
 
   const exportCSV = (data, filename, headers) => {
     const csv = [headers.join(','), ...data.map(row => headers.map(h => `"${row[h] || ''}"`).join(','))].join('\n');
@@ -1671,6 +1890,132 @@ function App() {
           const getSortArrow = (key1) => currentSort === key1 ? '▲' : '▼';
           
           return <div>
+          
+          {/* NIKE RECEIPT SCANNER */}
+          <div style={{ marginBottom: 20 }}>
+            {/* Drop Zone */}
+            {!nikeReceipt.scanning && nikeReceipt.items.length === 0 && (
+              <div
+                onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#F97316'; e.currentTarget.style.background = 'rgba(249,115,22,0.1)'; }}
+                onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = c.border; e.currentTarget.style.background = 'rgba(249,115,22,0.05)'; }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.currentTarget.style.borderColor = c.border;
+                  e.currentTarget.style.background = 'rgba(249,115,22,0.05)';
+                  const file = e.dataTransfer.files[0];
+                  if (file && file.type.startsWith('image/')) {
+                    parseNikeReceipt(file);
+                  } else {
+                    alert('Please drop an image file');
+                  }
+                }}
+                style={{
+                  padding: '28px 20px',
+                  background: 'rgba(249,115,22,0.05)',
+                  border: `2px dashed ${c.border}`,
+                  borderRadius: 16,
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onClick={() => document.getElementById('nikeReceiptInput').click()}
+              >
+                <input
+                  id="nikeReceiptInput"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => e.target.files[0] && parseNikeReceipt(e.target.files[0])}
+                  style={{ display: 'none' }}
+                />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+                  <div style={{ width: 50, height: 50, background: 'linear-gradient(135deg, #F97316, #EA580C)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>📸</div>
+                  <div style={{ textAlign: 'left' }}>
+                    <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 800, color: '#fff' }}>Scan Nike Receipt</h3>
+                    <p style={{ margin: 0, fontSize: 13, color: c.textMuted }}>Drop screenshot from Nike App → Items auto-added</p>
+                  </div>
+                </div>
+                <p style={{ margin: '16px 0 0', fontSize: 11, color: c.textDim }}>Supports scroll screenshots with multiple items</p>
+              </div>
+            )}
+            
+            {/* Scanning State */}
+            {nikeReceipt.scanning && (
+              <div style={{ padding: 40, background: 'rgba(249,115,22,0.05)', border: `2px solid rgba(249,115,22,0.3)`, borderRadius: 16, textAlign: 'center' }}>
+                <div style={{ fontSize: 48, marginBottom: 16, animation: 'pulse 1s infinite' }}>🔍</div>
+                <h3 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700 }}>Scanning Receipt...</h3>
+                <p style={{ margin: 0, color: c.textMuted, fontSize: 14 }}>Extracting items, prices, and sizes</p>
+              </div>
+            )}
+            
+            {/* Error State */}
+            {nikeReceipt.error && (
+              <div style={{ padding: 24, background: 'rgba(239,68,68,0.1)', border: `2px solid rgba(239,68,68,0.3)`, borderRadius: 16, textAlign: 'center', marginBottom: 16 }}>
+                <div style={{ fontSize: 36, marginBottom: 12 }}>😕</div>
+                <p style={{ margin: '0 0 12px', color: c.red, fontWeight: 600 }}>{nikeReceipt.error}</p>
+                <button onClick={() => setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '' })} style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer' }}>Try Again</button>
+              </div>
+            )}
+            
+            {/* Scanned Items Review */}
+            {nikeReceipt.items.length > 0 && (
+              <div style={{ background: 'rgba(249,115,22,0.05)', border: `2px solid rgba(249,115,22,0.3)`, borderRadius: 16, overflow: 'hidden' }}>
+                <div style={{ padding: '16px 20px', background: 'rgba(249,115,22,0.1)', borderBottom: `1px solid rgba(249,115,22,0.2)`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#F97316' }}>📸 Found {nikeReceipt.items.length} Items</h3>
+                    {nikeReceipt.date && <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>{nikeReceipt.date} • {nikeReceipt.orderNum || 'Nike Order'}</p>}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '' })} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, color: c.textMuted, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                    <button onClick={addNikeItemsToInventory} style={{ padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>✓ Add All to Inventory</button>
+                  </div>
+                </div>
+                
+                <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                  {nikeReceipt.items.map((item, idx) => (
+                    <div key={idx} style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 16 }}>
+                      <div style={{ width: 36, height: 36, background: 'rgba(249,115,22,0.2)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: '#F97316' }}>{idx + 1}</div>
+                      <div style={{ flex: 1 }}>
+                        <h4 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{item.name}</h4>
+                        <div style={{ display: 'flex', gap: 12, fontSize: 12, color: c.textMuted }}>
+                          <span style={{ color: '#F97316', fontWeight: 600 }}>{item.sku}</span>
+                          {item.size && <span>Size {item.size}</span>}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: c.green }}>{fmt(item.price)}</div>
+                        <div style={{ fontSize: 10, color: c.textDim }}>Cost</div>
+                      </div>
+                      {/* Edit button for manual corrections */}
+                      <button
+                        onClick={() => {
+                          const newSku = prompt('Edit Style Code:', item.sku);
+                          if (newSku !== null) {
+                            const newSize = prompt('Edit Size:', item.size);
+                            if (newSize !== null) {
+                              const newPrice = prompt('Edit Price:', item.price);
+                              if (newPrice !== null) {
+                                setNikeReceipt(prev => ({
+                                  ...prev,
+                                  items: prev.items.map((it, i) => i === idx ? { ...it, sku: newSku, size: newSize, price: parseFloat(newPrice) || it.price } : it)
+                                }));
+                              }
+                            }
+                          }
+                        }}
+                        style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: c.textMuted, fontSize: 11, cursor: 'pointer' }}
+                      >✏️ Edit</button>
+                    </div>
+                  ))}
+                </div>
+                
+                <div style={{ padding: '16px 20px', background: 'rgba(0,0,0,0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 13, color: c.textMuted }}>Total Cost</span>
+                  <span style={{ fontSize: 20, fontWeight: 800, color: '#fff' }}>{fmt(nikeReceipt.items.reduce((sum, item) => sum + item.price, 0))}</span>
+                </div>
+              </div>
+            )}
+          </div>
+          
           {/* STATS BAR */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 20 }}>
             <div style={{ ...cardStyle, padding: 16 }}>
