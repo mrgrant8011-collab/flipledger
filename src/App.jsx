@@ -245,6 +245,7 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
 
 function App() {
   const [page, setPage] = useState('dashboard');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [modal, setModal] = useState(null);
   const [year, setYear] = useState('2025');
   const [stockxImport, setStockxImport] = useState({ show: false, data: [], year: 'all', month: 'all', headers: [] });
@@ -1470,10 +1471,25 @@ function App() {
   const btnSecondary = { background: c.card, border: `1px solid ${c.border}`, borderRadius: 10, color: c.text, fontSize: 13, fontWeight: 500, cursor: 'pointer' };
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: c.bg, fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif", color: c.text, WebkitFontSmoothing: 'antialiased' }}>
+    <div id="appWrapper" style={{ display: 'flex', minHeight: '100vh', background: c.bg, fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif", color: c.text, WebkitFontSmoothing: 'antialiased' }}>
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', background: `radial-gradient(ellipse at 0% 0%, rgba(201,169,98,0.04) 0%, transparent 50%), radial-gradient(ellipse at 100% 100%, rgba(52,211,153,0.03) 0%, transparent 50%)` }} />
+      
+      {/* Mobile Header */}
+      <div className="no-print mobile-only" style={{ display: 'none', position: 'fixed', top: 0, left: 0, right: 0, height: 60, background: '#0A0A0A', borderBottom: `1px solid ${c.border}`, zIndex: 100, padding: '0 16px', alignItems: 'center', justifyContent: 'space-between' }} id="mobileHeader">
+        <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 24, cursor: 'pointer', padding: 8 }}>☰</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 32, height: 32, background: `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)`, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, color: '#000' }}>FL</div>
+          <span style={{ fontWeight: 700, fontSize: 14, color: c.gold }}>FLIPLEDGER</span>
+        </div>
+        <select value={year} onChange={e => setYear(e.target.value)} style={{ padding: '8px 28px 8px 12px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 8, fontSize: 12, fontWeight: 600, color: c.text, cursor: 'pointer', appearance: 'none', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center' }}>
+          {[2026,2025,2024,2023].map(y => <option key={y} value={y}>{y}</option>)}
+        </select>
+      </div>
+      
+      {/* Mobile Menu Overlay */}
+      {mobileMenuOpen && <div className="mobile-only" onClick={() => setMobileMenuOpen(false)} style={{ display: 'none', position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 199 }} id="mobileOverlay" />}
 
-      <aside className="no-print" style={{ width: 240, minWidth: 240, background: '#0A0A0A', borderRight: `1px solid ${c.border}`, display: 'flex', flexDirection: 'column', zIndex: 10 }}>
+      <aside className={`no-print ${mobileMenuOpen ? 'open' : ''}`} id="sidebar" style={{ width: 240, minWidth: 240, background: '#0A0A0A', borderRight: `1px solid ${c.border}`, display: 'flex', flexDirection: 'column', zIndex: 200, position: 'relative' }}>
         <div style={{ padding: 24, borderBottom: `1px solid ${c.border}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{ width: 44, height: 44, background: `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18, color: '#000' }}>FL</div>
@@ -1486,7 +1502,7 @@ function App() {
 
         <nav style={{ flex: 1, padding: '16px 12px', overflowY: 'auto' }}>
           {navItems.map((item, i) => item.type === 'divider' ? <div key={i} style={{ height: 1, background: c.border, margin: '12px 8px' }} /> : (
-            <button key={item.id} className="nav-item" onClick={() => setPage(item.id)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '14px 16px', marginBottom: 4, border: 'none', borderRadius: 12, cursor: 'pointer', fontSize: 14, fontWeight: 500, background: page === item.id ? `rgba(201,169,98,0.1)` : 'transparent', color: page === item.id ? c.gold : c.textMuted, transition: 'all 0.2s' }}>
+            <button key={item.id} className="nav-item" onClick={() => { setPage(item.id); setMobileMenuOpen(false); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '14px 16px', marginBottom: 4, border: 'none', borderRadius: 12, cursor: 'pointer', fontSize: 14, fontWeight: 500, background: page === item.id ? `rgba(201,169,98,0.1)` : 'transparent', color: page === item.id ? c.gold : c.textMuted, transition: 'all 0.2s' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ fontSize: 16, opacity: page === item.id ? 1 : 0.6 }}>{item.icon}</span>
                 <span>{item.label}</span>
@@ -1503,12 +1519,12 @@ function App() {
         </div>
       </aside>
 
-      <main style={{ flex: 1, padding: '32px 48px', overflowY: 'auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32, paddingBottom: 24, borderBottom: `1px solid ${c.border}` }}>
+      <main id="mainContent" style={{ flex: 1, padding: '32px 48px', overflowY: 'auto' }}>
+        <div className="desktop-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32, paddingBottom: 24, borderBottom: `1px solid ${c.border}` }}>
           <div>
             <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: '0.5px' }}>{navItems.find(n => n.id === page)?.label || 'Dashboard'}</h1>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div className="no-mobile" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 20px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 100, fontSize: 12, fontWeight: 500, color: c.textMuted }}>
               <div style={{ width: 8, height: 8, background: c.green, borderRadius: '50%', animation: 'pulse 3s ease-in-out infinite' }} />
               Connected
@@ -4393,6 +4409,93 @@ Let me know if you need anything else.`;
         
         .hero-card:hover .breathe {
           animation-duration: 2s;
+        }
+        
+        /* MOBILE RESPONSIVE */
+        .mobile-only {
+          display: none !important;
+        }
+        
+        @media (max-width: 850px) {
+          html, body {
+            overflow-x: hidden !important;
+          }
+          
+          #appWrapper {
+            flex-direction: column !important;
+            overflow-x: hidden !important;
+          }
+          
+          .mobile-only {
+            display: flex !important;
+          }
+          
+          #mobileOverlay {
+            display: block !important;
+          }
+          
+          #sidebar {
+            position: fixed !important;
+            left: -280px !important;
+            top: 0 !important;
+            bottom: 0 !important;
+            width: 260px !important;
+            min-width: 260px !important;
+            max-width: 260px !important;
+            height: 100vh !important;
+            transition: left 0.3s ease !important;
+            z-index: 200 !important;
+            overflow: hidden !important;
+          }
+          
+          #sidebar.open {
+            left: 0 !important;
+          }
+          
+          #mainContent {
+            flex: 1 !important;
+            margin-top: 70px !important;
+            margin-left: 0 !important;
+            padding: 16px !important;
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+            overflow-x: hidden !important;
+          }
+          
+          .desktop-header {
+            margin-bottom: 16px !important;
+            padding-bottom: 12px !important;
+          }
+          
+          .desktop-header h1 {
+            font-size: 22px !important;
+          }
+          
+          .no-mobile {
+            display: none !important;
+          }
+          
+          /* Fix grid layouts on mobile */
+          .mobile-stack {
+            grid-template-columns: 1fr !important;
+          }
+          
+          /* Receipt scanner box */
+          #nikeReceiptInput + div {
+            flex-direction: column !important;
+          }
+        }
+        
+        @media (max-width: 500px) {
+          #mainContent {
+            padding: 12px !important;
+          }
+          
+          .desktop-header h1 {
+            font-size: 18px !important;
+          }
         }
       `}</style>
     </div>
