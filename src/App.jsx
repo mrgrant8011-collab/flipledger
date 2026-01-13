@@ -1,129 +1,44 @@
 import { useState, useEffect, Component } from 'react';
 import * as XLSX from 'xlsx';
 
-// Premium SVG Icons - Dashboard Style
-const SneakerSVG = ({ size = 22, color = "#10b981" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M4 17v-3c0-.8.4-1.5 1.5-1.8l6-2.2c1.2-.4 2-1.2 2.3-2.3l.7-2.2c.2-.7.7-1 1.5-1h3c1 0 1.5.6 1.5 1.5v10H4z"/>
-    <path d="M7 13h3"/>
-    <rect x="3" y="17" width="18" height="2" rx="1" fill={color} opacity="0.3"/>
-  </svg>
-);
-
-const HoodieSVG = ({ size = 22, color = "#a855f7" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M6 20V11c0-3.3 2.7-6 6-6s6 2.7 6 6v9"/>
-    <path d="M6 20h12"/>
-    <path d="M9 5c0 1.7 1.3 3 3 3s3-1.3 3-3"/>
-    <path d="M12 8v3"/>
-    <path d="M9 20v-5M15 20v-5" opacity="0.5"/>
-  </svg>
-);
-
-const ShirtSVG = ({ size = 22, color = "#3b82f6" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M8 4L4 7v3l3-1.5V19h10V8.5L20 10V7l-4-3"/>
-    <path d="M8 4c0 2.2 1.8 4 4 4s4-1.8 4-4"/>
-  </svg>
-);
-
-const HatSVG = ({ size = 22, color = "#f59e0b" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <ellipse cx="12" cy="16" rx="9" ry="3"/>
-    <path d="M5 16V11c0-3.9 3.1-7 7-7s7 3.1 7 7v5"/>
-  </svg>
-);
-
-const BagSVG = ({ size = 22, color = "#ec4899" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="8" width="18" height="13" rx="2"/>
-    <path d="M8 8V6c0-2.2 1.8-4 4-4s4 1.8 4 4v2"/>
-  </svg>
-);
-
-const ElectronicsSVG = ({ size = 22, color = "#06b6d4" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="6" y="4" width="12" height="16" rx="2"/>
-    <path d="M12 18h.01"/>
-  </svg>
-);
-
-const BoxSVG = ({ size = 22, color = "#888" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
-    <path d="m3.3 7 8.7 5 8.7-5"/>
-    <path d="M12 22V12"/>
-  </svg>
-);
-
-// Helper: Get icon TYPE based on product name
-const getProductIconType = (name) => {
-  if (!name) return 'box';
+// Helper: Get icon based on product name
+const getProductIcon = (name) => {
+  if (!name) return '📦';
   const n = name.toLowerCase();
   
   // Electronics
   if (n.includes('playstation') || n.includes('ps5') || n.includes('ps4') || 
-      n.includes('xbox') || n.includes('nintendo') || n.includes('switch') ||
-      n.includes('console') || n.includes('controller') || n.includes('iphone') || 
-      n.includes('phone') || n.includes('macbook') || n.includes('laptop') || 
-      n.includes('ipad') || n.includes('airpod') || n.includes('headphone') ||
-      n.includes('watch') || n.includes('camera')) return 'electronics';
+      n.includes('xbox') || n.includes('nintendo') || n.includes('console')) return '🎮';
+  if (n.includes('iphone') || n.includes('phone')) return '📱';
+  if (n.includes('macbook') || n.includes('laptop') || n.includes('ipad')) return '💻';
+  if (n.includes('airpod') || n.includes('headphone')) return '🎧';
   
   // Clothing
-  if (n.includes('hoodie') || n.includes('sweatshirt') || n.includes('crewneck') || 
-      n.includes('jacket') || n.includes('coat') || n.includes('pullover') ||
-      n.includes('zip') || n.includes('fleece') || n.includes('puffer')) return 'hoodie';
-  if (n.includes('tee') || n.includes('t-shirt') || n.includes('shirt') || 
-      n.includes('jersey') || n.includes('polo') || n.includes('tank')) return 'shirt';
-  if (n.includes('hat') || n.includes('cap') || n.includes('beanie') ||
-      n.includes('fitted') || n.includes('snapback')) return 'hat';
-  if (n.includes('bag') || n.includes('backpack') || n.includes('duffle') ||
-      n.includes('tote') || n.includes('messenger')) return 'bag';
+  if (n.includes('hoodie') || n.includes('sweatshirt') || n.includes('jacket') || 
+      n.includes('fleece') || n.includes('pullover') || n.includes('puffer')) return '🧥';
+  if (n.includes('tee') || n.includes('t-shirt') || n.includes('shirt') || n.includes('jersey')) return '👕';
+  if (n.includes('pants') || n.includes('jogger') || n.includes('jean')) return '👖';
+  if (n.includes('hat') || n.includes('cap') || n.includes('beanie')) return '🧢';
+  if (n.includes('bag') || n.includes('backpack')) return '👜';
   
-  // Default to sneaker
-  return 'sneaker';
+  // Default to shoe
+  return '👟';
 };
 
-// Icon styles matching dashboard
-const iconStyles = {
-  sneaker: { bg: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', shadow: '0 4px 15px rgba(16,185,129,0.4)' },
-  hoodie: { bg: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)', shadow: '0 4px 15px rgba(168,85,247,0.4)' },
-  shirt: { bg: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', shadow: '0 4px 15px rgba(59,130,246,0.4)' },
-  hat: { bg: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', shadow: '0 4px 15px rgba(245,158,11,0.4)' },
-  bag: { bg: 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)', shadow: '0 4px 15px rgba(236,72,153,0.4)' },
-  electronics: { bg: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', shadow: '0 4px 15px rgba(6,182,212,0.4)' },
-  box: { bg: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)', shadow: '0 4px 15px rgba(107,114,128,0.3)' }
-};
-
-// Render icon with dashboard style
+// Clean icon component with emoji
 const ProductIcon = ({ name, size = 44 }) => {
-  const type = getProductIconType(name);
-  const style = iconStyles[type];
-  
-  const renderIcon = () => {
-    switch(type) {
-      case 'sneaker': return <SneakerSVG size={size * 0.5} color="#fff" />;
-      case 'hoodie': return <HoodieSVG size={size * 0.5} color="#fff" />;
-      case 'shirt': return <ShirtSVG size={size * 0.5} color="#fff" />;
-      case 'hat': return <HatSVG size={size * 0.5} color="#fff" />;
-      case 'bag': return <BagSVG size={size * 0.5} color="#fff" />;
-      case 'electronics': return <ElectronicsSVG size={size * 0.5} color="#fff" />;
-      default: return <BoxSVG size={size * 0.5} color="#fff" />;
-    }
-  };
-  
   return (
     <div style={{
       width: size,
       height: size,
-      borderRadius: 10,
-      background: style.bg,
-      boxShadow: style.shadow,
+      borderRadius: 8,
+      background: '#151515',
       display: 'flex',
       alignItems: 'center',
-      justifyContent: 'center'
+      justifyContent: 'center',
+      fontSize: size * 0.45
     }}>
-      {renderIcon()}
+      {getProductIcon(name)}
     </div>
   );
 };
