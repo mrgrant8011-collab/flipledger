@@ -10,14 +10,13 @@ export default async function handler(req, res) {
     let pageNumber = 1;
     let hasMore = true;
     
-    // Fetch up to 10 pages (1,000 orders)
     while (hasMore && pageNumber <= 10) {
       const url = new URL('https://api.stockx.com/v2/selling/orders/history');
       url.searchParams.set('pageNumber', pageNumber.toString());
       url.searchParams.set('pageSize', '100');
       url.searchParams.set('orderStatus', 'COMPLETED');
       
-      console.log(`[StockX] Fetching page ${pageNumber} (COMPLETED only)`);
+      console.log(`[StockX] Fetching page ${pageNumber}`);
       
       const response = await fetch(url.toString(), {
         method: 'GET',
@@ -30,12 +29,9 @@ export default async function handler(req, res) {
       
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        console.log(`[StockX] API Error ${response.status}:`, JSON.stringify(err));
+        console.log(`[StockX] API Error:`, JSON.stringify(err));
         if (pageNumber === 1) {
-          return res.status(response.status).json({ 
-            error: err.message || `API Error ${response.status}`,
-            details: err
-          });
+          return res.status(response.status).json({ error: err.message || 'API Error' });
         }
         break;
       }
@@ -43,16 +39,17 @@ export default async function handler(req, res) {
       const data = await response.json();
       const orders = data.orders || [];
       
-      if (pageNumber === 1) {
-        console.log(`[StockX] Total COMPLETED orders: ${data.count}`);
+      // Log first order structure to see all available fields
+      if (pageNumber === 1 && orders.length > 0) {
+        console.log(`[StockX] Sample order keys:`, Object.keys(orders[0]));
+        console.log(`[StockX] Sample product:`, JSON.stringify(orders[0].product));
+        console.log(`[StockX] Total COMPLETED: ${data.count}`);
       }
       
       if (orders.length === 0) {
         hasMore = false;
       } else {
         allOrders = [...allOrders, ...orders];
-        console.log(`[StockX] Page ${pageNumber}: ${orders.length} orders (total: ${allOrders.length})`);
-        
         if (!data.hasNextPage || orders.length < 100) {
           hasMore = false;
         } else {
@@ -61,9 +58,8 @@ export default async function handler(req, res) {
       }
     }
     
-    console.log(`[StockX] Fetched ${allOrders.length} COMPLETED orders`);
+    console.log(`[StockX] Fetched ${allOrders.length} orders`);
     
-    // Transform orders
     const sales = allOrders.map(order => {
       const product = order.product || {};
       const variant = order.variant || {};
@@ -74,7 +70,20 @@ export default async function handler(req, res) {
       else if (order.inventoryType === 'DIRECT') platform = 'StockX Direct';
       
       const sku = product.styleId || '';
-      const image = sku ? `https://images.stockx.com/images/${sku}.jpg?fit=fill&bg=FFFFFF&w=300&h=214&fm=webp&auto=compress&q=90` : '';
+      
+      // Try to find image URL from various possible fields
+      let image = '';
+      if (product.image) {
+        image = product.image;
+      } else if (product.imageUrl) {
+        image = product.imageUrl;
+      } else if (product.media?.imageUrl) {
+        image = product.media.imageUrl;
+      } else if (product.media?.smallImageUrl) {
+        image = product.media.smallImageUrl;
+      } else if (product.thumbUrl) {
+        image = product.thumbUrl;
+      }
       
       return {
         id: order.orderNumber,
@@ -85,13 +94,12 @@ export default async function handler(req, res) {
         payout: parseFloat(payout.totalPayout) || 0,
         saleDate: (order.createdAt || '').split('T')[0],
         platform,
-        image
+        image,
+        productId: product.productId || ''
       };
     });
     
     const uniqueSales = [...new Map(sales.map(s => [s.id, s])).values()];
-    
-    console.log(`[StockX] Returning ${uniqueSales.length} sales`);
     
     res.status(200).json({ 
       sales: uniqueSales,

@@ -335,11 +335,13 @@ function App() {
   useEffect(() => { safeSave('flipledger_settings', settings); }, [settings]);
   useEffect(() => { safeSave('flipledger_pending', pendingCosts); }, [pendingCosts]);
 
-  // Fetch StockX sales - Recent only (up to 1,000 orders)
+  // Fetch StockX sales - Filter by selected year
   const fetchStockXSales = async () => {
     if (!stockxToken) return;
     setStockxSyncing(true);
     try {
+      const selectedYear = stockxApiFilter.year;
+      
       const response = await fetch(`/api/stockx-sales`, {
         headers: {
           'Authorization': `Bearer ${stockxToken}`
@@ -349,23 +351,33 @@ function App() {
       console.log('StockX API Response:', data);
       
       if (data.sales && data.sales.length > 0) {
+        // Filter by selected year
+        const yearFiltered = data.sales.filter(s => s.saleDate && s.saleDate.startsWith(selectedYear));
+        console.log(`Filtered to ${selectedYear}: ${yearFiltered.length} of ${data.sales.length}`);
+        
+        if (yearFiltered.length === 0) {
+          alert(`No completed sales found for ${selectedYear}.`);
+          setStockxSyncing(false);
+          return;
+        }
+        
         // Filter out duplicates
         const existingIds = new Set([
           ...pendingCosts.map(p => p.id),
           ...sales.map(s => s.orderId || s.id)
         ]);
         
-        const newSales = data.sales.filter(s => !existingIds.has(s.id));
+        const newSales = yearFiltered.filter(s => !existingIds.has(s.id));
         
         if (newSales.length > 0) {
           setPendingCosts(prev => [...prev, ...newSales]);
           const withImages = newSales.filter(s => s.image).length;
-          alert(`✓ Synced ${newSales.length} sales! (${withImages} with images)${data.sales.length - newSales.length > 0 ? `\n${data.sales.length - newSales.length} already existed` : ''}`);
+          alert(`✓ Synced ${newSales.length} sales from ${selectedYear}!${withImages > 0 ? ` (${withImages} with images)` : ''}${yearFiltered.length - newSales.length > 0 ? `\n${yearFiltered.length - newSales.length} already existed` : ''}`);
         } else {
-          alert(`All ${data.sales.length} recent sales already imported.`);
+          alert(`All ${yearFiltered.length} sales from ${selectedYear} already imported.`);
         }
       } else {
-        alert('No recent completed sales found.');
+        alert(`No completed sales found for ${selectedYear}.`);
       }
     } catch (error) {
       console.error('Failed to fetch StockX sales:', error);
@@ -2468,19 +2480,26 @@ Let me know if you need anything else.`;
                     {stockxConnected ? (
                       <div>
                         <div style={{ display: 'flex', gap: 10 }}>
+                          <select 
+                            value={stockxApiFilter.year} 
+                            onChange={e => setStockxApiFilter({ ...stockxApiFilter, year: e.target.value })} 
+                            style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 13, width: 90 }}
+                          >
+                            {['2026', '2025', '2024', '2023', '2022'].map(y => <option key={y} value={y}>{y}</option>)}
+                          </select>
                           <button 
                             onClick={() => fetchStockXSales()} 
                             disabled={stockxSyncing} 
                             style={{ flex: 1, padding: '12px', background: '#00c165', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 13, cursor: stockxSyncing ? 'default' : 'pointer', opacity: stockxSyncing ? 0.6 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
                           >
-                            {stockxSyncing ? '🔄 Syncing...' : '🔄 Sync Recent Sales'}
+                            {stockxSyncing ? '🔄 Syncing...' : `🔄 Sync ${stockxApiFilter.year} Sales`}
                           </button>
                           <button onClick={disconnectStockX} style={{ padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 8, color: '#ef4444', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
                             Disconnect
                           </button>
                         </div>
                         <div style={{ marginTop: 8, fontSize: 11, color: c.textMuted }}>
-                          Adds new sales since last sync. Up to 1,000 orders with images.
+                          Only imports completed sales from {stockxApiFilter.year}.
                         </div>
                       </div>
                     ) : (
@@ -2498,7 +2517,7 @@ Let me know if you need anything else.`;
                     <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8, color: c.textMuted }}>Summary:</div>
                     <div style={{ fontSize: 12, color: c.textMuted, lineHeight: 1.6 }}>
                       <div><span style={{ color: '#00c165', fontWeight: 600 }}>CSV Import:</span> Any year, any month. Full history.</div>
-                      <div><span style={{ color: '#00c165', fontWeight: 600 }}>Quick Sync:</span> Recent sales only. For daily/weekly updates.</div>
+                      <div><span style={{ color: '#00c165', fontWeight: 600 }}>Quick Sync:</span> Completed sales by year.</div>
                     </div>
                   </div>
                 </div>
