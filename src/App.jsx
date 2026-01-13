@@ -1005,18 +1005,12 @@ function App() {
   // Import StockX sales
   const importStockxSales = () => {
     const filtered = filterStockxData();
-    console.log('CSV Import - First row keys:', Object.keys(filtered[0] || {}));
-    console.log('CSV Import - First row:', filtered[0]);
     
     const newPending = filtered.map((row, idx) => {
       const orderNum = row['Order Number'] || row['Order Id'] || row['Order #'] || '';
       const salePrice = parseFloat((row['Price'] || row['Sale Price'] || row['Order Total'] || '0').replace(/[$,]/g, '')) || 0;
       const payout = parseFloat((row['Final Payout Amount'] || row['Payout'] || row['Total Payout'] || '0').replace(/[$,]/g, '')) || 0;
       let productName = row['Item'] || row['Product Name'] || row['Product'] || row['Name'] || 'Unknown Item';
-      
-      if (idx === 0) {
-        console.log('CSV Import - Product name:', productName);
-      }
       
       // Generate image URL from product name
       // Add "Air" prefix for Jordan products if not already there
@@ -1045,11 +1039,6 @@ function App() {
       const image = slug 
         ? `https://images.stockx.com/images/${slug}.jpg?fit=fill&bg=FFFFFF&w=300&h=214&fm=webp&auto=compress&q=90&dpr=2&trim=color`
         : '';
-      
-      if (idx === 0) {
-        console.log('CSV Import - Slug:', slug);
-        console.log('CSV Import - Image URL:', image);
-      }
       
       return {
         id: orderNum || Date.now() + Math.random(),
@@ -2416,6 +2405,7 @@ Let me know if you need anything else.`;
                         if (sortBy === 'item') sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
                         if (sortBy === 'date') sorted.sort((a, b) => (b.saleDate || '').localeCompare(a.saleDate || ''));
                         if (sortBy === 'price') sorted.sort((a, b) => (b.payout || 0) - (a.payout || 0));
+                        if (sortBy === 'sku') sorted.sort((a, b) => (a.sku || '').localeCompare(b.sku || ''));
                         return sorted;
                       });
                     }}
@@ -2423,6 +2413,7 @@ Let me know if you need anything else.`;
                   >
                     <option value="date">Date</option>
                     <option value="item">Name</option>
+                    <option value="sku">SKU</option>
                     <option value="price">Payout</option>
                   </select>
                   <button onClick={() => { 
@@ -2537,8 +2528,11 @@ Let me know if you need anything else.`;
                         )}
                       </div>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 4 }}>{s.name}</div>
-                        <div style={{ fontSize: 12, color: c.textMuted }}>{s.saleDate} <span style={{ color: s.platform === 'eBay' ? '#3b82f6' : '#00c165', fontWeight: 600 }}>• {s.platform || 'eBay'}</span></div>
+                        <div style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 2 }}>{s.name}</div>
+                        <div style={{ fontSize: 11, color: c.textMuted }}>
+                          {s.sku && <span style={{ color: '#888', marginRight: 8 }}>{s.sku}</span>}
+                          {s.saleDate} <span style={{ color: s.platform === 'eBay' ? '#3b82f6' : '#00c165', fontWeight: 600 }}>• {s.platform || 'eBay'}</span>
+                        </div>
                       </div>
                       <div style={{ textAlign: 'center', fontWeight: 700, fontSize: 14 }}>{s.size || '-'}</div>
                       <div style={{ textAlign: 'right', fontWeight: 700, color: c.green, fontSize: 16 }}>{fmt(s.payout)}</div>
