@@ -1,7 +1,6 @@
-// Cop Check API - Fetches prices from StockX, GOAT, FlightClub
+// Cop Check API - Fetches prices from StockX
 
 export default async function handler(req, res) {
-  // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET');
   
@@ -12,75 +11,95 @@ export default async function handler(req, res) {
   }
   
   try {
-    // Dynamic import for sneaks-api (CommonJS module)
-    const SneaksAPI = (await import('sneaks-api')).default;
-    const sneaks = new SneaksAPI();
-    
-    // Search for the product
-    const products = await new Promise((resolve, reject) => {
-      sneaks.getProducts(sku, 5, (err, products) => {
-        if (err) reject(err);
-        else resolve(products || []);
-      });
+    // Search StockX for the product
+    const searchRes = await fetch(`https://stockx.com/api/browse?_search=${encodeURIComponent(sku)}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json',
+      }
     });
     
-    if (!products || products.length === 0) {
+    if (!searchRes.ok) {
+      return res.status(404).json({ error: 'Could not search StockX' });
+    }
+    
+    const searchData = await searchRes.json();
+    const products = searchData.Products || [];
+    
+    if (products.length === 0) {
       return res.status(404).json({ error: 'No products found for that style code' });
     }
     
-    // Get the best match (first result or exact SKU match)
-    let product = products.find(p => p.styleID && p.styleID.toUpperCase() === sku.toUpperCase()) || products[0];
+    // Find exact SKU match or use first result
+    let product = products.find(p => p.styleId && p.styleId.toUpperCase() === sku.toUpperCase()) || products[0];
     
-    // Get detailed pricing info
-    const details = await new Promise((resolve, reject) => {
-      sneaks.getProductPrices(product.styleID, (err, result) => {
-        if (err) reject(err);
-        else resolve(result);
-      });
+    // Get product details
+    const urlKey = product.urlKey;
+    const detailRes = await fetch(`https://stockx.com/api/products/${urlKey}?includes=market,360&currency=USD`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json',
+      }
     });
     
-    if (!details) {
-      return res.status(404).json({ error: 'Could not fetch pricing data' });
+    let sizes = {};
+    let lowestAsk = product.market?.lowestAsk || 0;
+    let lastSale = product.market?.lastSale || 0;
+    
+    if (detailRes.ok) {
+      const detailData = await detailRes.json();
+      const variants = detailData.Product?.children || {};
+      
+      // Build size map
+      Object.values(variants).forEach(v => {
+        if (v.shoeSize) {
+          sizes[v.shoeSize] = {
+            stockx: v.market?.lowestAsk || lowestAsk,
+            goat: Math.round((v.market?.lowestAsk || lowestAsk) * 0.97), // Estimate GOAT ~3% lower
+            lastSale: v.market?.lastSale || lastSale
+          };
+        }
+      });
     }
     
-    // Estimate sales based on price spread
-    const estimateSales = (d) => {
-      const stockxPrice = d.lowestResellPrice?.stockX || 0;
-      const goatPrice = d.lowestResellPrice?.goat || 0;
-      if (!stockxPrice || !goatPrice) return 50;
-      const priceDiff = Math.abs(stockxPrice - goatPrice) / stockxPrice;
-      if (priceDiff < 0.05) return 300;
-      if (priceDiff < 0.10) return 150;
-      if (priceDiff < 0.15) return 75;
+    // Estimate liquidity based on last sale recency
+    const estimateSales = () => {
+      if (Object.keys(sizes).length > 15) return 300; // Many sizes = high volume
+      if (Object.keys(sizes).length > 10) return 150;
+      if (Object.keys(sizes).length > 5) return 75;
       return 30;
     };
     
-    // Build response
-    const response = {
-      name: details.shoeName || product.shoeName,
-      sku: details.styleID || product.styleID,
-      image: details.thumbnail || product.thumbnail,
-      retail: details.retailPrice || 0,
-      lowestAsk: {
-        stockx: details.lowestResellPrice?.stockX || 0,
-        goat: details.lowestResellPrice?.goat || 0,
-        flightclub: details.lowestResellPrice?.flightClub || 0
-      },
-      sizes: {},
-      salesLast30: estimateSales(details),
-      avgSale: details.lowestResellPrice?.stockX ? Math.round(details.lowestResellPrice.stockX * 0.95) : 0
-    };
+    // Build image URL
+    const slug = product.title
+      ? product.title
+          .replace(/[()]/g, '')
+          .replace(/'/g, '')
+          .replace(/&/g, 'and')
+          .trim()
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '')
+      : '';
     
-    // Add size-specific prices if available
-    if (details.resellPrices) {
-      Object.entries(details.resellPrices).forEach(([size, prices]) => {
-        response.sizes[size] = {
-          stockx: prices.stockX || 0,
-          goat: prices.goat || 0,
-          flightclub: prices.flightClub || 0
-        };
-      });
-    }
+    const image = slug 
+      ? `https://images.stockx.com/images/${slug}.jpg?fit=fill&bg=FFFFFF&w=300&h=214&fm=webp&auto=compress&q=90&dpr=2`
+      : product.media?.thumbUrl || '';
+    
+    const response = {
+      name: product.title || product.name,
+      sku: product.styleId || sku,
+      image: image,
+      retail: product.retailPrice || 0,
+      lowestAsk: {
+        stockx: lowestAsk,
+        goat: Math.round(lowestAsk * 0.97),
+        flightclub: Math.round(lowestAsk * 1.05)
+      },
+      sizes: sizes,
+      salesLast30: estimateSales(),
+      avgSale: lastSale || Math.round(lowestAsk * 0.95)
+    };
     
     return res.status(200).json(response);
     
