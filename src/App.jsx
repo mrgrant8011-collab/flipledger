@@ -1,6 +1,52 @@
 import { useState, useEffect, Component } from 'react';
 import * as XLSX from 'xlsx';
 
+// Helper: Get icon based on product name
+const getProductIcon = (name) => {
+  if (!name) return '📦';
+  const n = name.toLowerCase();
+  
+  // Electronics
+  if (n.includes('playstation') || n.includes('ps5') || n.includes('ps4') || 
+      n.includes('xbox') || n.includes('nintendo') || n.includes('switch') ||
+      n.includes('console') || n.includes('controller')) return '🎮';
+  if (n.includes('iphone') || n.includes('samsung') || n.includes('pixel') ||
+      n.includes('phone')) return '📱';
+  if (n.includes('macbook') || n.includes('laptop') || n.includes('ipad') ||
+      n.includes('tablet')) return '💻';
+  if (n.includes('airpod') || n.includes('headphone') || n.includes('earbud') ||
+      n.includes('beats') || n.includes('speaker')) return '🎧';
+  if (n.includes('watch') || n.includes('apple watch')) return '⌚';
+  if (n.includes('camera') || n.includes('gopro')) return '📷';
+  if (n.includes('gpu') || n.includes('graphics') || n.includes('nvidia') ||
+      n.includes('rtx') || n.includes('geforce')) return '🖥️';
+  
+  // Collectibles
+  if (n.includes('funko') || n.includes('pop!') || n.includes('figure') ||
+      n.includes('toy') || n.includes('lego') || n.includes('bearbrick')) return '🧸';
+  if (n.includes('card') || n.includes('pokemon') || n.includes('trading')) return '🃏';
+  
+  // Clothing keywords
+  if (n.includes('hoodie') || n.includes('sweatshirt') || n.includes('crewneck') || 
+      n.includes('jacket') || n.includes('coat') || n.includes('pullover') ||
+      n.includes('zip') || n.includes('fleece') || n.includes('puffer')) return '🧥';
+  if (n.includes('tee') || n.includes('t-shirt') || n.includes('shirt') || 
+      n.includes('jersey') || n.includes('polo') || n.includes('tank')) return '👕';
+  if (n.includes('pants') || n.includes('jogger') || n.includes('sweatpant') ||
+      n.includes('jean') || n.includes('trouser') || n.includes('cargo')) return '👖';
+  if (n.includes('shorts') || n.includes('short')) return '🩳';
+  if (n.includes('hat') || n.includes('cap') || n.includes('beanie') ||
+      n.includes('fitted') || n.includes('snapback')) return '🧢';
+  if (n.includes('bag') || n.includes('backpack') || n.includes('duffle') ||
+      n.includes('tote') || n.includes('messenger') || n.includes('duffel')) return '👜';
+  if (n.includes('sock')) return '🧦';
+  if (n.includes('sunglasses') || n.includes('glasses')) return '🕶️';
+  if (n.includes('belt') || n.includes('wallet') || n.includes('keychain')) return '👛';
+  
+  // Default to shoe for sneakers (most StockX items)
+  return '👟';
+};
+
 // Error Boundary for production stability
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -165,8 +211,8 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
         <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '36px 52px 80px 1fr 100px 45px 90px 65px 65px 60px 70px 28px 28px', padding: '12px 16px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', gap: 8, background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : 'transparent' }}>
           <div><input type="checkbox" checked={selectedSales.has(s.id)} onChange={e => { const n = new Set(selectedSales); e.target.checked ? n.add(s.id) : n.delete(s.id); setSelectedSales(n); }} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }} /></div>
           <div style={{ width: 44, height: 44, borderRadius: 8, overflow: 'hidden', background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            {s.image ? <img src={s.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; }} /> : null}
-            <span style={{ fontSize: 18, display: s.image ? 'none' : 'block' }}>📦</span>
+            {s.image ? <img src={s.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} /> : null}
+            <span style={{ fontSize: 18, display: s.image ? 'none' : 'block' }}>{getProductIcon(s.name)}</span>
           </div>
           <span style={{ fontSize: 11, color: c.textMuted }}>{s.saleDate}</span>
           <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
@@ -351,9 +397,36 @@ function App() {
       console.log('StockX API Response:', data);
       
       if (data.sales && data.sales.length > 0) {
+        // Generate image URLs from product names
+        const salesWithImages = data.sales.map(s => {
+          // Create slug from product name
+          const slug = (s.name || '')
+            .replace(/\(Women's\)/gi, 'W')
+            .replace(/\(Men's\)/gi, '')
+            .replace(/\(GS\)/gi, 'GS')
+            .replace(/\(PS\)/gi, 'PS')
+            .replace(/\(TD\)/gi, 'TD')
+            .replace(/\([^)]*\)/g, '')
+            .replace(/'/g, '')
+            .replace(/"/g, '')
+            .replace(/&/g, 'and')
+            .replace(/\+/g, 'Plus')
+            .replace(/[^a-zA-Z0-9\s-]/g, '')
+            .trim()
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '');
+          
+          const image = slug 
+            ? `https://images.stockx.com/images/${slug}.jpg?fit=fill&bg=FFFFFF&w=300&h=214&fm=webp&auto=compress&q=90&dpr=2&trim=color`
+            : '';
+          
+          return { ...s, image };
+        });
+        
         // Filter by selected year
-        const yearFiltered = data.sales.filter(s => s.saleDate && s.saleDate.startsWith(selectedYear));
-        console.log(`Filtered to ${selectedYear}: ${yearFiltered.length} of ${data.sales.length}`);
+        const yearFiltered = salesWithImages.filter(s => s.saleDate && s.saleDate.startsWith(selectedYear));
+        console.log(`Filtered to ${selectedYear}: ${yearFiltered.length} of ${salesWithImages.length}`);
         
         if (yearFiltered.length === 0) {
           alert(`No completed sales found for ${selectedYear}.`);
@@ -371,8 +444,7 @@ function App() {
         
         if (newSales.length > 0) {
           setPendingCosts(prev => [...prev, ...newSales]);
-          const withImages = newSales.filter(s => s.image).length;
-          alert(`✓ Synced ${newSales.length} sales from ${selectedYear}!${withImages > 0 ? ` (${withImages} with images)` : ''}${yearFiltered.length - newSales.length > 0 ? `\n${yearFiltered.length - newSales.length} already existed` : ''}`);
+          alert(`✓ Synced ${newSales.length} sales from ${selectedYear}!${yearFiltered.length - newSales.length > 0 ? `\n${yearFiltered.length - newSales.length} already existed` : ''}`);
         } else {
           alert(`All ${yearFiltered.length} sales from ${selectedYear} already imported.`);
         }
@@ -2401,10 +2473,9 @@ Let me know if you need anything else.`;
                       </div>
                       <div style={{ width: 52, height: 52, borderRadius: 8, overflow: 'hidden', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {s.image ? (
-                          <img src={s.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none'; }} />
-                        ) : (
-                          <span style={{ fontSize: 22, opacity: 0.3 }}>📦</span>
-                        )}
+                          <img src={s.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} />
+                        ) : null}
+                        <span style={{ fontSize: 22, opacity: 0.5, display: s.image ? 'none' : 'block' }}>{getProductIcon(s.name)}</span>
                       </div>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 4 }}>{s.name}</div>
