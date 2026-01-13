@@ -3351,7 +3351,7 @@ Let me know if you need anything else.`;
               💾 Data Backup & Restore
             </h3>
             <p style={{ fontSize: 13, color: c.textMuted, marginBottom: 20, lineHeight: 1.6 }}>
-              Export all your data as a backup file, or restore from a previous backup.
+              <strong>Export</strong> saves all your data to a file on your computer. <strong>Restore</strong> loads data from a backup file.
             </p>
             
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -3377,12 +3377,12 @@ Let me know if you need anything else.`;
                 }}
                 style={{ padding: '12px 24px', background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
               >
-                📥 Export Backup
+                📥 Save Backup to Computer
               </button>
               
               {/* Import Backup */}
               <label style={{ padding: '12px 24px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 10, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
-                📤 Restore Backup
+                📤 Load Backup from File
                 <input 
                   type="file" 
                   accept=".json"
@@ -3440,46 +3440,13 @@ Let me know if you need anything else.`;
                 <div><span style={{ color: c.textMuted }}>Pending:</span> <strong>{pendingCosts.length}</strong></div>
               </div>
             </div>
-          </div>
-
-          {/* Danger Zone */}
-          <div style={{ ...cardStyle, padding: 24, marginTop: 16, border: '1px solid rgba(239,68,68,0.3)' }}>
-            <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700, color: c.red }}>
-              ⚠️ Danger Zone
-            </h3>
-            <p style={{ fontSize: 13, color: c.textMuted, marginBottom: 16 }}>
-              Permanently delete all your data. This cannot be undone.
-            </p>
-            <button 
-              onClick={() => {
-                const confirmReset = confirm(
-                  '⚠️ DELETE ALL DATA?\n\n' +
-                  'This will permanently delete:\n' +
-                  `• ${purchases.length} inventory items\n` +
-                  `• ${sales.length} sales\n` +
-                  `• ${expenses.length} expenses\n` +
-                  `• ${pendingCosts.length} pending costs\n\n` +
-                  'This CANNOT be undone!\n\n' +
-                  'Type "DELETE" in the next prompt to confirm.'
-                );
-                
-                if (confirmReset) {
-                  const typed = prompt('Type DELETE to confirm:');
-                  if (typed === 'DELETE') {
-                    setPurchases([]);
-                    setSales([]);
-                    setExpenses([]);
-                    setPendingCosts([]);
-                    localStorage.clear();
-                    alert('All data has been deleted.');
-                    window.location.reload();
-                  }
-                }
-              }}
-              style={{ padding: '10px 20px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, color: c.red, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
-            >
-              🗑️ Delete All Data
-            </button>
+            
+            {/* Tip */}
+            <div style={{ marginTop: 16, padding: 14, background: 'rgba(16,185,129,0.1)', borderRadius: 10, border: '1px solid rgba(16,185,129,0.2)' }}>
+              <p style={{ margin: 0, fontSize: 12, color: c.green, lineHeight: 1.5 }}>
+                💡 <strong>Tip:</strong> Export a backup weekly to protect your data. Save the file to Google Drive, iCloud, or your computer.
+              </p>
+            </div>
           </div>
         </div>}
       </main>
