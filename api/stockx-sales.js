@@ -10,14 +10,11 @@ export default async function handler(req, res) {
     let pageNumber = 1;
     let hasMore = true;
     
-    // Step 1: Fetch orders
     while (hasMore && pageNumber <= 10) {
       const url = new URL('https://api.stockx.com/v2/selling/orders/history');
       url.searchParams.set('pageNumber', pageNumber.toString());
       url.searchParams.set('pageSize', '100');
       url.searchParams.set('orderStatus', 'COMPLETED');
-      
-      console.log(`[StockX] Fetching page ${pageNumber}`);
       
       const response = await fetch(url.toString(), {
         method: 'GET',
@@ -39,11 +36,36 @@ export default async function handler(req, res) {
       const data = await response.json();
       const orders = data.orders || [];
       
-      if (pageNumber === 1) {
-        console.log(`[StockX] Total COMPLETED: ${data.count}`);
-        if (orders.length > 0) {
-          console.log(`[StockX] Sample order product:`, JSON.stringify(orders[0].product));
-        }
+      // LOG EVERYTHING FROM FIRST ORDER
+      if (pageNumber === 1 && orders.length > 0) {
+        const o = orders[0];
+        console.log(`[StockX] === FULL ORDER STRUCTURE ===`);
+        console.log(`[StockX] Order keys: ${Object.keys(o).join(', ')}`);
+        console.log(`[StockX] Product keys: ${Object.keys(o.product || {}).join(', ')}`);
+        console.log(`[StockX] Variant keys: ${Object.keys(o.variant || {}).join(', ')}`);
+        console.log(`[StockX] Full product: ${JSON.stringify(o.product)}`);
+        console.log(`[StockX] Full variant: ${JSON.stringify(o.variant)}`);
+        
+        // Check every possible image field
+        const p = o.product || {};
+        const v = o.variant || {};
+        const m = p.media || {};
+        
+        console.log(`[StockX] --- Checking all image fields ---`);
+        console.log(`[StockX] product.image: ${p.image}`);
+        console.log(`[StockX] product.imageUrl: ${p.imageUrl}`);
+        console.log(`[StockX] product.thumbUrl: ${p.thumbUrl}`);
+        console.log(`[StockX] product.thumbnailUrl: ${p.thumbnailUrl}`);
+        console.log(`[StockX] product.primaryImage: ${p.primaryImage}`);
+        console.log(`[StockX] product.squareImage: ${p.squareImage}`);
+        console.log(`[StockX] product.media: ${JSON.stringify(m)}`);
+        console.log(`[StockX] product.urlKey: ${p.urlKey}`);
+        console.log(`[StockX] product.slug: ${p.slug}`);
+        console.log(`[StockX] product.productId: ${p.productId}`);
+        console.log(`[StockX] product.styleId: ${p.styleId}`);
+        console.log(`[StockX] product.productName: ${p.productName}`);
+        console.log(`[StockX] variant.image: ${v.image}`);
+        console.log(`[StockX] order.image: ${o.image}`);
       }
       
       if (orders.length === 0) {
@@ -60,80 +82,51 @@ export default async function handler(req, res) {
     
     console.log(`[StockX] Fetched ${allOrders.length} orders`);
     
-    // Step 2: Get unique SKUs
-    const uniqueSkus = [...new Set(allOrders.map(o => o.product?.styleId).filter(Boolean))];
-    console.log(`[StockX] Looking up ${uniqueSkus.length} unique SKUs`);
-    
-    // Step 3: Lookup images using catalog API with user auth
-    const skuImages = {};
-    
-    for (let i = 0; i < uniqueSkus.length; i += 5) {
-      const batch = uniqueSkus.slice(i, i + 5);
-      
-      await Promise.all(batch.map(async (sku) => {
-        try {
-          const searchUrl = `https://api.stockx.com/v2/catalog/search?query=${encodeURIComponent(sku)}`;
-          const searchRes = await fetch(searchUrl, {
-            method: 'GET',
-            headers: {
-              'Authorization': authHeader,
-              'x-api-key': process.env.STOCKX_API_KEY,
-              'Content-Type': 'application/json'
-            }
-          });
-          
-          if (searchRes.ok) {
-            const searchData = await searchRes.json();
-            const products = searchData.products || searchData.data || searchData.results || searchData.hits || [];
-            
-            if (products.length > 0) {
-              const product = products.find(p => 
-                (p.styleId || '').toLowerCase() === sku.toLowerCase()
-              ) || products[0];
-              
-              const media = product.media || {};
-              const image = product.imageUrl || product.image || product.thumbUrl || 
-                           media.imageUrl || media.smallImageUrl || media.thumbUrl || '';
-              
-              if (image) {
-                skuImages[sku] = image;
-              }
-            }
-          } else {
-            const errData = await searchRes.json().catch(() => ({}));
-            if (i === 0) {
-              console.log(`[StockX] Catalog search error for ${sku}:`, searchRes.status, JSON.stringify(errData));
-            }
-          }
-        } catch (e) {
-          // Ignore individual lookup errors
-        }
-      }));
-      
-      // Small delay to avoid rate limiting
-      if (i + 5 < uniqueSkus.length) {
-        await new Promise(r => setTimeout(r, 50));
-      }
-    }
-    
-    console.log(`[StockX] Found images for ${Object.keys(skuImages).length} of ${uniqueSkus.length} SKUs`);
-    
-    // Step 4: Transform orders
     const sales = allOrders.map(order => {
       const product = order.product || {};
       const variant = order.variant || {};
       const payout = order.payout || {};
+      const media = product.media || {};
       
       let platform = 'StockX Standard';
       if (order.inventoryType === 'FLEX') platform = 'StockX Flex';
       else if (order.inventoryType === 'DIRECT') platform = 'StockX Direct';
       
       const sku = product.styleId || '';
-      const image = skuImages[sku] || '';
+      const productName = product.productName || '';
+      
+      // Try EVERY possible image source
+      let image = 
+        product.image ||
+        product.imageUrl ||
+        product.thumbUrl ||
+        product.thumbnailUrl ||
+        product.primaryImage ||
+        product.squareImage ||
+        media.imageUrl ||
+        media.smallImageUrl ||
+        media.thumbUrl ||
+        variant.image ||
+        order.image ||
+        '';
+      
+      // If no direct image, try URL patterns
+      if (!image) {
+        const urlKey = product.urlKey || product.slug || '';
+        const productId = product.productId || '';
+        
+        if (urlKey) {
+          image = `https://images.stockx.com/images/${urlKey}.jpg?fit=fill&bg=FFFFFF&w=300&h=214&fm=webp&auto=compress&q=90&dpr=2&trim=color`;
+        } else if (productId) {
+          image = `https://images.stockx.com/images/${productId}.jpg?fit=fill&bg=FFFFFF&w=300&h=214&fm=webp&auto=compress&q=90&dpr=2&trim=color`;
+        } else if (sku) {
+          image = `https://images.stockx.com/images/${sku}.jpg?fit=fill&bg=FFFFFF&w=300&h=214&fm=webp&auto=compress&q=90&dpr=2&trim=color`;
+        }
+      }
       
       return {
         id: order.orderNumber,
-        name: product.productName || 'Unknown Product',
+        name: productName || 'Unknown Product',
         sku,
         size: variant.variantValue || '',
         salePrice: parseFloat(order.amount) || 0,
@@ -147,7 +140,7 @@ export default async function handler(req, res) {
     const uniqueSales = [...new Map(sales.map(s => [s.id, s])).values()];
     const withImages = uniqueSales.filter(s => s.image).length;
     
-    console.log(`[StockX] Returning ${uniqueSales.length} sales (${withImages} with images)`);
+    console.log(`[StockX] Returning ${uniqueSales.length} sales (${withImages} with image URLs)`);
     
     res.status(200).json({ 
       sales: uniqueSales,
