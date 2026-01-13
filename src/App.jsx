@@ -2524,9 +2524,9 @@ Let me know if you need anything else.`;
                         )}
                       </div>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 2 }}>{s.name}</div>
-                        <div style={{ fontSize: 11, color: c.textMuted }}>
-                          {s.sku && <span style={{ color: '#888', marginRight: 8 }}>{s.sku}</span>}
+                        <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', lineHeight: '1.3' }}>{s.name}</div>
+                        <div style={{ fontSize: 10, color: c.textMuted }}>
+                          {s.sku && <span style={{ color: '#666', marginRight: 6 }}>{s.sku} • </span>}
                           {s.saleDate} <span style={{ color: s.platform === 'eBay' ? '#3b82f6' : '#00c165', fontWeight: 600 }}>• {s.platform || 'eBay'}</span>
                         </div>
                       </div>
