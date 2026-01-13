@@ -1004,17 +1004,41 @@ function App() {
       const orderNum = row['Order Number'] || row['Order Id'] || row['Order #'] || '';
       const salePrice = parseFloat((row['Price'] || row['Sale Price'] || row['Order Total'] || '0').replace(/[$,]/g, '')) || 0;
       const payout = parseFloat((row['Final Payout Amount'] || row['Payout'] || row['Total Payout'] || '0').replace(/[$,]/g, '')) || 0;
+      const productName = row['Item'] || row['Product Name'] || 'Unknown Item';
+      
+      // Generate image URL from product name (same as API sync)
+      const slug = productName
+        .replace(/\(Women's\)/gi, 'W')
+        .replace(/\(Men's\)/gi, '')
+        .replace(/\(GS\)/gi, 'GS')
+        .replace(/\(PS\)/gi, 'PS')
+        .replace(/\(TD\)/gi, 'TD')
+        .replace(/\([^)]*\)/g, '')
+        .replace(/'/g, '')
+        .replace(/"/g, '')
+        .replace(/&/g, 'and')
+        .replace(/\+/g, 'Plus')
+        .replace(/[^a-zA-Z0-9\s-]/g, '')
+        .trim()
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+      
+      const image = slug 
+        ? `https://images.stockx.com/images/${slug}.jpg?fit=fill&bg=FFFFFF&w=300&h=214&fm=webp&auto=compress&q=90&dpr=2&trim=color`
+        : '';
       
       return {
         id: orderNum || Date.now() + Math.random(),
-        name: row['Item'] || row['Product Name'] || 'Unknown Item',
+        name: productName,
         sku: row['Style'] || row['SKU'] || row['Style Code'] || '',
         size: String(row['Sku Size'] || row['Size'] || row['Product Size'] || ''),
         salePrice,
         payout,
         saleDate: row['_parsedDate'] || '',
         platform: 'StockX',
-        source: 'csv'
+        source: 'csv',
+        image
       };
     });
     
