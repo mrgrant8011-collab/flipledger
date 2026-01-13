@@ -10,6 +10,7 @@ export default async function handler(req, res) {
     let pageNumber = 1;
     let hasMore = true;
     
+    // Step 1: Fetch orders
     while (hasMore && pageNumber <= 10) {
       const url = new URL('https://api.stockx.com/v2/selling/orders/history');
       url.searchParams.set('pageNumber', pageNumber.toString());
@@ -40,6 +41,9 @@ export default async function handler(req, res) {
       
       if (pageNumber === 1) {
         console.log(`[StockX] Total COMPLETED: ${data.count}`);
+        if (orders.length > 0) {
+          console.log(`[StockX] Sample order product:`, JSON.stringify(orders[0].product));
+        }
       }
       
       if (orders.length === 0) {
@@ -56,28 +60,65 @@ export default async function handler(req, res) {
     
     console.log(`[StockX] Fetched ${allOrders.length} orders`);
     
-    // Helper to create StockX image URL slug
-    function createImageSlug(productName) {
-      if (!productName) return '';
+    // Step 2: Get unique SKUs
+    const uniqueSkus = [...new Set(allOrders.map(o => o.product?.styleId).filter(Boolean))];
+    console.log(`[StockX] Looking up ${uniqueSkus.length} unique SKUs`);
+    
+    // Step 3: Lookup images using catalog API with user auth
+    const skuImages = {};
+    
+    for (let i = 0; i < uniqueSkus.length; i += 5) {
+      const batch = uniqueSkus.slice(i, i + 5);
       
-      return productName
-        .replace(/\(Women's\)/gi, 'W')           // Women's -> W
-        .replace(/\(Men's\)/gi, '')               // Remove Men's
-        .replace(/\(GS\)/gi, 'GS')               // Keep GS
-        .replace(/\(PS\)/gi, 'PS')               // Keep PS  
-        .replace(/\(TD\)/gi, 'TD')               // Keep TD
-        .replace(/\([^)]*\)/g, '')               // Remove other parentheses
-        .replace(/'/g, '')                        // Remove apostrophes
-        .replace(/"/g, '')                        // Remove quotes
-        .replace(/&/g, 'and')                     // & -> and
-        .replace(/\+/g, 'Plus')                   // + -> Plus
-        .replace(/[^a-zA-Z0-9\s-]/g, '')         // Remove special chars
-        .trim()
-        .replace(/\s+/g, '-')                     // Spaces -> hyphens
-        .replace(/-+/g, '-')                      // Remove duplicate hyphens
-        .replace(/^-|-$/g, '');                   // Remove leading/trailing hyphens
+      await Promise.all(batch.map(async (sku) => {
+        try {
+          const searchUrl = `https://api.stockx.com/v2/catalog/search?query=${encodeURIComponent(sku)}`;
+          const searchRes = await fetch(searchUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': authHeader,
+              'x-api-key': process.env.STOCKX_API_KEY,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (searchRes.ok) {
+            const searchData = await searchRes.json();
+            const products = searchData.products || searchData.data || searchData.results || searchData.hits || [];
+            
+            if (products.length > 0) {
+              const product = products.find(p => 
+                (p.styleId || '').toLowerCase() === sku.toLowerCase()
+              ) || products[0];
+              
+              const media = product.media || {};
+              const image = product.imageUrl || product.image || product.thumbUrl || 
+                           media.imageUrl || media.smallImageUrl || media.thumbUrl || '';
+              
+              if (image) {
+                skuImages[sku] = image;
+              }
+            }
+          } else {
+            const errData = await searchRes.json().catch(() => ({}));
+            if (i === 0) {
+              console.log(`[StockX] Catalog search error for ${sku}:`, searchRes.status, JSON.stringify(errData));
+            }
+          }
+        } catch (e) {
+          // Ignore individual lookup errors
+        }
+      }));
+      
+      // Small delay to avoid rate limiting
+      if (i + 5 < uniqueSkus.length) {
+        await new Promise(r => setTimeout(r, 50));
+      }
     }
     
+    console.log(`[StockX] Found images for ${Object.keys(skuImages).length} of ${uniqueSkus.length} SKUs`);
+    
+    // Step 4: Transform orders
     const sales = allOrders.map(order => {
       const product = order.product || {};
       const variant = order.variant || {};
@@ -88,15 +129,11 @@ export default async function handler(req, res) {
       else if (order.inventoryType === 'DIRECT') platform = 'StockX Direct';
       
       const sku = product.styleId || '';
-      const productName = product.productName || '';
-      const slug = createImageSlug(productName);
-      
-      // StockX image URL
-      const image = slug ? `https://images.stockx.com/images/${slug}.jpg?fit=fill&bg=FFFFFF&w=300&h=214&fm=webp&auto=compress&q=90&dpr=2&trim=color` : '';
+      const image = skuImages[sku] || '';
       
       return {
         id: order.orderNumber,
-        name: productName || 'Unknown Product',
+        name: product.productName || 'Unknown Product',
         sku,
         size: variant.variantValue || '',
         salePrice: parseFloat(order.amount) || 0,
@@ -107,12 +144,10 @@ export default async function handler(req, res) {
       };
     });
     
-    // Log sample for debugging
-    if (sales.length > 0) {
-      console.log(`[StockX] Sample: "${sales[0].name}" -> ${sales[0].image}`);
-    }
-    
     const uniqueSales = [...new Map(sales.map(s => [s.id, s])).values()];
+    const withImages = uniqueSales.filter(s => s.image).length;
+    
+    console.log(`[StockX] Returning ${uniqueSales.length} sales (${withImages} with images)`);
     
     res.status(200).json({ 
       sales: uniqueSales,
