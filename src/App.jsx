@@ -2459,7 +2459,7 @@ Let me know if you need anything else.`;
               <div style={{ border: `1px solid ${c.border}`, borderTop: selectedPending.size > 0 ? 'none' : `1px solid ${c.border}`, borderRadius: '0 0 12px 12px', overflow: 'hidden', background: c.card }}>
                 <div style={{ maxHeight: 520, overflowY: 'auto' }}>
                   {/* Table Header */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '36px 56px 1fr 70px 85px 100px 36px', padding: '12px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.03)', position: 'sticky', top: 0, gap: 12, alignItems: 'center', fontSize: 11, fontWeight: 600, color: c.textMuted }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '36px 56px 1fr 50px 85px 100px 36px', padding: '12px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.03)', position: 'sticky', top: 0, gap: 12, alignItems: 'center', fontSize: 11, fontWeight: 600, color: c.textMuted }}>
                     <div style={{ display: 'flex', justifyContent: 'center' }}>
                       <input 
                         type="checkbox"
@@ -2489,7 +2489,7 @@ Let me know if you need anything else.`;
                       onClick={() => setSelectedPendingItem(selectedPendingItem === s.id ? null : s.id)}
                       style={{ 
                         display: 'grid', 
-                        gridTemplateColumns: '36px 56px 1fr 70px 85px 100px 36px', 
+                        gridTemplateColumns: '36px 56px 1fr 50px 85px 100px 36px', 
                         padding: '14px 16px', 
                         borderBottom: `1px solid ${c.border}`,
                         borderLeft: selectedPendingItem === s.id ? `3px solid ${c.green}` : '3px solid transparent',
@@ -2524,7 +2524,7 @@ Let me know if you need anything else.`;
                         )}
                       </div>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', lineHeight: '1.3' }}>{s.name}</div>
+                        <div style={{ fontWeight: 600, fontSize: 13, lineHeight: '1.3', marginBottom: 3 }}>{s.name}</div>
                         <div style={{ fontSize: 10, color: c.textMuted }}>
                           {s.sku && <span style={{ color: '#666', marginRight: 6 }}>{s.sku} • </span>}
                           {s.saleDate} <span style={{ color: s.platform === 'eBay' ? '#3b82f6' : '#00c165', fontWeight: 600 }}>• {s.platform || 'eBay'}</span>
