@@ -2532,14 +2532,14 @@ Let me know if you need anything else.`;
                       </div>
                       <div style={{ textAlign: 'center', fontWeight: 700, fontSize: 14 }}>{s.size || '-'}</div>
                       <div style={{ textAlign: 'right', fontWeight: 700, color: c.green, fontSize: 16 }}>{fmt(s.payout)}</div>
-                      <div onClick={e => e.stopPropagation()}>
+                      <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                         <input 
                           type="number" 
                           placeholder="$"
                           id={`cost-${s.id}`}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' && e.target.value) {
-                              confirmSaleWithCost(s.id, e.target.value, 'StockX Standard');
+                              confirmSaleWithCost(s.id, e.target.value, s.platform || 'StockX');
                               e.target.value = '';
                               const nextIdx = idx + 1;
                               if (nextIdx < arr.length) {
@@ -2548,8 +2548,25 @@ Let me know if you need anything else.`;
                               }
                             }
                           }}
-                          style={{ width: '100%', padding: '10px 8px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: c.text, fontSize: 14, textAlign: 'center', fontWeight: 600 }} 
+                          onChange={(e) => {
+                            // Show/hide confirm button
+                            const btn = document.getElementById(`confirm-${s.id}`);
+                            if (btn) btn.style.display = e.target.value ? 'flex' : 'none';
+                          }}
+                          style={{ width: 70, padding: '8px 6px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: c.text, fontSize: 14, textAlign: 'center', fontWeight: 600 }} 
                         />
+                        <button
+                          id={`confirm-${s.id}`}
+                          onClick={() => {
+                            const input = document.getElementById(`cost-${s.id}`);
+                            if (input && input.value) {
+                              confirmSaleWithCost(s.id, input.value, s.platform || 'StockX');
+                              input.value = '';
+                              document.getElementById(`confirm-${s.id}`).style.display = 'none';
+                            }
+                          }}
+                          style={{ display: 'none', width: 28, height: 28, background: c.green, border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700 }}
+                        >✓</button>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
                         <button 
