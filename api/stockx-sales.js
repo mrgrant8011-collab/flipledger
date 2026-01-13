@@ -39,9 +39,7 @@ export default async function handler(req, res) {
       const data = await response.json();
       const orders = data.orders || [];
       
-      // Log first order structure to see all available fields
       if (pageNumber === 1 && orders.length > 0) {
-        console.log(`[StockX] Sample order keys:`, Object.keys(orders[0]));
         console.log(`[StockX] Sample product:`, JSON.stringify(orders[0].product));
         console.log(`[StockX] Total COMPLETED: ${data.count}`);
       }
@@ -70,8 +68,17 @@ export default async function handler(req, res) {
       else if (order.inventoryType === 'DIRECT') platform = 'StockX Direct';
       
       const sku = product.styleId || '';
+      const productName = product.productName || '';
       
-      // Try to find image URL from various possible fields
+      // Create URL slug from product name
+      // "Jordan 4 Retro Light Lemon Twist" -> "Jordan-4-Retro-Light-Lemon-Twist"
+      const nameSlug = productName
+        .replace(/[^a-zA-Z0-9\s-]/g, '')  // Remove special chars
+        .replace(/\s+/g, '-')              // Replace spaces with hyphens
+        .replace(/-+/g, '-')               // Remove duplicate hyphens
+        .trim();
+      
+      // Try to build image URL - StockX format
       let image = '';
       if (product.image) {
         image = product.image;
@@ -79,15 +86,14 @@ export default async function handler(req, res) {
         image = product.imageUrl;
       } else if (product.media?.imageUrl) {
         image = product.media.imageUrl;
-      } else if (product.media?.smallImageUrl) {
-        image = product.media.smallImageUrl;
-      } else if (product.thumbUrl) {
-        image = product.thumbUrl;
+      } else if (nameSlug) {
+        // StockX CDN format using product name slug
+        image = `https://images.stockx.com/images/${nameSlug}.jpg?fit=fill&bg=FFFFFF&w=300&h=214&fm=webp&auto=compress&q=90&dpr=2&trim=color`;
       }
       
       return {
         id: order.orderNumber,
-        name: product.productName || 'Unknown Product',
+        name: productName || 'Unknown Product',
         sku,
         size: variant.variantValue || '',
         salePrice: parseFloat(order.amount) || 0,
@@ -100,6 +106,11 @@ export default async function handler(req, res) {
     });
     
     const uniqueSales = [...new Map(sales.map(s => [s.id, s])).values()];
+    
+    // Log a sample image URL for debugging
+    if (uniqueSales.length > 0) {
+      console.log(`[StockX] Sample image URL: ${uniqueSales[0].image}`);
+    }
     
     res.status(200).json({ 
       sales: uniqueSales,

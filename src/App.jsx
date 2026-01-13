@@ -2499,7 +2499,7 @@ Let me know if you need anything else.`;
                           </button>
                         </div>
                         <div style={{ marginTop: 8, fontSize: 11, color: c.textMuted }}>
-                          Only imports completed sales from {stockxApiFilter.year}.
+                          Syncs from last 1,000 completed sales. For older history, use CSV.
                         </div>
                       </div>
                     ) : (
@@ -2517,7 +2517,7 @@ Let me know if you need anything else.`;
                     <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 8, color: c.textMuted }}>Summary:</div>
                     <div style={{ fontSize: 12, color: c.textMuted, lineHeight: 1.6 }}>
                       <div><span style={{ color: '#00c165', fontWeight: 600 }}>CSV Import:</span> Any year, any month. Full history.</div>
-                      <div><span style={{ color: '#00c165', fontWeight: 600 }}>Quick Sync:</span> Completed sales by year.</div>
+                      <div><span style={{ color: '#00c165', fontWeight: 600 }}>Quick Sync:</span> Last 1,000 completed sales by year.</div>
                     </div>
                   </div>
                 </div>
