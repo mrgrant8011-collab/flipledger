@@ -3212,7 +3212,7 @@ Let me know if you need anything else.`;
         </div>}
 
         {/* COP CHECK */}
-        {/* COP CHECK - StockX Only */}
+        {/* COP CHECK - Client-Side StockX Fetch */}
         {page === 'copcheck' && (() => {
           // StockX payout calculator
           const calcPayout = (salePrice) => {
@@ -3225,30 +3225,98 @@ Let me know if you need anything else.`;
           // Verdict logic
           const getVerdict = (profit, roi) => {
             if (profit <= 0) return { verdict: 'DROP', emoji: '🔴', color: c.red, message: "You're losing money", bg: 'rgba(239,68,68,0.15)' };
-            if (roi >= 30) return { verdict: 'COP', emoji: '🟢', color: c.green, message: 'Great flip! Easy money', bg: 'rgba(16,185,129,0.15)' };
+            if (roi >= 30) return { verdict: 'COP', emoji: '🟢', color: c.green, message: 'Great flip! 💰', bg: 'rgba(16,185,129,0.15)' };
             if (roi >= 20) return { verdict: 'COP', emoji: '🟢', color: c.green, message: 'Solid profit', bg: 'rgba(16,185,129,0.15)' };
-            if (roi >= 10) return { verdict: 'MEH', emoji: '🟡', color: c.gold, message: 'Thin margins, still profit', bg: 'rgba(201,169,98,0.15)' };
+            if (roi >= 10) return { verdict: 'MEH', emoji: '🟡', color: c.gold, message: 'Thin margins', bg: 'rgba(201,169,98,0.15)' };
             if (roi > 0) return { verdict: 'MEH', emoji: '🟡', color: c.gold, message: 'Barely worth it', bg: 'rgba(201,169,98,0.15)' };
             return { verdict: 'DROP', emoji: '🔴', color: c.red, message: 'Skip this one', bg: 'rgba(239,68,68,0.15)' };
           };
           
-          // Handle search
+          // Client-side StockX fetch with CORS proxy
           const handleSearch = async () => {
             if (!copCheck.sku.trim()) return;
             setCopCheck(prev => ({ ...prev, loading: true, result: null, bulkSizes: [], selectedSize: '' }));
             
-            try {
-              const res = await fetch(`/api/cop-check?sku=${encodeURIComponent(copCheck.sku.trim())}`);
-              const data = await res.json();
-              
-              if (data.error) {
-                setCopCheck(prev => ({ ...prev, loading: false, result: { error: data.error } }));
-              } else {
-                setCopCheck(prev => ({ ...prev, loading: false, result: data }));
+            const sku = copCheck.sku.trim();
+            
+            // Try multiple CORS proxies
+            const proxies = [
+              (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+              (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+              (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
+            ];
+            
+            const stockxUrl = `https://stockx.com/api/browse?_search=${encodeURIComponent(sku)}&dataType=product`;
+            
+            let data = null;
+            let lastError = null;
+            
+            for (const makeProxy of proxies) {
+              try {
+                const proxyUrl = makeProxy(stockxUrl);
+                const res = await fetch(proxyUrl, {
+                  headers: { 'Accept': 'application/json' }
+                });
+                
+                if (res.ok) {
+                  const text = await res.text();
+                  try {
+                    data = JSON.parse(text);
+                    break;
+                  } catch (e) {
+                    lastError = 'Invalid response';
+                  }
+                }
+              } catch (err) {
+                lastError = err.message;
               }
-            } catch (err) {
-              setCopCheck(prev => ({ ...prev, loading: false, result: { error: 'Network error. Try again.' } }));
             }
+            
+            if (!data || !data.Products || data.Products.length === 0) {
+              setCopCheck(prev => ({ ...prev, loading: false, result: { error: 'Product not found. Check the style code.' } }));
+              return;
+            }
+            
+            // Find exact match or first result
+            const products = data.Products;
+            let product = products.find(p => p.styleId?.toUpperCase() === sku.toUpperCase()) || products[0];
+            
+            // Build sizes from children
+            const sizes = {};
+            if (product.children) {
+              Object.values(product.children).forEach(child => {
+                if (child.shoeSize && child.market) {
+                  sizes[child.shoeSize] = {
+                    lowestAsk: child.market.lowestAsk || 0,
+                    lastSale: child.market.lastSale || 0,
+                    highestBid: child.market.highestBid || 0
+                  };
+                }
+              });
+            }
+            
+            // Build image URL
+            let image = product.media?.imageUrl || product.media?.thumbUrl || '';
+            if (!image && product.urlKey) {
+              image = `https://images.stockx.com/images/${product.urlKey.replace(/-/g, '-')}.jpg?fit=fill&bg=FFFFFF&w=300&h=214&fm=webp&auto=compress&q=90&dpr=2`;
+            }
+            
+            const market = product.market || {};
+            
+            setCopCheck(prev => ({ 
+              ...prev, 
+              loading: false, 
+              result: {
+                name: product.title || product.name,
+                sku: product.styleId || sku,
+                image: image,
+                lowestAsk: market.lowestAsk || 0,
+                lastSale: market.lastSale || 0,
+                highestBid: market.highestBid || 0,
+                salesLast72Hours: market.salesLast72Hours || 0,
+                sizes: sizes
+              }
+            }));
           };
           
           const result = copCheck.result;
@@ -3257,20 +3325,19 @@ Let me know if you need anything else.`;
           const bulkSizes = copCheck.bulkSizes || [];
           
           // Get price for selected size or overall
-          let marketPrice = result?.lowestAsk || 0;
+          let lowestAsk = result?.lowestAsk || 0;
           let lastSale = result?.lastSale || 0;
           
           if (selectedSize && result?.sizes?.[selectedSize]) {
-            marketPrice = result.sizes[selectedSize].stockx || marketPrice;
+            lowestAsk = result.sizes[selectedSize].lowestAsk || lowestAsk;
             lastSale = result.sizes[selectedSize].lastSale || lastSale;
           }
           
-          // Use last sale for more accurate profit
-          const salePrice = lastSale || marketPrice;
+          const salePrice = lastSale || lowestAsk;
           const payout = calcPayout(salePrice);
           const profit = payout - cost;
           const roi = cost > 0 ? (profit / cost) * 100 : 0;
-          const verdict = cost > 0 ? getVerdict(profit, roi) : null;
+          const verdict = cost > 0 && salePrice > 0 ? getVerdict(profit, roi) : null;
           
           // Toggle bulk size
           const toggleBulkSize = (size) => {
@@ -3303,12 +3370,12 @@ Let me know if you need anything else.`;
           return <div style={{ maxWidth: 600, margin: '0 auto' }}>
             {/* HEADER */}
             <div style={{ textAlign: 'center', marginBottom: 24 }}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12, padding: '8px 20px', background: 'rgba(0,193,101,0.1)', borderRadius: 30, marginBottom: 12 }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '8px 20px', background: 'rgba(0,193,101,0.1)', borderRadius: 30, marginBottom: 12 }}>
                 <div style={{ width: 24, height: 24, background: '#00c165', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 800, color: '#fff' }}>SX</div>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#00c165' }}>StockX Live Prices</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#00c165' }}>Live StockX Prices</span>
               </div>
               <h2 style={{ margin: '0 0 4px', fontSize: 28, fontWeight: 900 }}>🔥 Cop Check</h2>
-              <p style={{ margin: 0, color: c.textMuted, fontSize: 14 }}>Should you buy? Get the answer in seconds.</p>
+              <p style={{ margin: 0, color: c.textMuted, fontSize: 14 }}>Enter style code → Get instant verdict</p>
             </div>
             
             {/* SEARCH */}
@@ -3316,7 +3383,7 @@ Let me know if you need anything else.`;
               <div style={{ display: 'flex', gap: 12 }}>
                 <input
                   type="text"
-                  placeholder="Style Code (e.g. DD1391-100)"
+                  placeholder="Style Code (DD1391-100)"
                   value={copCheck.sku}
                   onChange={e => setCopCheck(prev => ({ ...prev, sku: e.target.value.toUpperCase() }))}
                   onKeyDown={e => e.key === 'Enter' && handleSearch()}
@@ -3325,16 +3392,33 @@ Let me know if you need anything else.`;
                 <button
                   onClick={handleSearch}
                   disabled={copCheck.loading || !copCheck.sku.trim()}
-                  style={{ padding: '16px 32px', background: '#00c165', border: 'none', borderRadius: 12, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', opacity: copCheck.loading ? 0.6 : 1 }}
+                  style={{ padding: '16px 28px', background: '#00c165', border: 'none', borderRadius: 12, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', opacity: copCheck.loading ? 0.6 : 1 }}
                 >
                   {copCheck.loading ? '⏳' : '🔍 CHECK'}
                 </button>
               </div>
+              
+              {/* Quick SKUs */}
+              {!result && !copCheck.loading && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'center' }}>
+                  {['DD1391-100', 'DZ5485-612', 'HF7990-001'].map(s => (
+                    <button key={s} onClick={() => setCopCheck(prev => ({ ...prev, sku: s }))} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: c.textMuted, fontSize: 11, cursor: 'pointer' }}>{s}</button>
+                  ))}
+                </div>
+              )}
             </div>
+            
+            {/* LOADING */}
+            {copCheck.loading && (
+              <div style={{ ...cardStyle, padding: 48, textAlign: 'center' }}>
+                <div style={{ fontSize: 48, marginBottom: 16 }}>⏳</div>
+                <p style={{ color: c.textMuted, margin: 0 }}>Fetching live prices...</p>
+              </div>
+            )}
             
             {/* ERROR */}
             {result?.error && (
-              <div style={{ ...cardStyle, padding: 32, textAlign: 'center', marginBottom: 20 }}>
+              <div style={{ ...cardStyle, padding: 32, textAlign: 'center' }}>
                 <div style={{ fontSize: 48, marginBottom: 12 }}>😕</div>
                 <p style={{ color: c.textMuted, margin: 0, fontSize: 15 }}>{result.error}</p>
               </div>
@@ -3347,21 +3431,21 @@ Let me know if you need anything else.`;
                 <div style={{ ...cardStyle, padding: 20, marginBottom: 16 }}>
                   <div style={{ display: 'flex', gap: 20 }}>
                     {result.image && (
-                      <div style={{ width: 120, height: 120, borderRadius: 12, overflow: 'hidden', background: '#fff', flexShrink: 0 }}>
-                        <img src={result.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      <div style={{ width: 110, height: 110, borderRadius: 12, overflow: 'hidden', background: '#fff', flexShrink: 0 }}>
+                        <img src={result.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={e => e.target.style.display = 'none'} />
                       </div>
                     )}
                     <div style={{ flex: 1 }}>
-                      <h3 style={{ margin: '0 0 6px', fontSize: 18, fontWeight: 800, lineHeight: 1.3 }}>{result.name}</h3>
-                      <p style={{ margin: '0 0 16px', fontSize: 13, color: '#00c165', fontWeight: 700 }}>{result.sku}</p>
-                      <div style={{ display: 'flex', gap: 16 }}>
+                      <h3 style={{ margin: '0 0 6px', fontSize: 17, fontWeight: 800, lineHeight: 1.3 }}>{result.name}</h3>
+                      <p style={{ margin: '0 0 14px', fontSize: 13, color: '#00c165', fontWeight: 700 }}>{result.sku}</p>
+                      <div style={{ display: 'flex', gap: 20 }}>
                         <div>
-                          <div style={{ fontSize: 10, color: c.textMuted, fontWeight: 600, marginBottom: 2 }}>LOWEST ASK</div>
-                          <div style={{ fontSize: 20, fontWeight: 800, color: '#00c165' }}>{fmt(result.lowestAsk)}</div>
+                          <div style={{ fontSize: 10, color: c.textMuted, fontWeight: 600 }}>LOWEST ASK</div>
+                          <div style={{ fontSize: 22, fontWeight: 800, color: '#00c165' }}>{fmt(lowestAsk)}</div>
                         </div>
                         <div>
-                          <div style={{ fontSize: 10, color: c.textMuted, fontWeight: 600, marginBottom: 2 }}>LAST SALE</div>
-                          <div style={{ fontSize: 20, fontWeight: 800 }}>{fmt(result.lastSale)}</div>
+                          <div style={{ fontSize: 10, color: c.textMuted, fontWeight: 600 }}>LAST SALE</div>
+                          <div style={{ fontSize: 22, fontWeight: 800 }}>{fmt(lastSale)}</div>
                         </div>
                       </div>
                     </div>
@@ -3371,16 +3455,16 @@ Let me know if you need anything else.`;
                 {/* SIZE SELECTOR */}
                 {result.sizes && Object.keys(result.sizes).length > 0 && (
                   <div style={{ ...cardStyle, padding: 20, marginBottom: 16 }}>
-                    <div style={{ fontSize: 11, color: c.textMuted, fontWeight: 700, marginBottom: 12 }}>📏 SELECT SIZE</div>
+                    <div style={{ fontSize: 11, color: c.textMuted, fontWeight: 700, marginBottom: 12 }}>📏 SELECT SIZE (prices vary)</div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                       {Object.entries(result.sizes).sort((a,b) => parseFloat(a[0]) - parseFloat(b[0])).map(([size, data]) => (
                         <button
                           key={size}
                           onClick={() => setCopCheck(prev => ({ ...prev, selectedSize: size }))}
-                          style={{ padding: '12px 16px', background: selectedSize === size ? '#00c165' : 'rgba(255,255,255,0.05)', border: `2px solid ${selectedSize === size ? '#00c165' : c.border}`, borderRadius: 10, color: selectedSize === size ? '#000' : c.text, fontSize: 13, fontWeight: 700, cursor: 'pointer', minWidth: 60, textAlign: 'center' }}
+                          style={{ padding: '10px 14px', background: selectedSize === size ? '#00c165' : 'rgba(255,255,255,0.05)', border: `2px solid ${selectedSize === size ? '#00c165' : c.border}`, borderRadius: 10, color: selectedSize === size ? '#000' : c.text, fontSize: 12, fontWeight: 700, cursor: 'pointer', minWidth: 58, textAlign: 'center' }}
                         >
                           <div>{size}</div>
-                          <div style={{ fontSize: 10, opacity: 0.8, marginTop: 2 }}>{fmt(data.stockx)}</div>
+                          <div style={{ fontSize: 9, opacity: 0.7, marginTop: 2 }}>{fmt(data.lowestAsk || data.lastSale)}</div>
                         </button>
                       ))}
                     </div>
@@ -3389,44 +3473,44 @@ Let me know if you need anything else.`;
                 
                 {/* COST INPUT */}
                 <div style={{ ...cardStyle, padding: 20, marginBottom: 16 }}>
-                  <div style={{ fontSize: 11, color: c.textMuted, fontWeight: 700, marginBottom: 12 }}>💵 YOUR COST</div>
+                  <div style={{ fontSize: 11, color: c.textMuted, fontWeight: 700, marginBottom: 10 }}>💵 YOUR COST (what you're paying)</div>
                   <input
                     type="number"
-                    placeholder="What are you paying?"
+                    placeholder="Enter cost..."
                     value={copCheck.cost}
                     onChange={e => setCopCheck(prev => ({ ...prev, cost: e.target.value }))}
-                    style={{ width: '100%', padding: 20, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 24, fontWeight: 800, textAlign: 'center' }}
+                    style={{ width: '100%', padding: 18, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 26, fontWeight: 800, textAlign: 'center' }}
                   />
                 </div>
                 
                 {/* VERDICT */}
-                {cost > 0 && verdict && (
+                {verdict && (
                   <>
-                    <div style={{ ...cardStyle, padding: 32, marginBottom: 16, textAlign: 'center', background: verdict.bg, border: `2px solid ${verdict.color}50` }}>
-                      <div style={{ fontSize: 56, marginBottom: 8 }}>{verdict.emoji}</div>
-                      <div style={{ fontSize: 42, fontWeight: 900, color: verdict.color, marginBottom: 8 }}>{verdict.verdict}</div>
-                      <div style={{ fontSize: 36, fontWeight: 800, marginBottom: 8 }}>{profit >= 0 ? '+' : ''}{fmt(profit)}</div>
-                      <div style={{ fontSize: 18, color: c.textMuted, marginBottom: 12 }}>{roi.toFixed(1)}% ROI</div>
-                      <div style={{ fontSize: 14, color: c.textDim }}>{verdict.message}</div>
+                    <div style={{ ...cardStyle, padding: 28, marginBottom: 16, textAlign: 'center', background: verdict.bg, border: `2px solid ${verdict.color}50` }}>
+                      <div style={{ fontSize: 52, marginBottom: 6 }}>{verdict.emoji}</div>
+                      <div style={{ fontSize: 44, fontWeight: 900, color: verdict.color, marginBottom: 6 }}>{verdict.verdict}</div>
+                      <div style={{ fontSize: 38, fontWeight: 800, marginBottom: 6 }}>{profit >= 0 ? '+' : ''}{fmt(profit)}</div>
+                      <div style={{ fontSize: 18, color: c.textMuted, marginBottom: 10 }}>{roi.toFixed(1)}% ROI</div>
+                      <div style={{ fontSize: 13, color: c.textDim }}>{verdict.message}</div>
                     </div>
                     
                     {/* BREAKDOWN */}
                     <div style={{ ...cardStyle, padding: 20, marginBottom: 16 }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-                        <div style={{ padding: 14, background: 'rgba(255,255,255,0.03)', borderRadius: 10 }}>
-                          <div style={{ fontSize: 10, color: c.textMuted }}>Sale Price</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        <div style={{ padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 10 }}>
+                          <div style={{ fontSize: 10, color: c.textDim }}>Sale Price</div>
                           <div style={{ fontSize: 18, fontWeight: 700 }}>{fmt(salePrice)}</div>
                         </div>
-                        <div style={{ padding: 14, background: 'rgba(255,255,255,0.03)', borderRadius: 10 }}>
-                          <div style={{ fontSize: 10, color: c.textMuted }}>Fees ({settings.stockxLevel || 9}+{settings.stockxProcessing || 3}%)</div>
+                        <div style={{ padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 10 }}>
+                          <div style={{ fontSize: 10, color: c.textDim }}>Fees ({settings.stockxLevel || 9}+{settings.stockxProcessing || 3}%)</div>
                           <div style={{ fontSize: 18, fontWeight: 700, color: c.red }}>-{fmt(salePrice - payout)}</div>
                         </div>
-                        <div style={{ padding: 14, background: 'rgba(255,255,255,0.03)', borderRadius: 10 }}>
-                          <div style={{ fontSize: 10, color: c.textMuted }}>Payout</div>
+                        <div style={{ padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 10 }}>
+                          <div style={{ fontSize: 10, color: c.textDim }}>Payout</div>
                           <div style={{ fontSize: 18, fontWeight: 700 }}>{fmt(payout)}</div>
                         </div>
-                        <div style={{ padding: 14, background: 'rgba(255,255,255,0.03)', borderRadius: 10 }}>
-                          <div style={{ fontSize: 10, color: c.textMuted }}>Your Cost</div>
+                        <div style={{ padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 10 }}>
+                          <div style={{ fontSize: 10, color: c.textDim }}>Your Cost</div>
                           <div style={{ fontSize: 18, fontWeight: 700 }}>-{fmt(cost)}</div>
                         </div>
                       </div>
@@ -3435,19 +3519,19 @@ Let me know if you need anything else.`;
                     {/* BULK ADD */}
                     {result.sizes && Object.keys(result.sizes).length > 0 && (
                       <div style={{ ...cardStyle, padding: 20, marginBottom: 16 }}>
-                        <div style={{ fontSize: 11, color: c.textMuted, fontWeight: 700, marginBottom: 12 }}>👟 BULK ADD - Tap sizes you're buying</div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: bulkSizes.length > 0 ? 16 : 0 }}>
+                        <div style={{ fontSize: 11, color: c.textMuted, fontWeight: 700, marginBottom: 12 }}>👟 BULK ADD - Tap all sizes you're buying</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: bulkSizes.length > 0 ? 14 : 0 }}>
                           {Object.keys(result.sizes).sort((a,b) => parseFloat(a) - parseFloat(b)).map(size => (
                             <button key={size} onClick={() => toggleBulkSize(size)} style={{ padding: '10px 14px', background: bulkSizes.includes(size) ? c.green : 'rgba(255,255,255,0.05)', border: `2px solid ${bulkSizes.includes(size) ? c.green : c.border}`, borderRadius: 8, color: bulkSizes.includes(size) ? '#000' : c.text, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>{size}</button>
                           ))}
                         </div>
                         {bulkSizes.length > 0 && (
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 16, background: 'rgba(16,185,129,0.1)', borderRadius: 10 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 14, background: 'rgba(16,185,129,0.1)', borderRadius: 10 }}>
                             <div>
                               <div style={{ fontSize: 14, fontWeight: 700, color: c.green }}>{bulkSizes.length} sizes</div>
                               <div style={{ fontSize: 12, color: c.textMuted }}>{fmt(cost * bulkSizes.length)} → {fmt(profit * bulkSizes.length)} profit</div>
                             </div>
-                            <button onClick={() => addToInventory(bulkSizes)} style={{ padding: '12px 24px', ...btnPrimary, fontSize: 13 }}>Add {bulkSizes.length} to Inventory</button>
+                            <button onClick={() => addToInventory(bulkSizes)} style={{ padding: '12px 20px', ...btnPrimary, fontSize: 13 }}>Add {bulkSizes.length} to Inventory</button>
                           </div>
                         )}
                       </div>
@@ -3468,12 +3552,7 @@ Let me know if you need anything else.`;
               <div style={{ ...cardStyle, padding: 48, textAlign: 'center' }}>
                 <div style={{ fontSize: 64, marginBottom: 16 }}>👟</div>
                 <h3 style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 700 }}>Enter a Style Code</h3>
-                <p style={{ margin: '0 0 20px', color: c.textMuted, fontSize: 14 }}>Get live StockX prices and instant profit calculation</p>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-                  {['DD1391-100', 'DZ5485-612', 'FQ8077-104'].map(sku => (
-                    <button key={sku} onClick={() => setCopCheck(prev => ({ ...prev, sku }))} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, fontSize: 12, cursor: 'pointer' }}>{sku}</button>
-                  ))}
-                </div>
+                <p style={{ margin: 0, color: c.textMuted, fontSize: 14 }}>Get live StockX prices instantly</p>
               </div>
             )}
           </div>;
