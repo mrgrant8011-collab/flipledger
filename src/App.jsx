@@ -210,9 +210,16 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
       {items.length > 0 ? items.map(s => (
         <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '36px 52px 80px 1fr 100px 45px 90px 65px 65px 60px 70px 28px 28px', padding: '12px 16px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', gap: 8, background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : 'transparent' }}>
           <div><input type="checkbox" checked={selectedSales.has(s.id)} onChange={e => { const n = new Set(selectedSales); e.target.checked ? n.add(s.id) : n.delete(s.id); setSelectedSales(n); }} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }} /></div>
-          <div style={{ width: 44, height: 44, borderRadius: 8, overflow: 'hidden', background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            {s.image ? <img src={s.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} /> : null}
-            <span style={{ fontSize: 18, display: s.image ? 'none' : 'block' }}>{getProductIcon(s.name)}</span>
+          <div style={{ width: 44, height: 44, borderRadius: 8, overflow: 'hidden', background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative' }}>
+            <span style={{ fontSize: 18 }}>{getProductIcon(s.name)}</span>
+            {s.image && (
+              <img 
+                src={s.image} 
+                alt="" 
+                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', background: '#1a1a1a' }} 
+                onError={(e) => { e.target.style.display = 'none'; }} 
+              />
+            )}
           </div>
           <span style={{ fontSize: 11, color: c.textMuted }}>{s.saleDate}</span>
           <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
@@ -2471,11 +2478,16 @@ Let me know if you need anything else.`;
                           style={{ width: 18, height: 18, cursor: 'pointer', accentColor: c.green }}
                         />
                       </div>
-                      <div style={{ width: 52, height: 52, borderRadius: 8, overflow: 'hidden', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {s.image ? (
-                          <img src={s.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} />
-                        ) : null}
-                        <span style={{ fontSize: 22, opacity: 0.5, display: s.image ? 'none' : 'block' }}>{getProductIcon(s.name)}</span>
+                      <div style={{ width: 52, height: 52, borderRadius: 8, overflow: 'hidden', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                        <span style={{ fontSize: 22, opacity: 0.5 }}>{getProductIcon(s.name)}</span>
+                        {s.image && (
+                          <img 
+                            src={s.image} 
+                            alt="" 
+                            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#0a0a0a' }} 
+                            onError={(e) => { e.target.style.display = 'none'; }} 
+                          />
+                        )}
                       </div>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 4 }}>{s.name}</div>
