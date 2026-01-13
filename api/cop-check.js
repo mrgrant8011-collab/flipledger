@@ -1,6 +1,8 @@
 // Cop Check API - Fetches prices from StockX, GOAT, FlightClub
 // Uses Sneaks-API (npm package)
 
+import SneaksAPI from 'sneaks-api';
+
 export default async function handler(req, res) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -13,8 +15,6 @@ export default async function handler(req, res) {
   }
   
   try {
-    // Dynamic import for Sneaks-API
-    const SneaksAPI = (await import('sneaks-api')).default;
     const sneaks = new SneaksAPI();
     
     // Search for the product
