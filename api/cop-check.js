@@ -1,7 +1,4 @@
 // Cop Check API - Fetches prices from StockX, GOAT, FlightClub
-// Uses Sneaks-API (npm package)
-
-import SneaksAPI from 'sneaks-api';
 
 export default async function handler(req, res) {
   // Enable CORS
@@ -15,13 +12,15 @@ export default async function handler(req, res) {
   }
   
   try {
+    // Dynamic import for sneaks-api (CommonJS module)
+    const SneaksAPI = (await import('sneaks-api')).default;
     const sneaks = new SneaksAPI();
     
     // Search for the product
     const products = await new Promise((resolve, reject) => {
       sneaks.getProducts(sku, 5, (err, products) => {
         if (err) reject(err);
-        else resolve(products);
+        else resolve(products || []);
       });
     });
     
@@ -44,6 +43,18 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: 'Could not fetch pricing data' });
     }
     
+    // Estimate sales based on price spread
+    const estimateSales = (d) => {
+      const stockxPrice = d.lowestResellPrice?.stockX || 0;
+      const goatPrice = d.lowestResellPrice?.goat || 0;
+      if (!stockxPrice || !goatPrice) return 50;
+      const priceDiff = Math.abs(stockxPrice - goatPrice) / stockxPrice;
+      if (priceDiff < 0.05) return 300;
+      if (priceDiff < 0.10) return 150;
+      if (priceDiff < 0.15) return 75;
+      return 30;
+    };
+    
     // Build response
     const response = {
       name: details.shoeName || product.shoeName,
@@ -55,10 +66,8 @@ export default async function handler(req, res) {
         goat: details.lowestResellPrice?.goat || 0,
         flightclub: details.lowestResellPrice?.flightClub || 0
       },
-      // Size-specific pricing if available
       sizes: {},
-      // Sales data
-      salesLast30: details.resellLinks?.stockX ? estimateSales(details) : 0,
+      salesLast30: estimateSales(details),
       avgSale: details.lowestResellPrice?.stockX ? Math.round(details.lowestResellPrice.stockX * 0.95) : 0
     };
     
@@ -79,23 +88,4 @@ export default async function handler(req, res) {
     console.error('Cop Check API Error:', error);
     return res.status(500).json({ error: 'Failed to fetch pricing data. Try again.' });
   }
-}
-
-// Estimate sales based on available data
-// This is a rough estimate - Sneaks-API doesn't provide exact sales counts
-function estimateSales(details) {
-  // If we had real data, we'd use it
-  // For now, estimate based on price spread (popular items have tighter spreads)
-  const stockxPrice = details.lowestResellPrice?.stockX || 0;
-  const goatPrice = details.lowestResellPrice?.goat || 0;
-  
-  if (!stockxPrice || !goatPrice) return 50; // Default medium liquidity
-  
-  const priceDiff = Math.abs(stockxPrice - goatPrice) / stockxPrice;
-  
-  // Tighter spread = more liquid
-  if (priceDiff < 0.05) return 300; // Very high liquidity
-  if (priceDiff < 0.10) return 150; // High liquidity
-  if (priceDiff < 0.15) return 75;  // Medium liquidity
-  return 30; // Low liquidity
 }
