@@ -1005,11 +1005,18 @@ function App() {
   // Import StockX sales
   const importStockxSales = () => {
     const filtered = filterStockxData();
-    const newPending = filtered.map(row => {
+    console.log('CSV Import - First row keys:', Object.keys(filtered[0] || {}));
+    console.log('CSV Import - First row:', filtered[0]);
+    
+    const newPending = filtered.map((row, idx) => {
       const orderNum = row['Order Number'] || row['Order Id'] || row['Order #'] || '';
       const salePrice = parseFloat((row['Price'] || row['Sale Price'] || row['Order Total'] || '0').replace(/[$,]/g, '')) || 0;
       const payout = parseFloat((row['Final Payout Amount'] || row['Payout'] || row['Total Payout'] || '0').replace(/[$,]/g, '')) || 0;
-      let productName = row['Item'] || row['Product Name'] || 'Unknown Item';
+      let productName = row['Item'] || row['Product Name'] || row['Product'] || row['Name'] || 'Unknown Item';
+      
+      if (idx === 0) {
+        console.log('CSV Import - Product name:', productName);
+      }
       
       // Generate image URL from product name
       // Add "Air" prefix for Jordan products if not already there
@@ -1038,6 +1045,11 @@ function App() {
       const image = slug 
         ? `https://images.stockx.com/images/${slug}.jpg?fit=fill&bg=FFFFFF&w=300&h=214&fm=webp&auto=compress&q=90&dpr=2&trim=color`
         : '';
+      
+      if (idx === 0) {
+        console.log('CSV Import - Slug:', slug);
+        console.log('CSV Import - Image URL:', image);
+      }
       
       return {
         id: orderNum || Date.now() + Math.random(),
