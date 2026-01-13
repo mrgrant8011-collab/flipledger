@@ -406,7 +406,7 @@ function App() {
       if (data.sales && data.sales.length > 0) {
         // Generate image URLs from product names
         const salesWithImages = data.sales.map(s => {
-          // Create slug from product name
+          // Create slug - keep capitals, just replace spaces with hyphens
           const slug = (s.name || '')
             .replace(/\(Women's\)/gi, 'W')
             .replace(/\(Men's\)/gi, '')

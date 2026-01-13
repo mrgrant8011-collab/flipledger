@@ -59,27 +59,19 @@ export default async function handler(req, res) {
       if (order.inventoryType === 'FLEX') platform = 'StockX Flex';
       else if (order.inventoryType === 'DIRECT') platform = 'StockX Direct';
       
-      const sku = product.styleId || '';
-      const productId = product.productId || '';
-      const productName = product.productName || '';
-      
-      // Return all identifiers - let frontend try multiple patterns
       return {
         id: order.orderNumber,
-        name: productName || 'Unknown Product',
-        sku,
+        name: product.productName || 'Unknown Product',
+        sku: product.styleId || '',
         size: variant.variantValue || '',
         salePrice: parseFloat(order.amount) || 0,
         payout: parseFloat(payout.totalPayout) || 0,
         saleDate: (order.createdAt || '').split('T')[0],
-        platform,
-        productId
+        platform
       };
     });
     
     const uniqueSales = [...new Map(sales.map(s => [s.id, s])).values()];
-    
-    console.log(`[StockX] Sample - Name: "${uniqueSales[0]?.name}", SKU: ${uniqueSales[0]?.sku}, ProductId: ${uniqueSales[0]?.productId}`);
     
     res.status(200).json({ 
       sales: uniqueSales,
