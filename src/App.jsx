@@ -1,50 +1,131 @@
 import { useState, useEffect, Component } from 'react';
 import * as XLSX from 'xlsx';
 
-// Helper: Get icon based on product name
-const getProductIcon = (name) => {
-  if (!name) return '📦';
+// Premium SVG Icons - Dashboard Style
+const SneakerSVG = ({ size = 22, color = "#10b981" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 17v-3c0-.8.4-1.5 1.5-1.8l6-2.2c1.2-.4 2-1.2 2.3-2.3l.7-2.2c.2-.7.7-1 1.5-1h3c1 0 1.5.6 1.5 1.5v10H4z"/>
+    <path d="M7 13h3"/>
+    <rect x="3" y="17" width="18" height="2" rx="1" fill={color} opacity="0.3"/>
+  </svg>
+);
+
+const HoodieSVG = ({ size = 22, color = "#a855f7" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6 20V11c0-3.3 2.7-6 6-6s6 2.7 6 6v9"/>
+    <path d="M6 20h12"/>
+    <path d="M9 5c0 1.7 1.3 3 3 3s3-1.3 3-3"/>
+    <path d="M12 8v3"/>
+    <path d="M9 20v-5M15 20v-5" opacity="0.5"/>
+  </svg>
+);
+
+const ShirtSVG = ({ size = 22, color = "#3b82f6" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M8 4L4 7v3l3-1.5V19h10V8.5L20 10V7l-4-3"/>
+    <path d="M8 4c0 2.2 1.8 4 4 4s4-1.8 4-4"/>
+  </svg>
+);
+
+const HatSVG = ({ size = 22, color = "#f59e0b" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <ellipse cx="12" cy="16" rx="9" ry="3"/>
+    <path d="M5 16V11c0-3.9 3.1-7 7-7s7 3.1 7 7v5"/>
+  </svg>
+);
+
+const BagSVG = ({ size = 22, color = "#ec4899" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="8" width="18" height="13" rx="2"/>
+    <path d="M8 8V6c0-2.2 1.8-4 4-4s4 1.8 4 4v2"/>
+  </svg>
+);
+
+const ElectronicsSVG = ({ size = 22, color = "#06b6d4" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="6" y="4" width="12" height="16" rx="2"/>
+    <path d="M12 18h.01"/>
+  </svg>
+);
+
+const BoxSVG = ({ size = 22, color = "#888" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
+    <path d="m3.3 7 8.7 5 8.7-5"/>
+    <path d="M12 22V12"/>
+  </svg>
+);
+
+// Helper: Get icon TYPE based on product name
+const getProductIconType = (name) => {
+  if (!name) return 'box';
   const n = name.toLowerCase();
   
   // Electronics
   if (n.includes('playstation') || n.includes('ps5') || n.includes('ps4') || 
       n.includes('xbox') || n.includes('nintendo') || n.includes('switch') ||
-      n.includes('console') || n.includes('controller')) return '🎮';
-  if (n.includes('iphone') || n.includes('samsung') || n.includes('pixel') ||
-      n.includes('phone')) return '📱';
-  if (n.includes('macbook') || n.includes('laptop') || n.includes('ipad') ||
-      n.includes('tablet')) return '💻';
-  if (n.includes('airpod') || n.includes('headphone') || n.includes('earbud') ||
-      n.includes('beats') || n.includes('speaker')) return '🎧';
-  if (n.includes('watch') || n.includes('apple watch')) return '⌚';
-  if (n.includes('camera') || n.includes('gopro')) return '📷';
-  if (n.includes('gpu') || n.includes('graphics') || n.includes('nvidia') ||
-      n.includes('rtx') || n.includes('geforce')) return '🖥️';
+      n.includes('console') || n.includes('controller') || n.includes('iphone') || 
+      n.includes('phone') || n.includes('macbook') || n.includes('laptop') || 
+      n.includes('ipad') || n.includes('airpod') || n.includes('headphone') ||
+      n.includes('watch') || n.includes('camera')) return 'electronics';
   
-  // Collectibles
-  if (n.includes('funko') || n.includes('pop!') || n.includes('figure') ||
-      n.includes('toy') || n.includes('lego') || n.includes('bearbrick')) return '🧸';
-  if (n.includes('card') || n.includes('pokemon') || n.includes('trading')) return '🃏';
-  
-  // Clothing keywords
+  // Clothing
   if (n.includes('hoodie') || n.includes('sweatshirt') || n.includes('crewneck') || 
       n.includes('jacket') || n.includes('coat') || n.includes('pullover') ||
-      n.includes('zip') || n.includes('fleece') || n.includes('puffer')) return '🧥';
+      n.includes('zip') || n.includes('fleece') || n.includes('puffer')) return 'hoodie';
   if (n.includes('tee') || n.includes('t-shirt') || n.includes('shirt') || 
-      n.includes('jersey') || n.includes('polo') || n.includes('tank')) return '👕';
-  if (n.includes('pants') || n.includes('jogger') || n.includes('sweatpant') ||
-      n.includes('jean') || n.includes('trouser') || n.includes('cargo')) return '👖';
-  if (n.includes('shorts') || n.includes('short')) return '🩳';
+      n.includes('jersey') || n.includes('polo') || n.includes('tank')) return 'shirt';
   if (n.includes('hat') || n.includes('cap') || n.includes('beanie') ||
-      n.includes('fitted') || n.includes('snapback')) return '🧢';
+      n.includes('fitted') || n.includes('snapback')) return 'hat';
   if (n.includes('bag') || n.includes('backpack') || n.includes('duffle') ||
-      n.includes('tote') || n.includes('messenger') || n.includes('duffel')) return '👜';
-  if (n.includes('sock')) return '🧦';
-  if (n.includes('sunglasses') || n.includes('glasses')) return '🕶️';
-  if (n.includes('belt') || n.includes('wallet') || n.includes('keychain')) return '👛';
+      n.includes('tote') || n.includes('messenger')) return 'bag';
   
-  // Default to shoe for sneakers (most StockX items)
-  return '👟';
+  // Default to sneaker
+  return 'sneaker';
+};
+
+// Icon styles matching dashboard
+const iconStyles = {
+  sneaker: { bg: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', shadow: '0 4px 15px rgba(16,185,129,0.4)' },
+  hoodie: { bg: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)', shadow: '0 4px 15px rgba(168,85,247,0.4)' },
+  shirt: { bg: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)', shadow: '0 4px 15px rgba(59,130,246,0.4)' },
+  hat: { bg: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', shadow: '0 4px 15px rgba(245,158,11,0.4)' },
+  bag: { bg: 'linear-gradient(135deg, #ec4899 0%, #db2777 100%)', shadow: '0 4px 15px rgba(236,72,153,0.4)' },
+  electronics: { bg: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', shadow: '0 4px 15px rgba(6,182,212,0.4)' },
+  box: { bg: 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)', shadow: '0 4px 15px rgba(107,114,128,0.3)' }
+};
+
+// Render icon with dashboard style
+const ProductIcon = ({ name, size = 44 }) => {
+  const type = getProductIconType(name);
+  const style = iconStyles[type];
+  
+  const renderIcon = () => {
+    switch(type) {
+      case 'sneaker': return <SneakerSVG size={size * 0.5} color="#fff" />;
+      case 'hoodie': return <HoodieSVG size={size * 0.5} color="#fff" />;
+      case 'shirt': return <ShirtSVG size={size * 0.5} color="#fff" />;
+      case 'hat': return <HatSVG size={size * 0.5} color="#fff" />;
+      case 'bag': return <BagSVG size={size * 0.5} color="#fff" />;
+      case 'electronics': return <ElectronicsSVG size={size * 0.5} color="#fff" />;
+      default: return <BoxSVG size={size * 0.5} color="#fff" />;
+    }
+  };
+  
+  return (
+    <div style={{
+      width: size,
+      height: size,
+      borderRadius: 10,
+      background: style.bg,
+      boxShadow: style.shadow,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}>
+      {renderIcon()}
+    </div>
+  );
 };
 
 // Error Boundary for production stability
@@ -210,13 +291,13 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
       {items.length > 0 ? items.map(s => (
         <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '36px 52px 80px 1fr 100px 45px 90px 65px 65px 60px 70px 28px 28px', padding: '12px 16px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', gap: 8, background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : 'transparent' }}>
           <div><input type="checkbox" checked={selectedSales.has(s.id)} onChange={e => { const n = new Set(selectedSales); e.target.checked ? n.add(s.id) : n.delete(s.id); setSelectedSales(n); }} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }} /></div>
-          <div style={{ width: 44, height: 44, borderRadius: 8, overflow: 'hidden', background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, position: 'relative' }}>
-            <span style={{ fontSize: 18 }}>{getProductIcon(s.name)}</span>
+          <div style={{ width: 44, height: 44, borderRadius: 10, overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
+            <ProductIcon name={s.name} size={44} />
             {s.image && (
               <img 
                 src={s.image} 
                 alt="" 
-                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', background: '#1a1a1a' }} 
+                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', borderRadius: 10 }} 
                 onError={(e) => { e.target.style.display = 'none'; }} 
               />
             )}
@@ -2516,13 +2597,13 @@ Let me know if you need anything else.`;
                           style={{ width: 18, height: 18, cursor: 'pointer', accentColor: c.green }}
                         />
                       </div>
-                      <div style={{ width: 52, height: 52, borderRadius: 8, overflow: 'hidden', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-                        <span style={{ fontSize: 22, opacity: 0.5 }}>{getProductIcon(s.name)}</span>
+                      <div style={{ width: 52, height: 52, borderRadius: 10, overflow: 'hidden', position: 'relative' }}>
+                        <ProductIcon name={s.name} size={52} />
                         {s.image && (
                           <img 
                             src={s.image} 
                             alt="" 
-                            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', background: '#0a0a0a' }} 
+                            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', borderRadius: 10 }} 
                             onError={(e) => { e.target.style.display = 'none'; }} 
                           />
                         )}
