@@ -1320,6 +1320,40 @@ function App() {
     }
   }, [goals, user]);
 
+  // Check for StockX token in URL on load
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('access_token');
+    if (token) {
+      localStorage.setItem('flipledger_stockx_token', token);
+      setStockxToken(token);
+      setStockxConnected(true);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  // Check for eBay OAuth callback on load
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ebayConnectedParam = params.get('ebay_connected');
+    const ebayTokenParam = params.get('ebay_token');
+    const ebayRefreshParam = params.get('ebay_refresh');
+    const ebayError = params.get('ebay_error');
+    
+    if (ebayConnectedParam === 'true' && ebayTokenParam) {
+      localStorage.setItem('flipledger_ebay_token', ebayTokenParam);
+      localStorage.setItem('flipledger_ebay_refresh', ebayRefreshParam || '');
+      setEbayToken(ebayTokenParam);
+      setEbayConnected(true);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      setPage('settings');
+    } else if (ebayError) {
+      console.error('eBay connection error:', ebayError);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      alert('eBay connection failed: ' + ebayError);
+    }
+  }, []);
+
   // Show loading while checking auth
   if (authLoading) {
     return (
@@ -1388,44 +1422,6 @@ function App() {
       </div>
     );
   }
-
-  // Check for StockX token in URL on load
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('access_token');
-    if (token) {
-      localStorage.setItem('flipledger_stockx_token', token);
-      setStockxToken(token);
-      setStockxConnected(true);
-      // Clean up URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  }, []);
-
-  // Check for eBay OAuth callback on load
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const ebayConnectedParam = params.get('ebay_connected');
-    const ebayTokenParam = params.get('ebay_token');
-    const ebayRefreshParam = params.get('ebay_refresh');
-    const ebayError = params.get('ebay_error');
-    
-    if (ebayConnectedParam === 'true' && ebayTokenParam) {
-      // Store tokens
-      localStorage.setItem('flipledger_ebay_token', ebayTokenParam);
-      localStorage.setItem('flipledger_ebay_refresh', ebayRefreshParam || '');
-      setEbayToken(ebayTokenParam);
-      setEbayConnected(true);
-      // Clean up URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-      // Navigate to settings to show success
-      setPage('settings');
-    } else if (ebayError) {
-      console.error('eBay connection error:', ebayError);
-      window.history.replaceState({}, document.title, window.location.pathname);
-      alert('eBay connection failed: ' + ebayError);
-    }
-  }, []);
 
   // Fetch StockX sales - Filter by selected year
   const fetchStockXSales = async () => {
