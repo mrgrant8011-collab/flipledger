@@ -575,7 +575,7 @@ function MobileDashboard({
 }
 
 // SalesPage as separate component for proper re-rendering
-function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPage, selectedSales, setSelectedSales, sales, setSales, settings, setModal, ITEMS_PER_PAGE, cardStyle, btnPrimary, c, fmt, exportCSV }) {
+function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPage, selectedSales, setSelectedSales, sales, setSales, settings, setModal, ITEMS_PER_PAGE, cardStyle, btnPrimary, c, fmt, exportCSV, deleteSaleFromSupabase }) {
   // Filter
   const searchTerm = (formData.salesSearch || '').toLowerCase().trim();
   const platformFilter = formData.salesFilter || 'all';
@@ -3705,6 +3705,7 @@ function App() {
           c={c}
           fmt={fmt}
           exportCSV={exportCSV}
+          deleteSaleFromSupabase={deleteSaleFromSupabase}
         />}
 
         {/* EXPENSES */}
