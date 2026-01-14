@@ -5252,7 +5252,7 @@ Let me know if you need anything else.`;
                     if (!file) return;
                     
                     const reader = new FileReader();
-                    reader.onload = (event) => {
+                    reader.onload = async (event) => {
                       try {
                         const backup = JSON.parse(event.target.result);
                         
