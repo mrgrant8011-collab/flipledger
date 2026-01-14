@@ -963,33 +963,50 @@ function App() {
       
       // SKU-ANCHORED PARSING - Find SKUs first, then look backwards for details
       const items = [];
-      const skuPattern = /Style\s+([A-Z]{2,4}\d{3,5}-\d{3})|([A-Z]{2,4}\d{3,5}-\d{3})/gi;
-      let skuMatch;
-      const skuPositions = [];
       
-      while ((skuMatch = skuPattern.exec(text)) !== null) {
-        const sku = skuMatch[1] || skuMatch[2];
-        skuPositions.push({ sku, index: skuMatch.index });
+      // More flexible SKU patterns - Nike uses formats like DC0774-101, AH8050-005
+      const allSkus = [];
+      
+      // Pattern 1: "Style DC0774-101" or "Style: DC0774-101"
+      const styleRegex = /Style[:\s]+([A-Z]{2,4}\d{4,5}-\d{3})/gi;
+      let m;
+      while ((m = styleRegex.exec(text)) !== null) {
+        allSkus.push({ sku: m[1], index: m.index });
       }
       
-      console.log('Found SKUs:', skuPositions.map(s => s.sku));
+      // Pattern 2: Standalone SKUs like DC0774-101 (letters, digits, dash, 3 digits)
+      if (allSkus.length === 0) {
+        const standaloneRegex = /\b([A-Z]{2,4}\d{4,5}-\d{3})\b/gi;
+        while ((m = standaloneRegex.exec(text)) !== null) {
+          allSkus.push({ sku: m[1], index: m.index });
+        }
+      }
+      
+      console.log('=== SKU DETECTION ===');
+      console.log('Raw text sample:', text.substring(0, 500));
+      console.log('Found', allSkus.length, 'SKUs:', allSkus.map(s => s.sku));
       
       // For each SKU, look backwards to find name, price, size
-      for (let i = 0; i < skuPositions.length; i++) {
-        const { sku, index } = skuPositions[i];
-        const prevIndex = i > 0 ? skuPositions[i - 1].index + 15 : 0;
-        const blockText = text.substring(prevIndex, index + 20);
+      for (let i = 0; i < allSkus.length; i++) {
+        const { sku, index } = allSkus[i];
+        
+        // Get text BEFORE this SKU (previous SKU position to this one)
+        const startPos = i > 0 ? allSkus[i-1].index + allSkus[i-1].sku.length : 0;
+        const blockText = text.substring(startPos, index + sku.length + 10);
+        
+        console.log(`\n=== ITEM ${i+1}: ${sku} ===`);
+        console.log('Block:', blockText.substring(0, 200));
         
         // Find product name
         let name = 'Nike Product';
         const namePatterns = [
-          /Air\s+Jordan\s+\d*\s*[\w\s\-]+/i,
-          /Nike\s+Air\s+Max\s+\d*[\w\s\-]*/i,
-          /Air\s+Max\s+\d+[\w\s\-]*/i,
-          /Nike\s+Dunk\s+[\w\s\-]+/i,
-          /Dunk\s+(Low|High|Mid)[\w\s\-]*/i,
-          /Air\s+Force\s+\d*[\w\s\-]*/i,
-          /Nike\s+[\w\s\-]+/i
+          /Air\s+Jordan\s+\d*\s*[A-Za-z\s\-]*/i,
+          /Nike\s+Air\s+Max\s+\d*[A-Za-z\s\-]*/i,
+          /Air\s+Max\s+\d+[A-Za-z\s\-]*/i,
+          /Nike\s+Dunk\s+[A-Za-z\s\-]*/i,
+          /Dunk\s+(Low|High|Mid)[A-Za-z\s\-]*/i,
+          /Air\s+Force\s+\d*[A-Za-z\s\-]*/i,
+          /Nike\s+[A-Za-z\s\-]+/i
         ];
         
         for (const pattern of namePatterns) {
@@ -999,20 +1016,28 @@ function App() {
             break;
           }
         }
+        console.log('Name:', name);
         
-        // Find size
+        // Find size - "Size 6.5", "Size 11", etc
         const sizeMatch = blockText.match(/Size\s+(\d+\.?\d*)/i);
         const size = sizeMatch ? sizeMatch[1] : '';
+        console.log('Size:', size || 'NOT FOUND');
         
-        // Find price (first/lower price in block)
-        const priceMatches = blockText.match(/\$(\d+\.\d{2})/g) || [];
-        const prices = priceMatches.map(p => parseFloat(p.replace('$', '')));
+        // Find prices - get ALL dollar amounts, use the LOWEST (sale price)
+        const priceRegex = /\$(\d+(?:\.\d{2})?)/g;
+        const prices = [];
+        let priceMatch;
+        while ((priceMatch = priceRegex.exec(blockText)) !== null) {
+          prices.push(parseFloat(priceMatch[1]));
+        }
         const price = prices.length > 0 ? Math.min(...prices) : 0;
-        
-        console.log(`Item ${i+1}: ${name} | Size ${size} | $${price} | ${sku}`);
+        console.log('Prices found:', prices, '→ Using:', price);
         
         if (sku && price > 0) {
           items.push({ name, sku, size, price });
+          console.log('✓ ADDED TO ITEMS');
+        } else {
+          console.log('✗ SKIPPED - no price found');
         }
       }
       
