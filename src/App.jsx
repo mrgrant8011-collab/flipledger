@@ -948,7 +948,6 @@ function App() {
       let orderNum = '';
       
       for (const line of lines) {
-        // Date patterns: "Jan 08, 2026", "Dec 22, 2025", etc.
         const dateMatch = line.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}/i);
         if (dateMatch) {
           const parsed = new Date(dateMatch[0]);
@@ -956,132 +955,115 @@ function App() {
             orderDate = parsed.toISOString().split('T')[0];
           }
         }
-        
-        // Order number: T1C0000000A32EPF, T110000009YDB7Y
         const orderMatch = line.match(/T[A-Z0-9]{10,}/i);
         if (orderMatch) {
           orderNum = orderMatch[0];
         }
       }
       
-      // Extract items - look for patterns with style codes
+      // SKU-ANCHORED PARSING - Find SKUs first, then look backwards for details
       const items = [];
-      let currentItem = null;
+      const skuPattern = /Style\s+([A-Z]{2,4}\d{3,5}-\d{3})|([A-Z]{2,4}\d{3,5}-\d{3})/gi;
+      let skuMatch;
+      const skuPositions = [];
       
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
+      while ((skuMatch = skuPattern.exec(text)) !== null) {
+        const sku = skuMatch[1] || skuMatch[2];
+        skuPositions.push({ sku, index: skuMatch.index });
+      }
+      
+      console.log('Found SKUs:', skuPositions.map(s => s.sku));
+      
+      // For each SKU, look backwards to find name, price, size
+      for (let i = 0; i < skuPositions.length; i++) {
+        const { sku, index } = skuPositions[i];
+        const prevIndex = i > 0 ? skuPositions[i - 1].index + 15 : 0;
+        const blockText = text.substring(prevIndex, index + 20);
         
-        // Style code pattern: XX0000-000 or XXXX00-000
-        const styleMatch = line.match(/Style\s+([A-Z]{2,4}\d{3,5}-\d{3})/i) || line.match(/([A-Z]{2,4}\d{3,5}-\d{3})/);
-        
-        // Price pattern: $XX.XX
-        const priceMatch = line.match(/\$(\d+\.\d{2})/);
-        
-        // Size pattern: Size X, Size XX, Size X.X
-        const sizeMatch = line.match(/Size\s+(\d+\.?\d*|[XSMLX]{1,3})/i);
-        
-        // Product name patterns - Nike products
+        // Find product name
+        let name = 'Nike Product';
         const namePatterns = [
-          /Nike\s+[\w\s\-"']+/i,
-          /Air\s+Jordan\s+[\w\s\-"']+/i,
-          /Jordan\s+\d+[\w\s\-"']+/i,
-          /Air\s+Max\s+[\w\s\-"']+/i,
-          /Air\s+Force\s+[\w\s\-"']+/i,
-          /Dunk\s+[\w\s\-"']+/i
+          /Air\s+Jordan\s+\d*\s*[\w\s\-]+/i,
+          /Nike\s+Air\s+Max\s+\d*[\w\s\-]*/i,
+          /Air\s+Max\s+\d+[\w\s\-]*/i,
+          /Nike\s+Dunk\s+[\w\s\-]+/i,
+          /Dunk\s+(Low|High|Mid)[\w\s\-]*/i,
+          /Air\s+Force\s+\d*[\w\s\-]*/i,
+          /Nike\s+[\w\s\-]+/i
         ];
         
-        let nameMatch = null;
         for (const pattern of namePatterns) {
-          const match = line.match(pattern);
+          const match = blockText.match(pattern);
           if (match) {
-            nameMatch = match[0].trim();
+            name = match[0].trim().replace(/\s+/g, ' ').substring(0, 50);
             break;
           }
         }
         
-        // Start new item when we find a name
-        if (nameMatch && !currentItem) {
-          currentItem = { name: nameMatch, sku: '', size: '', price: 0 };
-        }
+        // Find size
+        const sizeMatch = blockText.match(/Size\s+(\d+\.?\d*)/i);
+        const size = sizeMatch ? sizeMatch[1] : '';
         
-        // Add details to current item
-        if (currentItem) {
-          if (styleMatch && !currentItem.sku) {
-            currentItem.sku = styleMatch[1] || styleMatch[0];
-          }
-          if (sizeMatch && !currentItem.size) {
-            currentItem.size = sizeMatch[1];
-          }
-          if (priceMatch && !currentItem.price) {
-            // Take the first price as sale price (discounted)
-            currentItem.price = parseFloat(priceMatch[1]);
-          }
-          
-          // If we have all required fields, save and reset
-          if (currentItem.sku && currentItem.size && currentItem.price > 0) {
-            items.push({ ...currentItem });
-            currentItem = null;
-          }
+        // Find price (first/lower price in block)
+        const priceMatches = blockText.match(/\$(\d+\.\d{2})/g) || [];
+        const prices = priceMatches.map(p => parseFloat(p.replace('$', '')));
+        const price = prices.length > 0 ? Math.min(...prices) : 0;
+        
+        console.log(`Item ${i+1}: ${name} | Size ${size} | $${price} | ${sku}`);
+        
+        if (sku && price > 0) {
+          items.push({ name, sku, size, price });
         }
       }
       
-      // Handle case where last item wasn't closed
-      if (currentItem && currentItem.sku && currentItem.price > 0) {
-        items.push(currentItem);
-      }
-      
-      // If no items found with the above parsing, try alternative method
+      // FALLBACK: If SKU method found nothing, try original line-by-line
       if (items.length === 0) {
-        // Look for style codes and associate nearby prices/sizes
-        const styleMatches = text.match(/([A-Z]{2,4}\d{3,5}-\d{3})/g) || [];
-        const priceMatches = text.match(/\$(\d+\.\d{2})/g) || [];
-        const sizeMatches = text.match(/Size\s+(\d+\.?\d*|[XSMLX]{1,3})/gi) || [];
+        console.log('SKU method found nothing, trying line-by-line...');
+        let currentItem = null;
         
-        // Get unique style codes
-        const uniqueStyles = [...new Set(styleMatches)];
-        
-        // Try to match with prices
-        for (let i = 0; i < uniqueStyles.length; i++) {
-          const sku = uniqueStyles[i];
-          // Find name near SKU
-          const skuIndex = text.indexOf(sku);
-          const nearbyText = text.substring(Math.max(0, skuIndex - 200), skuIndex);
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          const styleMatch = line.match(/Style\s+([A-Z]{2,4}\d{3,5}-\d{3})/i) || line.match(/([A-Z]{2,4}\d{3,5}-\d{3})/);
+          const priceMatch = line.match(/\$(\d+\.\d{2})/);
+          const sizeMatch = line.match(/Size\s+(\d+\.?\d*|[XSMLX]{1,3})/i);
           
-          let name = 'Nike Product';
-          for (const pattern of [/Nike\s+[\w\s\-"']+/i, /Air\s+Jordan\s+[\w\s\-"']+/i, /Jordan\s+\d+[\w\s\-"']+/i, /Air\s+Max\s+[\w\s\-"']+/i]) {
-            const match = nearbyText.match(pattern);
-            if (match) {
-              name = match[0].trim();
-              break;
+          const namePatterns = [/Nike\s+[\w\s\-"']+/i, /Air\s+Jordan\s+[\w\s\-"']+/i, /Jordan\s+\d+[\w\s\-"']+/i, /Air\s+Max\s+[\w\s\-"']+/i, /Air\s+Force\s+[\w\s\-"']+/i, /Dunk\s+[\w\s\-"']+/i];
+          let nameMatch = null;
+          for (const pattern of namePatterns) {
+            const match = line.match(pattern);
+            if (match) { nameMatch = match[0].trim(); break; }
+          }
+          
+          if (nameMatch && !currentItem) {
+            currentItem = { name: nameMatch, sku: '', size: '', price: 0 };
+          }
+          
+          if (currentItem) {
+            if (styleMatch && !currentItem.sku) currentItem.sku = styleMatch[1] || styleMatch[0];
+            if (sizeMatch && !currentItem.size) currentItem.size = sizeMatch[1];
+            if (priceMatch && !currentItem.price) currentItem.price = parseFloat(priceMatch[1]);
+            
+            if (currentItem.sku && currentItem.size && currentItem.price > 0) {
+              items.push({ ...currentItem });
+              currentItem = null;
             }
           }
-          
-          // Find size near SKU
-          const sizeNearby = nearbyText.match(/Size\s+(\d+\.?\d*|[XSMLX]{1,3})/i);
-          const size = sizeNearby ? sizeNearby[1] : '';
-          
-          // Find price near SKU (get the lower one if two exist - sale price)
-          const pricesNearby = nearbyText.match(/\$(\d+\.\d{2})/g) || [];
-          const prices = pricesNearby.map(p => parseFloat(p.replace('$', '')));
-          const price = prices.length > 0 ? Math.min(...prices) : 0;
-          
-          if (sku && price > 0) {
-            items.push({ name, sku, size: size || '', price });
-          }
         }
+        if (currentItem && currentItem.sku && currentItem.price > 0) items.push(currentItem);
       }
       
-      // Calculate tax split if applicable
+      console.log('Final items:', items.length);
+      
+      // Tax distribution
       const subtotalMatch = text.match(/Subtotal[:\s]*\$?(\d+\.\d{2})/i);
       const totalMatch = text.match(/(?:Order\s+)?Total[:\s]*\$?(\d+\.\d{2})/i);
       
-      if (subtotalMatch && totalMatch) {
+      if (subtotalMatch && totalMatch && items.length > 0) {
         const subtotal = parseFloat(subtotalMatch[1]);
         const total = parseFloat(totalMatch[1]);
         const tax = total - subtotal;
         
         if (tax > 0 && subtotal > 0) {
-          // Distribute tax proportionally
           const itemsTotal = items.reduce((sum, item) => sum + item.price, 0);
           items.forEach(item => {
             const taxShare = (item.price / itemsTotal) * tax;
@@ -1090,13 +1072,7 @@ function App() {
         }
       }
       
-      setNikeReceipt({ 
-        scanning: false, 
-        items, 
-        image: imageBase64, 
-        date: orderDate, 
-        orderNum 
-      });
+      setNikeReceipt({ scanning: false, items, image: imageBase64, date: orderDate, orderNum });
       
     } catch (error) {
       console.error('Receipt scan error:', error);
