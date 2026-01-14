@@ -1,6 +1,198 @@
 import { useState, useEffect, Component } from 'react';
 import * as XLSX from 'xlsx';
 import Tesseract from 'tesseract.js';
+import { supabase } from './supabase';
+
+// Auth Component - Login/Signup Page
+function AuthPage({ onLogin }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      if (isSignUp) {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+        });
+        if (error) throw error;
+        if (data.user) {
+          alert('Check your email for confirmation link!');
+        }
+      } else {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+        if (data.user) {
+          onLogin(data.user);
+        }
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const c = {
+    bg: '#0a0a0a',
+    card: '#111111',
+    border: '#1a1a1a',
+    text: '#ffffff',
+    textMuted: '#888888',
+    gold: '#C9A962',
+    goldDark: '#B8943F',
+    green: '#10b981',
+  };
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      background: c.bg,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+      padding: 20
+    }}>
+      <div style={{
+        width: '100%',
+        maxWidth: 400,
+        background: c.card,
+        border: `1px solid ${c.border}`,
+        borderRadius: 24,
+        padding: 40
+      }}>
+        {/* Logo */}
+        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+          <div style={{
+            width: 64,
+            height: 64,
+            background: `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)`,
+            borderRadius: 16,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: 700,
+            fontSize: 24,
+            color: '#000',
+            marginBottom: 16
+          }}>FL</div>
+          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, color: c.gold }}>FLIPLEDGER</h1>
+          <p style={{ margin: '8px 0 0', color: c.textMuted, fontSize: 14 }}>Wealth Intelligence for Resellers</p>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: c.textMuted }}>Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              style={{
+                width: '100%',
+                padding: 14,
+                background: 'rgba(255,255,255,0.03)',
+                border: `1px solid ${c.border}`,
+                borderRadius: 12,
+                color: c.text,
+                fontSize: 14,
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+              placeholder="you@example.com"
+            />
+          </div>
+
+          <div style={{ marginBottom: 24 }}>
+            <label style={{ display: 'block', marginBottom: 8, fontSize: 13, color: c.textMuted }}>Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={6}
+              style={{
+                width: '100%',
+                padding: 14,
+                background: 'rgba(255,255,255,0.03)',
+                border: `1px solid ${c.border}`,
+                borderRadius: 12,
+                color: c.text,
+                fontSize: 14,
+                outline: 'none',
+                boxSizing: 'border-box'
+              }}
+              placeholder="••••••••"
+            />
+          </div>
+
+          {error && (
+            <div style={{
+              padding: 12,
+              background: 'rgba(239,68,68,0.1)',
+              border: '1px solid rgba(239,68,68,0.3)',
+              borderRadius: 10,
+              color: '#ef4444',
+              fontSize: 13,
+              marginBottom: 16
+            }}>
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              width: '100%',
+              padding: 14,
+              background: `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)`,
+              border: 'none',
+              borderRadius: 12,
+              color: '#000',
+              fontSize: 15,
+              fontWeight: 700,
+              cursor: loading ? 'wait' : 'pointer',
+              opacity: loading ? 0.7 : 1
+            }}
+          >
+            {loading ? 'Please wait...' : (isSignUp ? 'Create Account' : 'Sign In')}
+          </button>
+        </form>
+
+        {/* Toggle */}
+        <p style={{ textAlign: 'center', marginTop: 24, color: c.textMuted, fontSize: 14 }}>
+          {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
+          <button
+            onClick={() => setIsSignUp(!isSignUp)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: c.gold,
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: 14
+            }}
+          >
+            {isSignUp ? 'Sign In' : 'Sign Up'}
+          </button>
+        </p>
+      </div>
+    </div>
+  );
+}
 
 // Helper: Get icon based on product name
 const getProductIcon = (name) => {
@@ -480,7 +672,7 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
       <span style={{ fontWeight: 700, color: c.red, fontSize: 14 }}>🗑️ {selectedSales.size} sale{selectedSales.size > 1 ? 's' : ''} selected</span>
       <div style={{ display: 'flex', gap: 12 }}>
         <button onClick={() => setSelectedSales(new Set())} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>Clear Selection</button>
-        <button onClick={() => { if(confirm(`Delete ${selectedSales.size} sale${selectedSales.size > 1 ? 's' : ''}? This cannot be undone.`)) { setSales(sales.filter(s => !selectedSales.has(s.id))); setSelectedSales(new Set()); }}} style={{ padding: '8px 20px', background: c.red, border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>🗑️ Delete {selectedSales.size} Sale{selectedSales.size > 1 ? 's' : ''}</button>
+        <button onClick={async () => { if(confirm(`Delete ${selectedSales.size} sale${selectedSales.size > 1 ? 's' : ''}? This cannot be undone.`)) { for (const id of selectedSales) { await deleteSaleFromSupabase(id); } setSales(sales.filter(s => !selectedSales.has(s.id))); setSelectedSales(new Set()); }}} style={{ padding: '8px 20px', background: c.red, border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>🗑️ Delete {selectedSales.size} Sale{selectedSales.size > 1 ? 's' : ''}</button>
       </div>
     </div>}
 
@@ -529,7 +721,7 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
           <span style={{ fontSize: 11, textAlign: 'right', color: c.red }}>{fmt(s.fees)}</span>
           <span style={{ fontSize: 12, fontWeight: 700, textAlign: 'right', color: s.profit >= 0 ? c.green : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</span>
           <button onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, saleImage: s.image, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14, padding: 4 }}>✏️</button>
-          <button onClick={() => { setSales(sales.filter(x => x.id !== s.id)); setSelectedSales(prev => { const n = new Set(prev); n.delete(s.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16, padding: 4 }}>×</button>
+          <button onClick={() => { deleteSaleFromSupabase(s.id); setSales(sales.filter(x => x.id !== s.id)); setSelectedSales(prev => { const n = new Set(prev); n.delete(s.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16, padding: 4 }}>×</button>
         </div>
       )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💵</div><p style={{ color: c.textMuted }}>No sales</p></div>}
       
@@ -545,85 +737,46 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
 }
 
 function App() {
+  // Auth state
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
+  
+  // App state
   const [page, setPage] = useState('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [modal, setModal] = useState(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 850);
-  
-  // Track window resize for mobile detection
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth <= 850);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-  const [year, setYear] = useState('2025');
+  const [year, setYear] = useState('2026');
   const [stockxImport, setStockxImport] = useState({ show: false, data: [], year: 'all', month: 'all', headers: [] });
   const [ebayImport, setEbayImport] = useState({ show: false, data: [], year: 'all', month: 'all', headers: [] });
   const [ebayApiFilter, setEbayApiFilter] = useState({ year: new Date().getFullYear().toString(), month: 'all' });
   const [stockxApiFilter, setStockxApiFilter] = useState({ year: new Date().getFullYear().toString(), month: 'all' });
-  const [purchases, setPurchases] = useState(() => {
-    const saved = localStorage.getItem('flipledger_purchases');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [sales, setSales] = useState(() => {
-    const saved = localStorage.getItem('flipledger_sales');
-    if (!saved) return [];
-    const parsed = JSON.parse(saved);
-    // FIX: Regenerate unique IDs if duplicates exist
-    const ids = new Set();
-    let hasDupes = false;
-    parsed.forEach(s => {
-      if (ids.has(s.id)) hasDupes = true;
-      ids.add(s.id);
-    });
-    if (hasDupes) {
-      console.log('Fixing duplicate IDs in sales...');
-      return parsed.map((s, i) => ({ ...s, id: Date.now() + i }));
-    }
-    return parsed;
-  });
-  const [expenses, setExpenses] = useState(() => {
-    const saved = localStorage.getItem('flipledger_expenses');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [storageFees, setStorageFees] = useState(() => {
-    const saved = localStorage.getItem('flipledger_storage');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [mileage, setMileage] = useState(() => {
-    const saved = localStorage.getItem('flipledger_mileage');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [goals, setGoals] = useState(() => {
-    const saved = localStorage.getItem('flipledger_goals');
-    return saved ? JSON.parse(saved) : { monthly: 3000, yearly: 25000 };
-  });
+  
+  // Data state - initialized empty, loaded from Supabase
+  const [purchases, setPurchases] = useState([]);
+  const [sales, setSales] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+  const [storageFees, setStorageFees] = useState([]);
+  const [mileage, setMileage] = useState([]);
+  const [goals, setGoals] = useState({ monthly: 3000, yearly: 25000 });
   const [formData, setFormData] = useState({});
-  const [settings, setSettings] = useState(() => {
-    const saved = localStorage.getItem('flipledger_settings');
-    return saved ? JSON.parse(saved) : { stockxLevel: 9, stockxProcessing: 3, stockxQuickShip: false, stockxDirectFee: 5, stockxDirectProcessing: 3, stockxFlexFee: 5, stockxFlexProcessing: 3, stockxFlexFulfillment: 5, goatFee: 9.5, goatProcessing: 2.9, ebayFee: 12.9, mileageRate: 0.67 };
-  });
-  const [stockxConnected, setStockxConnected] = useState(() => {
-    return !!localStorage.getItem('flipledger_stockx_token');
-  });
-  const [stockxToken, setStockxToken] = useState(() => {
-    return localStorage.getItem('flipledger_stockx_token') || null;
-  });
+  const [settings, setSettings] = useState({ stockxLevel: 9, stockxProcessing: 3, stockxQuickShip: false, stockxDirectFee: 5, stockxDirectProcessing: 3, stockxFlexFee: 5, stockxFlexProcessing: 3, stockxFlexFulfillment: 5, goatFee: 9.5, goatProcessing: 2.9, ebayFee: 12.9, mileageRate: 0.67 });
+  const [pendingCosts, setPendingCosts] = useState([]);
+  const [savedReceipts, setSavedReceipts] = useState([]);
+  
+  // Connection state
+  const [stockxConnected, setStockxConnected] = useState(false);
+  const [stockxToken, setStockxToken] = useState(null);
   const [goatConnected, setGoatConnected] = useState(false);
-  const [ebayConnected, setEbayConnected] = useState(() => {
-    return !!localStorage.getItem('flipledger_ebay_token');
-  });
-  const [ebayToken, setEbayToken] = useState(() => {
-    return localStorage.getItem('flipledger_ebay_token') || null;
-  });
+  const [ebayConnected, setEbayConnected] = useState(false);
+  const [ebayToken, setEbayToken] = useState(null);
   const [qbConnected, setQbConnected] = useState(false);
   const [stockxSyncing, setStockxSyncing] = useState(false);
   const [ebaySyncing, setEbaySyncing] = useState(false);
   const [goatSyncing, setGoatSyncing] = useState(false);
-  const [pendingCosts, setPendingCosts] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('flipledger_pending')) || []; }
-    catch { return []; }
-  });
+  
+  // UI state
   const [selectedPending, setSelectedPending] = useState(new Set());
   const [bulkCost, setBulkCost] = useState('');
   const [selectedSales, setSelectedSales] = useState(new Set());
@@ -635,12 +788,594 @@ function App() {
   const [showInvCsvImport, setShowInvCsvImport] = useState(false);
   const [selectedInvLookup, setSelectedInvLookup] = useState(new Set());
   const [nikeReceipt, setNikeReceipt] = useState({ scanning: false, items: [], image: null, date: '', orderNum: '' });
-  const [savedReceipts, setSavedReceipts] = useState(() => {
-    const saved = localStorage.getItem('flipledger_receipts');
-    return saved ? JSON.parse(saved) : [];
-  });
 
   const ITEMS_PER_PAGE = 50;
+
+  // Check for existing session on load
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Load data from Supabase when user logs in
+  useEffect(() => {
+    if (!user) {
+      setDataLoading(false);
+      return;
+    }
+
+    const loadData = async () => {
+      setDataLoading(true);
+      try {
+        // Load inventory
+        const { data: inventoryData } = await supabase
+          .from('inventory')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+        if (inventoryData) setPurchases(inventoryData.map(item => ({
+          id: item.id,
+          name: item.name,
+          sku: item.sku,
+          size: item.size,
+          cost: parseFloat(item.cost) || 0,
+          quantity: item.quantity || 1,
+          date: item.date,
+          sold: item.sold || false
+        })));
+
+        // Load sales
+        const { data: salesData } = await supabase
+          .from('sales')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+        if (salesData) setSales(salesData.map(item => ({
+          id: item.id,
+          name: item.name,
+          sku: item.sku,
+          size: item.size,
+          cost: parseFloat(item.cost) || 0,
+          salePrice: parseFloat(item.sale_price) || 0,
+          platform: item.platform,
+          fees: parseFloat(item.fees) || 0,
+          profit: parseFloat(item.profit) || 0,
+          saleDate: item.sale_date
+        })));
+
+        // Load expenses
+        const { data: expensesData } = await supabase
+          .from('expenses')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+        if (expensesData) setExpenses(expensesData.map(item => ({
+          id: item.id,
+          description: item.description,
+          amount: parseFloat(item.amount) || 0,
+          category: item.category,
+          date: item.date
+        })));
+
+        // Load pending costs
+        const { data: pendingData } = await supabase
+          .from('pending_costs')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+        if (pendingData) setPendingCosts(pendingData.map(item => ({
+          id: item.id,
+          name: item.name,
+          sku: item.sku,
+          size: item.size,
+          salePrice: parseFloat(item.sale_price) || 0,
+          platform: item.platform,
+          fees: parseFloat(item.fees) || 0,
+          saleDate: item.sale_date
+        })));
+
+        // Load settings from localStorage (user-specific settings stay local for now)
+        const savedSettings = localStorage.getItem(`flipledger_settings_${user.id}`);
+        if (savedSettings) setSettings(JSON.parse(savedSettings));
+
+        const savedGoals = localStorage.getItem(`flipledger_goals_${user.id}`);
+        if (savedGoals) setGoals(JSON.parse(savedGoals));
+
+        // Load tokens from localStorage
+        const stockxTok = localStorage.getItem('flipledger_stockx_token');
+        if (stockxTok) {
+          setStockxToken(stockxTok);
+          setStockxConnected(true);
+        }
+
+        const ebayTok = localStorage.getItem('flipledger_ebay_token');
+        if (ebayTok) {
+          setEbayToken(ebayTok);
+          setEbayConnected(true);
+        }
+
+      } catch (error) {
+        console.error('Error loading data:', error);
+      } finally {
+        setDataLoading(false);
+      }
+    };
+
+    loadData();
+  }, [user]);
+
+  // Track window resize for mobile detection
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 850);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // ============ SUPABASE SYNC FUNCTIONS ============
+
+  // Save inventory item to Supabase
+  const saveInventoryToSupabase = async (item, isNew = true) => {
+    if (!user) return;
+    try {
+      const record = {
+        user_id: user.id,
+        name: item.name,
+        sku: item.sku,
+        size: item.size,
+        cost: item.cost,
+        quantity: item.quantity || 1,
+        date: item.date,
+        sold: item.sold || false
+      };
+
+      if (isNew) {
+        const { data, error } = await supabase
+          .from('inventory')
+          .insert(record)
+          .select()
+          .single();
+        if (error) throw error;
+        return data.id;
+      } else {
+        const { error } = await supabase
+          .from('inventory')
+          .update(record)
+          .eq('id', item.id)
+          .eq('user_id', user.id);
+        if (error) throw error;
+        return item.id;
+      }
+    } catch (error) {
+      console.error('Error saving inventory:', error);
+      return null;
+    }
+  };
+
+  // Delete inventory item from Supabase
+  const deleteInventoryFromSupabase = async (id) => {
+    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from('inventory')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error deleting inventory:', error);
+    }
+  };
+
+  // Save sale to Supabase
+  const saveSaleToSupabase = async (item, isNew = true) => {
+    if (!user) return;
+    try {
+      const record = {
+        user_id: user.id,
+        name: item.name,
+        sku: item.sku,
+        size: item.size,
+        cost: item.cost,
+        sale_price: item.salePrice,
+        platform: item.platform,
+        fees: item.fees,
+        profit: item.profit,
+        sale_date: item.saleDate
+      };
+
+      if (isNew) {
+        const { data, error } = await supabase
+          .from('sales')
+          .insert(record)
+          .select()
+          .single();
+        if (error) throw error;
+        return data.id;
+      } else {
+        const { error } = await supabase
+          .from('sales')
+          .update(record)
+          .eq('id', item.id)
+          .eq('user_id', user.id);
+        if (error) throw error;
+        return item.id;
+      }
+    } catch (error) {
+      console.error('Error saving sale:', error);
+      return null;
+    }
+  };
+
+  // Delete sale from Supabase
+  const deleteSaleFromSupabase = async (id) => {
+    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from('sales')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error deleting sale:', error);
+    }
+  };
+
+  // Save expense to Supabase
+  const saveExpenseToSupabase = async (item, isNew = true) => {
+    if (!user) return;
+    try {
+      const record = {
+        user_id: user.id,
+        description: item.description,
+        amount: item.amount,
+        category: item.category,
+        date: item.date
+      };
+
+      if (isNew) {
+        const { data, error } = await supabase
+          .from('expenses')
+          .insert(record)
+          .select()
+          .single();
+        if (error) throw error;
+        return data.id;
+      } else {
+        const { error } = await supabase
+          .from('expenses')
+          .update(record)
+          .eq('id', item.id)
+          .eq('user_id', user.id);
+        if (error) throw error;
+        return item.id;
+      }
+    } catch (error) {
+      console.error('Error saving expense:', error);
+      return null;
+    }
+  };
+
+  // Delete expense from Supabase
+  const deleteExpenseFromSupabase = async (id) => {
+    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error deleting expense:', error);
+    }
+  };
+
+  // Save pending cost to Supabase
+  const savePendingToSupabase = async (item, isNew = true) => {
+    if (!user) return;
+    try {
+      const record = {
+        user_id: user.id,
+        name: item.name,
+        sku: item.sku,
+        size: item.size,
+        sale_price: item.salePrice,
+        platform: item.platform,
+        fees: item.fees,
+        sale_date: item.saleDate
+      };
+
+      if (isNew) {
+        const { data, error } = await supabase
+          .from('pending_costs')
+          .insert(record)
+          .select()
+          .single();
+        if (error) throw error;
+        return data.id;
+      } else {
+        const { error } = await supabase
+          .from('pending_costs')
+          .update(record)
+          .eq('id', item.id)
+          .eq('user_id', user.id);
+        if (error) throw error;
+        return item.id;
+      }
+    } catch (error) {
+      console.error('Error saving pending:', error);
+      return null;
+    }
+  };
+
+  // Delete pending cost from Supabase
+  const deletePendingFromSupabase = async (id) => {
+    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from('pending_costs')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error deleting pending:', error);
+    }
+  };
+
+  // Bulk save pending costs to Supabase
+  const bulkSavePendingToSupabase = async (items) => {
+    if (!user || items.length === 0) return [];
+    try {
+      const records = items.map(item => ({
+        user_id: user.id,
+        name: item.name,
+        sku: item.sku,
+        size: item.size,
+        sale_price: item.salePrice,
+        platform: item.platform,
+        fees: item.fees,
+        sale_date: item.saleDate
+      }));
+
+      const { data, error } = await supabase
+        .from('pending_costs')
+        .insert(records)
+        .select();
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error bulk saving pending:', error);
+      return [];
+    }
+  };
+
+  // Bulk save inventory items to Supabase
+  const bulkSaveInventoryToSupabase = async (items) => {
+    if (!user || items.length === 0) return [];
+    try {
+      const records = items.map(item => ({
+        user_id: user.id,
+        name: item.name,
+        sku: item.sku,
+        size: item.size,
+        cost: item.cost,
+        quantity: item.quantity || 1,
+        date: item.date,
+        sold: item.sold || false
+      }));
+
+      const { data, error } = await supabase
+        .from('inventory')
+        .insert(records)
+        .select();
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error bulk saving inventory:', error);
+      return [];
+    }
+  };
+
+  // Bulk save sales to Supabase
+  const bulkSaveSalesToSupabase = async (items) => {
+    if (!user || items.length === 0) return [];
+    try {
+      const records = items.map(item => ({
+        user_id: user.id,
+        name: item.name,
+        sku: item.sku,
+        size: item.size,
+        cost: item.cost,
+        sale_price: item.salePrice,
+        platform: item.platform,
+        fees: item.fees,
+        profit: item.profit,
+        sale_date: item.saleDate
+      }));
+
+      const { data, error } = await supabase
+        .from('sales')
+        .insert(records)
+        .select();
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error bulk saving sales:', error);
+      return [];
+    }
+  };
+
+  // Bulk delete pending costs from Supabase
+  const bulkDeletePendingFromSupabase = async (ids) => {
+    if (!user || ids.length === 0) return;
+    try {
+      const { error } = await supabase
+        .from('pending_costs')
+        .delete()
+        .eq('user_id', user.id)
+        .in('id', ids);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error bulk deleting pending:', error);
+    }
+  };
+
+  // Delete ALL pending costs for user from Supabase
+  const deleteAllPendingFromSupabase = async () => {
+    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from('pending_costs')
+        .delete()
+        .eq('user_id', user.id);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error deleting all pending:', error);
+    }
+  };
+
+  // Update inventory item in Supabase (for edits)
+  const updateInventoryInSupabase = async (item) => {
+    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from('inventory')
+        .update({
+          name: item.name,
+          sku: item.sku,
+          size: item.size,
+          cost: item.cost,
+          quantity: item.quantity || 1,
+          date: item.date,
+          sold: item.sold || false
+        })
+        .eq('id', item.id)
+        .eq('user_id', user.id);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error updating inventory:', error);
+    }
+  };
+
+  // Update sale in Supabase (for edits)
+  const updateSaleInSupabase = async (item) => {
+    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from('sales')
+        .update({
+          name: item.name,
+          sku: item.sku,
+          size: item.size,
+          cost: item.cost,
+          sale_price: item.salePrice,
+          platform: item.platform,
+          fees: item.fees,
+          profit: item.profit,
+          sale_date: item.saleDate
+        })
+        .eq('id', item.id)
+        .eq('user_id', user.id);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error updating sale:', error);
+    }
+  };
+
+  // ============ LOCAL STORAGE BACKUP (for settings/tokens) ============
+
+  // Save settings to localStorage (user-specific)
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem(`flipledger_settings_${user.id}`, JSON.stringify(settings));
+    }
+  }, [settings, user]);
+
+  // Save goals to localStorage (user-specific)
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem(`flipledger_goals_${user.id}`, JSON.stringify(goals));
+    }
+  }, [goals, user]);
+
+  // Show loading while checking auth
+  if (authLoading) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: '#0a0a0a',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#fff',
+        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: 64,
+            height: 64,
+            background: 'linear-gradient(135deg, #C9A962 0%, #B8943F 100%)',
+            borderRadius: 16,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: 700,
+            fontSize: 24,
+            color: '#000',
+            marginBottom: 16
+          }}>FL</div>
+          <p style={{ color: '#888' }}>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show login page if not authenticated
+  if (!user) {
+    return <AuthPage onLogin={setUser} />;
+  }
+
+  // Show loading while fetching data
+  if (dataLoading) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: '#0a0a0a',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#fff',
+        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: 64,
+            height: 64,
+            background: 'linear-gradient(135deg, #C9A962 0%, #B8943F 100%)',
+            borderRadius: 16,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontWeight: 700,
+            fontSize: 24,
+            color: '#000',
+            marginBottom: 16
+          }}>FL</div>
+          <p style={{ color: '#888' }}>Loading your data...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Check for StockX token in URL on load
   useEffect(() => {
@@ -679,28 +1414,6 @@ function App() {
       alert('eBay connection failed: ' + ebayError);
     }
   }, []);
-
-  // Safe localStorage save with error handling
-  const safeSave = (key, data) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(data));
-    } catch (e) {
-      console.error('localStorage save failed:', key, e);
-      if (e.name === 'QuotaExceededError') {
-        alert('Storage full! Please export your data and clear old records.');
-      }
-    }
-  };
-
-  useEffect(() => { safeSave('flipledger_purchases', purchases); }, [purchases]);
-  useEffect(() => { safeSave('flipledger_sales', sales); }, [sales]);
-  useEffect(() => { safeSave('flipledger_expenses', expenses); }, [expenses]);
-  useEffect(() => { safeSave('flipledger_storage', storageFees); }, [storageFees]);
-  useEffect(() => { safeSave('flipledger_mileage', mileage); }, [mileage]);
-  useEffect(() => { safeSave('flipledger_goals', goals); }, [goals]);
-  useEffect(() => { safeSave('flipledger_settings', settings); }, [settings]);
-  useEffect(() => { safeSave('flipledger_pending', pendingCosts); }, [pendingCosts]);
-  useEffect(() => { safeSave('flipledger_receipts', savedReceipts); }, [savedReceipts]);
 
   // Fetch StockX sales - Filter by selected year
   const fetchStockXSales = async () => {
@@ -769,7 +1482,20 @@ function App() {
         const newSales = yearFiltered.filter(s => !existingIds.has(s.id));
         
         if (newSales.length > 0) {
-          setPendingCosts(prev => [...prev, ...newSales]);
+          // Save to Supabase
+          const savedPending = await bulkSavePendingToSupabase(newSales);
+          if (savedPending.length > 0) {
+            setPendingCosts(prev => [...prev, ...savedPending.map(item => ({
+              id: item.id,
+              name: item.name,
+              sku: item.sku,
+              size: item.size,
+              salePrice: parseFloat(item.sale_price) || 0,
+              platform: item.platform,
+              fees: parseFloat(item.fees) || 0,
+              saleDate: item.sale_date
+            }))]);
+          }
           alert(`✓ Synced ${newSales.length} sales from ${selectedYear}!${yearFiltered.length - newSales.length > 0 ? `\n${yearFiltered.length - newSales.length} already existed` : ''}`);
         } else {
           alert(`All ${yearFiltered.length} sales from ${selectedYear} already imported.`);
@@ -888,7 +1614,7 @@ function App() {
     return null;
   };
 
-  const confirmSaleWithCost = (saleId, cost, channel = 'StockX Standard') => {
+  const confirmSaleWithCost = async (saleId, cost, channel = 'StockX Standard') => {
     const sale = pendingCosts.find(s => s.id === saleId);
     if (!sale || !cost) return;
     
@@ -897,27 +1623,99 @@ function App() {
     if (alreadyExists) {
       console.log('Sale already exists, skipping:', sale.id);
       setPendingCosts(prev => prev.filter(s => s.id !== saleId)); // Remove from pending anyway
+      deletePendingFromSupabase(saleId);
       return;
     }
     
     const costNum = parseFloat(cost);
     const profit = sale.payout - costNum;
-    const uniqueId = Date.now() + Math.random();
-    setSales(prev => [...prev, { 
-      ...sale, 
-      id: uniqueId,
-      orderId: sale.id, // KEEP original order number for deduplication!
+    const newSale = { 
+      name: sale.name,
+      sku: sale.sku,
+      size: sale.size,
       cost: costNum, 
-      platform: sale.platform || channel, // USE the pending item's platform if it has one!
+      salePrice: sale.salePrice,
+      platform: sale.platform || channel,
       fees: sale.fees || (sale.salePrice - sale.payout),
-      profit: profit 
-    }]);
+      profit: profit,
+      saleDate: sale.saleDate
+    };
+    
+    // Save to Supabase first
+    const id = await saveSaleToSupabase(newSale, true);
+    if (id) {
+      setSales(prev => [...prev, { 
+        ...newSale, 
+        id,
+        orderId: sale.id
+      }]);
+    }
     setPendingCosts(prev => prev.filter(s => s.id !== saleId));
+    // Delete from Supabase
+    deletePendingFromSupabase(saleId);
   };
 
-  const addPurchase = () => { if (!formData.name || !formData.cost) return; setPurchases([...purchases, { id: Date.now(), name: formData.name, sku: formData.sku || '', size: formData.size || '', cost: parseFloat(formData.cost), date: formData.date || new Date().toISOString().split('T')[0], image: formData.image || '' }]); setModal(null); setFormData({}); };
-  const addSale = () => { if (!formData.saleName || !formData.salePrice || !formData.saleCost) return; const price = parseFloat(formData.salePrice); const cost = parseFloat(formData.saleCost); const fees = calcFees(price, formData.platform || 'StockX Standard'); setSales([...sales, { id: Date.now(), name: formData.saleName, sku: formData.saleSku || '', size: formData.saleSize || '', cost, salePrice: price, platform: formData.platform || 'StockX Standard', fees, profit: price - cost - fees, saleDate: formData.saleDate || new Date().toISOString().split('T')[0], image: formData.saleImage || '' }]); setModal(null); setFormData({}); };
-  const addExpense = () => { if (!formData.amount) return; setExpenses([...expenses, { id: Date.now(), category: formData.category || 'Shipping', amount: parseFloat(formData.amount), description: formData.description || '', date: formData.date || new Date().toISOString().split('T')[0] }]); setModal(null); setFormData({}); };
+  const addPurchase = async () => { 
+    if (!formData.name || !formData.cost) return; 
+    const newItem = { 
+      name: formData.name, 
+      sku: formData.sku || '', 
+      size: formData.size || '', 
+      cost: parseFloat(formData.cost), 
+      date: formData.date || new Date().toISOString().split('T')[0],
+      sold: false
+    };
+    // Save to Supabase first
+    const id = await saveInventoryToSupabase(newItem, true);
+    if (id) {
+      setPurchases([...purchases, { ...newItem, id }]); 
+    }
+    setModal(null); 
+    setFormData({}); 
+  };
+
+  const addSale = async () => { 
+    if (!formData.saleName || !formData.salePrice || !formData.saleCost) return; 
+    const price = parseFloat(formData.salePrice); 
+    const cost = parseFloat(formData.saleCost); 
+    const fees = calcFees(price, formData.platform || 'StockX Standard'); 
+    const newSale = { 
+      name: formData.saleName, 
+      sku: formData.saleSku || '', 
+      size: formData.saleSize || '', 
+      cost, 
+      salePrice: price, 
+      platform: formData.platform || 'StockX Standard', 
+      fees, 
+      profit: price - cost - fees, 
+      saleDate: formData.saleDate || new Date().toISOString().split('T')[0]
+    };
+    // Save to Supabase first
+    const id = await saveSaleToSupabase(newSale, true);
+    if (id) {
+      setSales([...sales, { ...newSale, id }]); 
+    }
+    setModal(null); 
+    setFormData({}); 
+  };
+
+  const addExpense = async () => { 
+    if (!formData.amount) return; 
+    const newExpense = { 
+      category: formData.category || 'Shipping', 
+      amount: parseFloat(formData.amount), 
+      description: formData.description || '', 
+      date: formData.date || new Date().toISOString().split('T')[0] 
+    };
+    // Save to Supabase first
+    const id = await saveExpenseToSupabase(newExpense, true);
+    if (id) {
+      setExpenses([...expenses, { ...newExpense, id }]); 
+    }
+    setModal(null); 
+    setFormData({}); 
+  };
+
   const addStorage = () => { if (!formData.amount) return; setStorageFees([...storageFees, { id: Date.now(), month: formData.month || '2025-01', amount: parseFloat(formData.amount), notes: formData.notes || '' }]); setModal(null); setFormData({}); };
   const addMileage = () => { if (!formData.miles) return; setMileage([...mileage, { id: Date.now(), date: formData.date || new Date().toISOString().split('T')[0], miles: parseFloat(formData.miles), purpose: formData.purpose || 'Pickup/Dropoff', from: formData.from || '', to: formData.to || '' }]); setModal(null); setFormData({}); };
 
@@ -1341,16 +2139,14 @@ function App() {
   };
   
   // Add scanned items to inventory
-  const addNikeItemsToInventory = () => {
-    const newItems = nikeReceipt.items.map((item, i) => ({
-      id: Date.now() + i,
+  const addNikeItemsToInventory = async () => {
+    const itemsToSave = nikeReceipt.items.map((item) => ({
       name: item.name,
       sku: item.sku,
       size: item.size,
       cost: item.price,
       date: nikeReceipt.date || new Date().toISOString().split('T')[0],
-      image: '',
-      receiptId: nikeReceipt.orderNum || Date.now().toString()
+      sold: false
     }));
     
     // Save receipt
@@ -1365,7 +2161,20 @@ function App() {
       }]);
     }
     
-    setPurchases(prev => [...prev, ...newItems]);
+    // Save to Supabase
+    const savedItems = await bulkSaveInventoryToSupabase(itemsToSave);
+    if (savedItems.length > 0) {
+      const newItems = savedItems.map(item => ({
+        id: item.id,
+        name: item.name,
+        sku: item.sku,
+        size: item.size,
+        cost: parseFloat(item.cost) || 0,
+        date: item.date,
+        sold: item.sold || false
+      }));
+      setPurchases(prev => [...prev, ...newItems]);
+    }
     setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '' });
   };
 
@@ -1440,19 +2249,31 @@ function App() {
             
             if (name || sku) {
               newItems.push({
-                id: Date.now() + Math.random() + i,
                 date: parseDate(String(rawDate)) || new Date().toISOString().split('T')[0],
                 name: name || 'Unknown Item',
                 sku: sku,
                 size: size,
-                cost: cost
+                cost: cost,
+                sold: false
               });
             }
           }
           
           if (newItems.length > 0) {
-            setPurchases(prev => [...prev, ...newItems]);
-            alert(`Imported ${newItems.length} items to inventory!`);
+            // Save to Supabase
+            const savedItems = await bulkSaveInventoryToSupabase(newItems);
+            if (savedItems.length > 0) {
+              setPurchases(prev => [...prev, ...savedItems.map(item => ({
+                id: item.id,
+                name: item.name,
+                sku: item.sku,
+                size: item.size,
+                cost: parseFloat(item.cost) || 0,
+                date: item.date,
+                sold: item.sold || false
+              }))]);
+              alert(`Imported ${savedItems.length} items to inventory!`);
+            }
           } else {
             alert('No items found. Make sure your Excel file has headers: Date, Name, SKU, Size, Cost');
           }
@@ -1505,19 +2326,31 @@ function App() {
           
           if (name || sku) {
             newItems.push({
-              id: Date.now() + Math.random() + i,
               date: parseDate(rawDate) || new Date().toISOString().split('T')[0],
               name: name || 'Unknown Item',
               sku: sku || '',
               size: size || '',
-              cost: cost
+              cost: cost,
+              sold: false
             });
           }
         }
         
         if (newItems.length > 0) {
-          setPurchases(prev => [...prev, ...newItems]);
-          alert(`Imported ${newItems.length} items to inventory!`);
+          // Save to Supabase
+          const savedItems = await bulkSaveInventoryToSupabase(newItems);
+          if (savedItems.length > 0) {
+            setPurchases(prev => [...prev, ...savedItems.map(item => ({
+              id: item.id,
+              name: item.name,
+              sku: item.sku,
+              size: item.size,
+              cost: parseFloat(item.cost) || 0,
+              date: item.date,
+              sold: item.sold || false
+            }))]);
+            alert(`Imported ${savedItems.length} items to inventory!`);
+          }
         } else {
           alert('No items found. Make sure your CSV has headers: Date, Name, SKU, Size, Cost');
         }
@@ -1819,14 +2652,27 @@ function App() {
     const existingIds = new Set([...pendingCosts.map(p => p.id), ...sales.map(s => s.orderId || s.id)]);
     const uniqueNew = newPending.filter(p => !existingIds.has(p.id));
     
-    setPendingCosts([...pendingCosts, ...uniqueNew]);
-    setStockxImport({ show: false, data: [], year: 'all', month: 'all', headers: [] });
-    
-    if (uniqueNew.length === 0) {
-      alert(`All ${newPending.length} StockX sales already imported.`);
+    if (uniqueNew.length > 0) {
+      // Save to Supabase
+      const savedPending = await bulkSavePendingToSupabase(uniqueNew);
+      if (savedPending.length > 0) {
+        setPendingCosts([...pendingCosts, ...savedPending.map(item => ({
+          id: item.id,
+          name: item.name,
+          sku: item.sku,
+          size: item.size,
+          salePrice: parseFloat(item.sale_price) || 0,
+          platform: item.platform,
+          fees: parseFloat(item.fees) || 0,
+          saleDate: item.sale_date
+        }))]);
+        alert(`Imported ${savedPending.length} StockX sales!${newPending.length - uniqueNew.length > 0 ? ` (${newPending.length - uniqueNew.length} duplicates skipped)` : ''}`);
+      }
     } else {
-      alert(`Imported ${uniqueNew.length} StockX sales!${newPending.length - uniqueNew.length > 0 ? ` (${newPending.length - uniqueNew.length} duplicates skipped)` : ''}`);
+      alert(`All ${newPending.length} StockX sales already imported.`);
     }
+    
+    setStockxImport({ show: false, data: [], year: 'all', month: 'all', headers: [] });
   };
 
   // Import eBay sales
@@ -1913,10 +2759,28 @@ function App() {
       return existing;
     });
     
-    const finalPending = [...updatedPending, ...newItems];
+    // Save new items to Supabase
+    if (newItems.length > 0) {
+      const savedItems = await bulkSavePendingToSupabase(newItems);
+      if (savedItems.length > 0) {
+        const formattedSaved = savedItems.map(item => ({
+          id: item.id,
+          name: item.name,
+          sku: item.sku,
+          size: item.size,
+          salePrice: parseFloat(item.sale_price) || 0,
+          platform: item.platform,
+          fees: parseFloat(item.fees) || 0,
+          saleDate: item.sale_date
+        }));
+        setPendingCosts([...updatedPending, ...formattedSaved]);
+      } else {
+        setPendingCosts(updatedPending);
+      }
+    } else {
+      setPendingCosts(updatedPending);
+    }
     
-    localStorage.setItem('flipledger_pending', JSON.stringify(finalPending));
-    setPendingCosts(finalPending);
     setEbayImport({ show: false, data: [], year: 'all', month: 'all', headers: [] });
     
     alert(`eBay Import: ${updates.length} updated, ${newItems.length} new items added.`);
@@ -2709,8 +3573,12 @@ function App() {
                 <button onClick={() => setSelectedInventory(new Set())} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>
                   Clear Selection
                 </button>
-                <button onClick={() => {
+                <button onClick={async () => {
                   if (confirm(`Delete ${selectedInventory.size} item${selectedInventory.size > 1 ? 's' : ''}? This cannot be undone.`)) {
+                    // Delete from Supabase
+                    for (const id of selectedInventory) {
+                      await deleteInventoryFromSupabase(id);
+                    }
                     setPurchases(prev => prev.filter(p => !selectedInventory.has(p.id)));
                     setSelectedInventory(new Set());
                   }
@@ -2768,13 +3636,13 @@ function App() {
                   <span style={{ fontSize: 13, fontWeight: 700, textAlign: 'right' }}>{fmt(p.cost)}</span>
                   <span style={{ fontSize: 12, textAlign: 'center', color: !p.sold && daysInStock > 60 ? c.red : !p.sold && daysInStock > 30 ? c.gold : c.textMuted }}>{p.sold ? '-' : daysInStock}</span>
                   <div style={{ textAlign: 'center' }}>
-                    <button onClick={() => setPurchases(purchases.map(x => x.id === p.id ? { ...x, sold: !x.sold } : x))} style={{ padding: '4px 10px', background: p.sold ? 'rgba(251,191,36,0.2)' : 'rgba(16,185,129,0.1)', border: `1px solid ${p.sold ? 'rgba(251,191,36,0.3)' : 'rgba(16,185,129,0.2)'}`, borderRadius: 6, color: p.sold ? c.gold : c.green, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
+                    <button onClick={() => { const updated = { ...p, sold: !p.sold }; updateInventoryInSupabase(updated); setPurchases(purchases.map(x => x.id === p.id ? updated : x)); }} style={{ padding: '4px 10px', background: p.sold ? 'rgba(251,191,36,0.2)' : 'rgba(16,185,129,0.1)', border: `1px solid ${p.sold ? 'rgba(251,191,36,0.3)' : 'rgba(16,185,129,0.2)'}`, borderRadius: 6, color: p.sold ? c.gold : c.green, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
                       {p.sold ? '🟡 SOLD' : 'IN STOCK'}
                     </button>
                   </div>
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
                     <button onClick={() => { setFormData({ editId: p.id, name: p.name, sku: p.sku, size: p.size, cost: p.cost, date: p.date }); setModal('editInventory'); }} style={{ background: 'none', border: 'none', color: c.green, cursor: 'pointer', fontSize: 14 }}>✏️</button>
-                    <button onClick={() => { setPurchases(purchases.filter(x => x.id !== p.id)); setSelectedInventory(prev => { const n = new Set(prev); n.delete(p.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14 }}>×</button>
+                    <button onClick={() => { deleteInventoryFromSupabase(p.id); setPurchases(purchases.filter(x => x.id !== p.id)); setSelectedInventory(prev => { const n = new Set(prev); n.delete(p.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14 }}>×</button>
                   </div>
                 </div>
               );
@@ -3443,11 +4311,11 @@ Let me know if you need anything else.`;
                     <option value="sku">SKU</option>
                     <option value="price">Payout</option>
                   </select>
-                  <button onClick={() => { 
+                  <button onClick={async () => { 
                     if (confirm(`Clear all?`)) {
+                      await deleteAllPendingFromSupabase();
                       setPendingCosts([]);
                       setSelectedPending(new Set());
-                      localStorage.removeItem('flipledger_pending');
                     }
                   }} style={{ padding: '5px 10px', background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 4, color: c.red, cursor: 'pointer', fontSize: 11 }}>
                     Clear
@@ -3602,6 +4470,7 @@ Let me know if you need anything else.`;
                       <div style={{ display: 'flex', justifyContent: 'center' }} onClick={e => e.stopPropagation()}>
                         <button 
                           onClick={() => {
+                            deletePendingFromSupabase(s.id);
                             setPendingCosts(prev => prev.filter(x => x.id !== s.id));
                             setSelectedPending(prev => { const n = new Set(prev); n.delete(s.id); return n; });
                           }} 
@@ -3855,10 +4724,22 @@ Let me know if you need anything else.`;
                                 const fresh = newPending.filter(s => !existingIds.has(s.id) && !existingIds.has(s.orderId));
                                 
                                 if (fresh.length > 0) {
-                                  setPendingCosts(prev => [...prev, ...fresh]);
-                                  localStorage.setItem('flipledger_pending', JSON.stringify([...pendingCosts, ...fresh]));
-                                  const withImages = fresh.filter(s => s.image).length;
-                                  alert(`✓ Imported ${fresh.length} eBay sales (${withImages} with images)`);
+                                  // Save to Supabase
+                                  const savedPending = await bulkSavePendingToSupabase(fresh);
+                                  if (savedPending.length > 0) {
+                                    setPendingCosts(prev => [...prev, ...savedPending.map(item => ({
+                                      id: item.id,
+                                      name: item.name,
+                                      sku: item.sku,
+                                      size: item.size,
+                                      salePrice: parseFloat(item.sale_price) || 0,
+                                      platform: item.platform,
+                                      fees: parseFloat(item.fees) || 0,
+                                      saleDate: item.sale_date
+                                    }))]);
+                                    const withImages = fresh.filter(s => s.image).length;
+                                    alert(`✓ Imported ${savedPending.length} eBay sales (${withImages} with images)`);
+                                  }
                                 } else {
                                   alert('All caught up! No new sales to import.');
                                 }
@@ -3935,10 +4816,10 @@ Let me know if you need anything else.`;
                   )}
                   <div style={{ display: 'flex', gap: 10 }}>
                     <button onClick={() => setEbayImport({ show: false, data: [], year: 'all', month: 'all', headers: [] })} style={{ flex: 1, padding: 12, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 10, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
-                    <button onClick={() => {
+                    <button onClick={async () => {
                       if (confirm('This will CLEAR all pending sales and do a fresh import. Continue?')) {
+                        await deleteAllPendingFromSupabase();
                         setPendingCosts([]);
-                        localStorage.removeItem('flipledger_pending');
                         setTimeout(() => importEbaySales(), 100);
                       }
                     }} disabled={filterEbayData().length === 0} style={{ flex: 1, padding: 12, background: 'rgba(239,68,68,0.2)', border: `1px solid ${c.red}`, borderRadius: 10, color: c.red, fontWeight: 700, cursor: 'pointer', opacity: filterEbayData().length === 0 ? 0.5 : 1 }}>🔄 Fresh Import</button>
@@ -3989,8 +4870,15 @@ Let me know if you need anything else.`;
                 <span style={{ fontWeight: 700, fontSize: 13 }}>{selectedPendingItem ? '👆 Select Item' : '📦 Inventory'}</span>
                 {selectedInvLookup.size > 0 && (
                   <button 
-                    onClick={() => {
+                    onClick={async () => {
                       if (confirm(`Mark ${selectedInvLookup.size} sold?`)) {
+                        // Update each selected item in Supabase
+                        for (const id of selectedInvLookup) {
+                          const item = purchases.find(p => p.id === id);
+                          if (item) {
+                            await updateInventoryInSupabase({ ...item, sold: true });
+                          }
+                        }
                         setPurchases(prev => prev.map(p => selectedInvLookup.has(p.id) ? { ...p, sold: true } : p));
                         setSelectedInvLookup(new Set());
                       }
@@ -4086,9 +4974,11 @@ Let me know if you need anything else.`;
                           cursor: selectedPendingItem ? 'pointer' : 'default',
                           background: selectedInvLookup.has(p.id) ? 'rgba(251,191,36,0.1)' : 'transparent'
                         }}
-                        onClick={() => {
+                        onClick={async () => {
                           if (selectedPendingItem) {
                             confirmSaleWithCost(selectedPendingItem, p.cost, 'StockX Standard');
+                            // Update in Supabase
+                            await updateInventoryInSupabase({ ...p, sold: true });
                             setPurchases(prev => prev.map(x => x.id === p.id ? { ...x, sold: true } : x));
                             setSelectedPendingItem(null);
                           }
@@ -4136,6 +5026,30 @@ Let me know if you need anything else.`;
           </div>
         </div>}
         {page === 'settings' && <div style={{ maxWidth: 550 }}>
+          {/* Account Section */}
+          <div style={{ ...cardStyle, padding: 24, marginBottom: 16 }}>
+            <h3 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10 }}>
+              👤 Account
+            </h3>
+            <div style={{ padding: 20, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: `1px solid ${c.border}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>{user?.email}</div>
+                  <div style={{ fontSize: 12, color: c.textMuted }}>Logged in</div>
+                </div>
+                <button
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    setUser(null);
+                  }}
+                  style={{ padding: '10px 20px', background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 8, color: '#ef4444', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+                >
+                  Sign Out
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Platform Connections */}
           <div style={{ ...cardStyle, padding: 24, marginBottom: 16 }}>
             <h3 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -4358,12 +5272,83 @@ Let me know if you need anything else.`;
                         );
                         
                         if (confirmRestore) {
-                          if (backup.purchases) setPurchases(backup.purchases);
-                          if (backup.sales) setSales(backup.sales);
-                          if (backup.expenses) setExpenses(backup.expenses);
-                          if (backup.pendingCosts) setPendingCosts(backup.pendingCosts);
-                          if (backup.settings) setSettings({ ...settings, ...backup.settings });
-                          alert('✅ Backup restored successfully!');
+                          // Clear existing data in Supabase first, then restore
+                          try {
+                            // Delete all existing data for this user
+                            if (user) {
+                              await supabase.from('inventory').delete().eq('user_id', user.id);
+                              await supabase.from('sales').delete().eq('user_id', user.id);
+                              await supabase.from('expenses').delete().eq('user_id', user.id);
+                              await supabase.from('pending_costs').delete().eq('user_id', user.id);
+                            }
+                            
+                            // Restore inventory
+                            if (backup.purchases?.length > 0) {
+                              const savedInv = await bulkSaveInventoryToSupabase(backup.purchases);
+                              if (savedInv.length > 0) {
+                                setPurchases(savedInv.map(item => ({
+                                  id: item.id,
+                                  name: item.name,
+                                  sku: item.sku,
+                                  size: item.size,
+                                  cost: parseFloat(item.cost) || 0,
+                                  date: item.date,
+                                  sold: item.sold || false
+                                })));
+                              }
+                            } else {
+                              setPurchases([]);
+                            }
+                            
+                            // Restore sales
+                            if (backup.sales?.length > 0) {
+                              const savedSales = await bulkSaveSalesToSupabase(backup.sales);
+                              if (savedSales.length > 0) {
+                                setSales(savedSales.map(item => ({
+                                  id: item.id,
+                                  name: item.name,
+                                  sku: item.sku,
+                                  size: item.size,
+                                  cost: parseFloat(item.cost) || 0,
+                                  salePrice: parseFloat(item.sale_price) || 0,
+                                  platform: item.platform,
+                                  fees: parseFloat(item.fees) || 0,
+                                  profit: parseFloat(item.profit) || 0,
+                                  saleDate: item.sale_date
+                                })));
+                              }
+                            } else {
+                              setSales([]);
+                            }
+                            
+                            // Restore expenses (keep local for now - expenses may have different structure)
+                            if (backup.expenses) setExpenses(backup.expenses);
+                            
+                            // Restore pending
+                            if (backup.pendingCosts?.length > 0) {
+                              const savedPending = await bulkSavePendingToSupabase(backup.pendingCosts);
+                              if (savedPending.length > 0) {
+                                setPendingCosts(savedPending.map(item => ({
+                                  id: item.id,
+                                  name: item.name,
+                                  sku: item.sku,
+                                  size: item.size,
+                                  salePrice: parseFloat(item.sale_price) || 0,
+                                  platform: item.platform,
+                                  fees: parseFloat(item.fees) || 0,
+                                  saleDate: item.sale_date
+                                })));
+                              }
+                            } else {
+                              setPendingCosts([]);
+                            }
+                            
+                            if (backup.settings) setSettings({ ...settings, ...backup.settings });
+                            alert('✅ Backup restored successfully!');
+                          } catch (err) {
+                            console.error('Restore error:', err);
+                            alert('Error restoring backup: ' + err.message);
+                          }
                         }
                       } catch (err) {
                         alert('Error reading backup file: ' + err.message);
@@ -4656,8 +5641,7 @@ Let me know if you need anything else.`;
               else if (modal === 'bulkAdd') {
                 const rows = (formData.bulkRows || []).filter(r => r.size && r.cost);
                 if (!formData.bulkName || rows.length === 0) return;
-                const newItems = rows.map((row, i) => ({
-                  id: Date.now() + i,
+                const itemsToSave = rows.map((row) => ({
                   name: formData.bulkName,
                   sku: formData.bulkSku || '',
                   size: row.size,
@@ -4665,7 +5649,20 @@ Let me know if you need anything else.`;
                   date: formData.bulkDate || new Date().toISOString().split('T')[0],
                   sold: false
                 }));
-                setPurchases([...purchases, ...newItems]);
+                // Save to Supabase
+                bulkSaveInventoryToSupabase(itemsToSave).then(savedItems => {
+                  if (savedItems.length > 0) {
+                    setPurchases(prev => [...prev, ...savedItems.map(item => ({
+                      id: item.id,
+                      name: item.name,
+                      sku: item.sku,
+                      size: item.size,
+                      cost: parseFloat(item.cost) || 0,
+                      date: item.date,
+                      sold: item.sold || false
+                    }))]);
+                  }
+                });
                 setModal(null);
                 setFormData({});
               }
@@ -4675,8 +5672,8 @@ Let me know if you need anything else.`;
                 const price = parseFloat(formData.salePrice);
                 const cost = parseFloat(formData.saleCost);
                 const fees = calcFees(price, formData.platform || 'StockX Standard');
-                setSales(sales.map(s => s.id === formData.editSaleId ? {
-                  ...s,
+                const updatedSale = {
+                  id: formData.editSaleId,
                   name: formData.saleName,
                   sku: formData.saleSku,
                   size: formData.saleSize,
@@ -4684,29 +5681,34 @@ Let me know if you need anything else.`;
                   salePrice: price,
                   platform: formData.platform,
                   saleDate: formData.saleDate,
-                  sellerLevel: formData.sellerLevel,
                   fees,
                   profit: price - cost - fees
-                } : s));
+                };
+                // Update in Supabase
+                updateSaleInSupabase(updatedSale);
+                setSales(sales.map(s => s.id === formData.editSaleId ? { ...s, ...updatedSale } : s));
                 setModal(null);
                 setFormData({});
               }
               else if (modal === 'editInventory') {
                 // Update existing inventory item
-                setPurchases(purchases.map(p => p.id === formData.editId ? {
-                  ...p,
+                const updatedItem = {
+                  id: formData.editId,
                   name: formData.name,
                   sku: formData.sku,
                   size: formData.size,
                   cost: parseFloat(formData.cost) || 0,
                   date: formData.date
-                } : p));
+                };
+                // Update in Supabase
+                updateInventoryInSupabase(updatedItem);
+                setPurchases(purchases.map(p => p.id === formData.editId ? { ...p, ...updatedItem } : p));
                 setModal(null);
                 setFormData({});
               }
               else if (modal === 'expense') addExpense(); 
               else if (modal === 'editExpense') {
-                // Update existing expense
+                // Update existing expense (stays local for now - expenses table doesn't have all fields)
                 setExpenses(expenses.map(e => e.id === formData.editExpenseId ? {
                   ...e,
                   category: formData.category,
