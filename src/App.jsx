@@ -1293,10 +1293,14 @@ function App() {
       }
       
       // IMPROVED: Extract all SKUs first, then build items around them
-      const skuPattern = /([A-Z]{2}\d{4}-\d{3})|([A-Z]{3}\d{4}-\d{3})|([A-Z]{4}\d{3,4}-\d{3})/g;
-      const allSkus = [...new Set((fullText.match(skuPattern) || []))];
+      // Nike style codes: 2-4 letters followed by 4-5 digits, dash, 3 digits
+      // Examples: HF5074-120, DX3276-003, AV3595-400, FB8171-010, IH3991-700, DD9315-115
+      const skuPattern = /\b([A-Z]{2,4}\d{4,5}-\d{3})\b/gi;
+      const skuMatches = fullText.match(skuPattern) || [];
+      const allSkus = [...new Set(skuMatches.map(s => s.toUpperCase()))];
       
       console.log('Found SKUs:', allSkus);
+      console.log('Full text sample for debugging:', fullText.substring(0, 2000));
       
       const items = [];
       
@@ -1379,30 +1383,98 @@ function App() {
         }
       }
       
-      // FALLBACK: If SKU method found nothing, try line-by-line parsing
+      // FALLBACK 1: If SKU method found nothing, try splitting by "Shop Similar" which appears after each item
       if (items.length === 0) {
-        console.log('SKU method found no items, trying line-by-line...');
+        console.log('SKU method found no items, trying Shop Similar split...');
         
-        let currentItem = null;
+        // Split by "Shop Similar" or "Shop Simi" (OCR might misread)
+        const itemBlocks = fullText.split(/Shop\s*Simi?l?a?r?/i);
+        console.log(`Found ${itemBlocks.length} potential item blocks`);
+        
+        for (const block of itemBlocks) {
+          if (block.length < 20) continue;
+          
+          // Look for SKU pattern with OCR error tolerance
+          // OCR might read 0 as O, 1 as I/l, etc.
+          let sku = '';
+          const skuMatch = block.match(/\b([A-Z0-9]{2,4}[\d0O]{4,5}-[\d0O]{3})\b/i);
+          if (skuMatch) {
+            // Clean up common OCR errors
+            sku = skuMatch[1].toUpperCase()
+              .replace(/O/g, '0')  // O -> 0 in the numeric part
+              .replace(/I/g, '1')  // I -> 1
+              .replace(/l/g, '1')  // l -> 1
+              .replace(/S/g, '5'); // S -> 5 sometimes
+          }
+          
+          // Look for price
+          const priceMatches = block.match(/\$[\d,.]+/g) || [];
+          const prices = priceMatches
+            .map(p => parseFloat(p.replace(/[$,]/g, '')))
+            .filter(p => p > 10 && p < 500);
+          const price = prices.length > 0 ? Math.min(...prices) : 0;
+          
+          // Look for size
+          let size = '';
+          const sizeMatch = block.match(/Size\s*[:\-]?\s*(\d+\.?\d*)/i) || 
+                           block.match(/\b(\d{1,2}\.?5?)\s*(?:US|M|W)?\b/);
+          if (sizeMatch) size = sizeMatch[1];
+          
+          // Look for name
+          let name = '';
+          const namePatterns = [
+            /Nike\s+(?:Air\s+)?[\w\s\-]+(?:Pegasus|Vomero|Max|Force|Dunk|Jordan|Cortez|Blazer)/i,
+            /Air\s+Jordan\s*\d*[\w\s\-]*/i,
+            /Nike\s+[\w\s\-]{5,40}/i
+          ];
+          for (const pattern of namePatterns) {
+            const match = block.match(pattern);
+            if (match) {
+              name = match[0].trim().substring(0, 60);
+              break;
+            }
+          }
+          if (!name && sku) name = 'Nike ' + sku;
+          
+          if (price > 0 && (sku || name)) {
+            const isDupe = items.some(item => 
+              (item.sku && sku && item.sku === sku) || 
+              (item.name === name && item.size === size && item.price === price)
+            );
+            if (!isDupe) {
+              items.push({ name: name || 'Nike Product', sku: sku || '', size, price });
+              console.log(`Fallback found: ${name} | ${sku} | Size ${size} | $${price}`);
+            }
+          }
+        }
+      }
+      
+      // FALLBACK 2: If still nothing, try line-by-line parsing
+      if (items.length === 0) {
+        console.log('Shop Similar method found no items, trying line-by-line...');
         
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
-          const nextLines = lines.slice(i, i + 5).join(' ');
+          const nextLines = lines.slice(i, i + 8).join(' ');
           
-          // Look for SKU in current or nearby lines
-          const styleMatch = line.match(/([A-Z]{2,4}\d{3,5}-\d{3})/) || 
-                            nextLines.match(/([A-Z]{2,4}\d{3,5}-\d{3})/);
+          // Look for SKU in current or nearby lines (with OCR tolerance)
+          const styleMatch = line.match(/\b([A-Z0-9]{2,4}[\d0OIl]{4,5}-[\d0OIl]{3})\b/i) || 
+                            nextLines.match(/\b([A-Z0-9]{2,4}[\d0OIl]{4,5}-[\d0OIl]{3})\b/i);
           
           if (styleMatch) {
-            // Found a SKU, try to build an item
-            const sku = styleMatch[1];
+            // Clean up SKU
+            let sku = styleMatch[1].toUpperCase()
+              .replace(/O(?=\d)/g, '0')
+              .replace(/(?<=\d)O/g, '0')
+              .replace(/I(?=\d)/g, '1')
+              .replace(/(?<=\d)I/g, '1');
             
             // Look for price nearby
-            const priceMatch = nextLines.match(/\$(\d+\.\d{2})/);
-            const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
+            const priceMatch = nextLines.match(/\$([\d,.]+)/);
+            const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0;
             
             // Look for size nearby
-            const sizeMatch = nextLines.match(/Size\s+(\d+\.?\d*)/i);
+            const sizeMatch = nextLines.match(/Size\s*[:\-]?\s*(\d+\.?\d*)/i);
             const size = sizeMatch ? sizeMatch[1] : '';
             
             // Look for name
@@ -1417,6 +1489,7 @@ function App() {
               const isDupe = items.some(item => item.sku === sku && item.size === size);
               if (!isDupe) {
                 items.push({ name, sku, size, price });
+                console.log(`Line-by-line found: ${name} | ${sku} | Size ${size} | $${price}`);
               }
             }
           }
