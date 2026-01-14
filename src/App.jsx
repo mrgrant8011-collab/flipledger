@@ -816,71 +816,83 @@ function App() {
       setDataLoading(true);
       try {
         // Load inventory
-        const { data: inventoryData } = await supabase
+        const { data: inventoryData, error: invError } = await supabase
           .from('inventory')
           .select('*')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false });
-        if (inventoryData) setPurchases(inventoryData.map(item => ({
-          id: item.id,
-          name: item.name,
-          sku: item.sku,
-          size: item.size,
-          cost: parseFloat(item.cost) || 0,
-          quantity: item.quantity || 1,
-          date: item.date,
-          sold: item.sold || false
-        })));
+        if (invError) console.error('Inventory load error:', invError);
+        if (inventoryData && inventoryData.length > 0) {
+          setPurchases(inventoryData.map(item => ({
+            id: item.id,
+            name: item.name || '',
+            sku: item.sku || '',
+            size: item.size || '',
+            cost: parseFloat(item.cost) || 0,
+            quantity: item.quantity || 1,
+            date: item.date || '',
+            sold: item.sold || false
+          })));
+        }
 
         // Load sales
-        const { data: salesData } = await supabase
+        const { data: salesData, error: salesError } = await supabase
           .from('sales')
           .select('*')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false });
-        if (salesData) setSales(salesData.map(item => ({
-          id: item.id,
-          name: item.name,
-          sku: item.sku,
-          size: item.size,
-          cost: parseFloat(item.cost) || 0,
-          salePrice: parseFloat(item.sale_price) || 0,
-          platform: item.platform,
-          fees: parseFloat(item.fees) || 0,
-          profit: parseFloat(item.profit) || 0,
-          saleDate: item.sale_date
-        })));
+        if (salesError) console.error('Sales load error:', salesError);
+        if (salesData && salesData.length > 0) {
+          setSales(salesData.map(item => ({
+            id: item.id,
+            name: item.name || '',
+            sku: item.sku || '',
+            size: item.size || '',
+            cost: parseFloat(item.cost) || 0,
+            salePrice: parseFloat(item.sale_price) || 0,
+            platform: item.platform || '',
+            fees: parseFloat(item.fees) || 0,
+            profit: parseFloat(item.profit) || 0,
+            saleDate: item.sale_date || ''
+          })));
+        }
 
         // Load expenses
-        const { data: expensesData } = await supabase
+        const { data: expensesData, error: expError } = await supabase
           .from('expenses')
           .select('*')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false });
-        if (expensesData) setExpenses(expensesData.map(item => ({
-          id: item.id,
-          description: item.description,
-          amount: parseFloat(item.amount) || 0,
-          category: item.category,
-          date: item.date
-        })));
+        if (expError) console.error('Expenses load error:', expError);
+        if (expensesData && expensesData.length > 0) {
+          setExpenses(expensesData.map(item => ({
+            id: item.id,
+            description: item.description || '',
+            amount: parseFloat(item.amount) || 0,
+            category: item.category || '',
+            date: item.date || ''
+          })));
+        }
 
         // Load pending costs
-        const { data: pendingData } = await supabase
+        const { data: pendingData, error: pendError } = await supabase
           .from('pending_costs')
           .select('*')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false });
-        if (pendingData) setPendingCosts(pendingData.map(item => ({
-          id: item.id,
-          name: item.name,
-          sku: item.sku,
-          size: item.size,
-          salePrice: parseFloat(item.sale_price) || 0,
-          platform: item.platform,
-          fees: parseFloat(item.fees) || 0,
-          saleDate: item.sale_date
-        })));
+        if (pendError) console.error('Pending load error:', pendError);
+        if (pendingData && pendingData.length > 0) {
+          setPendingCosts(pendingData.map(item => ({
+            id: item.id,
+            name: item.name || '',
+            sku: item.sku || '',
+            size: item.size || '',
+            salePrice: parseFloat(item.sale_price) || 0,
+            platform: item.platform || '',
+            fees: parseFloat(item.fees) || 0,
+            saleDate: item.sale_date || ''
+          })));
+        }
 
         // Load settings from localStorage (user-specific settings stay local for now)
         const savedSettings = localStorage.getItem(`flipledger_settings_${user.id}`);
