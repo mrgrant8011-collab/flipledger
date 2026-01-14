@@ -4293,13 +4293,34 @@ Let me know if you need anything else.`;
                     pendingCosts,
                     settings
                   };
-                  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+                  const dataStr = JSON.stringify(backup, null, 2);
+                  const blob = new Blob([dataStr], { type: 'application/json' });
                   const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `FlipLedger_Backup_${new Date().toISOString().split('T')[0]}.json`;
-                  a.click();
-                  URL.revokeObjectURL(url);
+                  const filename = `FlipLedger_Backup_${new Date().toISOString().split('T')[0]}.json`;
+                  
+                  // Method that works across all browsers including Safari
+                  if (navigator.msSaveBlob) {
+                    // IE/Edge
+                    navigator.msSaveBlob(blob, filename);
+                  } else {
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = filename;
+                    a.setAttribute('download', filename);
+                    a.setAttribute('target', '_blank');
+                    document.body.appendChild(a);
+                    
+                    // Use timeout for Safari
+                    setTimeout(() => {
+                      a.click();
+                      setTimeout(() => {
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                      }, 250);
+                    }, 100);
+                  }
+                  alert('✅ Backup saved! Store this file somewhere safe (Google Drive, iCloud, etc.)');
                 }}
                 style={{ padding: '12px 24px', background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
               >
