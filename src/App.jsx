@@ -81,6 +81,334 @@ class ErrorBoundary extends Component {
   }
 }
 
+// Mobile Dashboard Component - Clean, focused, action-oriented
+function MobileDashboard({ 
+  netProfit, totalRevenue, totalCOGS, totalFees, inventoryVal, 
+  filteredSales, pendingCosts, goals, year, 
+  c, fmt, setPage 
+}) {
+  const pendingCount = pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length;
+  const marginPct = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0;
+  const goalProgress = goals.yearly > 0 ? Math.min((netProfit / goals.yearly) * 100, 100) : 0;
+  
+  // Get recent sales (last 5)
+  const recentSales = [...filteredSales]
+    .sort((a, b) => new Date(b.saleDate) - new Date(a.saleDate))
+    .slice(0, 5);
+
+  // Monthly totals for sparkline
+  const monthlyData = Array.from({ length: 12 }, (_, i) => {
+    const monthNum = String(i + 1).padStart(2, '0');
+    const monthSales = filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === monthNum);
+    return monthSales.reduce((sum, s) => sum + (s.profit || 0), 0);
+  });
+  const maxMonth = Math.max(...monthlyData, 1);
+
+  return (
+    <div style={{ padding: '0 4px' }}>
+      {/* Action Alert - Pending Costs */}
+      {pendingCount > 0 && (
+        <div 
+          onClick={() => setPage('import')}
+          style={{ 
+            background: 'linear-gradient(135deg, rgba(251,191,36,0.15) 0%, rgba(251,191,36,0.05) 100%)',
+            border: '1px solid rgba(251,191,36,0.3)',
+            borderRadius: 16,
+            padding: '16px 20px',
+            marginBottom: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'pointer'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ 
+              width: 40, height: 40, 
+              background: 'rgba(251,191,36,0.2)', 
+              borderRadius: 10,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 18
+            }}>⚡</div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 15, color: '#fbbf24' }}>{pendingCount} Need Costs</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>Tap to complete</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 20, color: 'rgba(251,191,36,0.6)' }}>→</div>
+        </div>
+      )}
+
+      {/* Main Profit Card - Clean & Bold */}
+      <div style={{
+        background: '#141414',
+        border: '1px solid rgba(255,255,255,0.06)',
+        borderRadius: 20,
+        padding: '24px 20px',
+        marginBottom: 16
+      }}>
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'flex-start',
+          marginBottom: 20
+        }}>
+          <div>
+            <div style={{ 
+              fontSize: 11, 
+              fontWeight: 600, 
+              color: 'rgba(255,255,255,0.4)', 
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              marginBottom: 8
+            }}>
+              Net Profit {year}
+            </div>
+            <div style={{ 
+              fontSize: 42, 
+              fontWeight: 800, 
+              color: netProfit >= 0 ? '#34D399' : '#F87171',
+              lineHeight: 1,
+              letterSpacing: '-1px'
+            }}>
+              {fmt(netProfit)}
+            </div>
+          </div>
+          <div style={{
+            background: netProfit >= 0 ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)',
+            border: `1px solid ${netProfit >= 0 ? 'rgba(52,211,153,0.2)' : 'rgba(248,113,113,0.2)'}`,
+            borderRadius: 8,
+            padding: '6px 10px'
+          }}>
+            <span style={{ 
+              fontSize: 13, 
+              fontWeight: 700, 
+              color: netProfit >= 0 ? '#34D399' : '#F87171' 
+            }}>
+              {marginPct}%
+            </span>
+          </div>
+        </div>
+
+        {/* Mini Stats Row */}
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: '1fr 1fr 1fr',
+          gap: 12,
+          padding: '16px 0',
+          borderTop: '1px solid rgba(255,255,255,0.06)'
+        }}>
+          <div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 4 }}>REVENUE</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>{fmt(totalRevenue)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 4 }}>COGS</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#C9A962' }}>{fmt(totalCOGS)}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 4 }}>FEES</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#F87171' }}>{fmt(totalFees)}</div>
+          </div>
+        </div>
+
+        {/* Yearly Goal Progress */}
+        {goals.yearly > 0 && (
+          <div style={{ paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              marginBottom: 8
+            }}>
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>YEARLY GOAL</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#C9A962' }}>
+                {goalProgress.toFixed(0)}% of {fmt(goals.yearly)}
+              </span>
+            </div>
+            <div style={{ 
+              height: 6, 
+              background: 'rgba(255,255,255,0.06)', 
+              borderRadius: 3,
+              overflow: 'hidden'
+            }}>
+              <div style={{ 
+                height: '100%', 
+                width: `${goalProgress}%`,
+                background: 'linear-gradient(90deg, #C9A962, #34D399)',
+                borderRadius: 3,
+                transition: 'width 0.5s ease'
+              }} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Quick Stats Cards - 2x2 Grid */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: '1fr 1fr',
+        gap: 12,
+        marginBottom: 16
+      }}>
+        {[
+          { label: 'Sales', value: filteredSales.length, icon: '💰', color: '#34D399' },
+          { label: 'Inventory', value: fmt(inventoryVal), icon: '📦', color: '#C9A962' },
+        ].map((stat, i) => (
+          <div key={i} style={{
+            background: '#141414',
+            border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: 16,
+            padding: '20px 16px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <span style={{ fontSize: 20 }}>{stat.icon}</span>
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>{stat.label}</span>
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 700, color: stat.color }}>
+              {stat.value}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Monthly Sparkline */}
+      <div style={{
+        background: '#141414',
+        border: '1px solid rgba(255,255,255,0.06)',
+        borderRadius: 16,
+        padding: '20px 16px',
+        marginBottom: 16
+      }}>
+        <div style={{ 
+          fontSize: 11, 
+          color: 'rgba(255,255,255,0.4)', 
+          textTransform: 'uppercase',
+          marginBottom: 16
+        }}>
+          Monthly Profit
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 60 }}>
+          {monthlyData.map((val, i) => {
+            const height = val > 0 ? Math.max((val / maxMonth) * 50, 4) : 2;
+            const isCurrentMonth = i === new Date().getMonth();
+            return (
+              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <div style={{
+                  width: '100%',
+                  height: height,
+                  background: val > 0 
+                    ? (isCurrentMonth ? '#34D399' : 'rgba(52,211,153,0.4)')
+                    : 'rgba(255,255,255,0.06)',
+                  borderRadius: 2
+                }} />
+                <span style={{ 
+                  fontSize: 9, 
+                  color: isCurrentMonth ? '#34D399' : 'rgba(255,255,255,0.3)'
+                }}>
+                  {['J','F','M','A','M','J','J','A','S','O','N','D'][i]}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Recent Sales */}
+      {recentSales.length > 0 && (
+        <div style={{
+          background: '#141414',
+          border: '1px solid rgba(255,255,255,0.06)',
+          borderRadius: 16,
+          overflow: 'hidden'
+        }}>
+          <div style={{ 
+            padding: '16px 16px 12px',
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>Recent Sales</span>
+            <span 
+              onClick={() => setPage('sales')}
+              style={{ fontSize: 12, color: '#C9A962', cursor: 'pointer' }}
+            >
+              View All →
+            </span>
+          </div>
+          {recentSales.map((sale, i) => (
+            <div key={sale.id} style={{
+              padding: '14px 16px',
+              borderBottom: i < recentSales.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ 
+                  fontSize: 13, 
+                  fontWeight: 600, 
+                  color: '#fff',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  marginBottom: 2
+                }}>
+                  {sale.name}
+                </div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
+                  {sale.saleDate} • {sale.platform}
+                </div>
+              </div>
+              <div style={{ 
+                fontSize: 14, 
+                fontWeight: 700, 
+                color: (sale.profit || 0) >= 0 ? '#34D399' : '#F87171',
+                marginLeft: 12
+              }}>
+                {(sale.profit || 0) >= 0 ? '+' : ''}{fmt(sale.profit || 0)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Empty State */}
+      {filteredSales.length === 0 && pendingCount === 0 && (
+        <div style={{
+          background: '#141414',
+          border: '1px solid rgba(255,255,255,0.06)',
+          borderRadius: 16,
+          padding: '40px 20px',
+          textAlign: 'center'
+        }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
+          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>No data for {year}</div>
+          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 20 }}>
+            Import sales from StockX or eBay to get started
+          </div>
+          <button 
+            onClick={() => setPage('import')}
+            style={{
+              padding: '12px 24px',
+              background: 'linear-gradient(135deg, #C9A962 0%, #8B7355 100%)',
+              border: 'none',
+              borderRadius: 10,
+              color: '#000',
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            Import Sales
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // SalesPage as separate component for proper re-rendering
 function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPage, selectedSales, setSelectedSales, sales, setSales, settings, setModal, ITEMS_PER_PAGE, cardStyle, btnPrimary, c, fmt, exportCSV }) {
   // Filter
@@ -247,6 +575,14 @@ function App() {
   const [page, setPage] = useState('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [modal, setModal] = useState(null);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 850);
+  
+  // Track window resize for mobile detection
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 850);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const [year, setYear] = useState('2025');
   const [stockxImport, setStockxImport] = useState({ show: false, data: [], year: 'all', month: 'all', headers: [] });
   const [ebayImport, setEbayImport] = useState({ show: false, data: [], year: 'all', month: 'all', headers: [] });
@@ -1537,6 +1873,27 @@ function App() {
 
         {/* DASHBOARD */}
         {page === 'dashboard' && (() => {
+          // MOBILE: Render clean mobile dashboard
+          if (isMobile) {
+            return (
+              <MobileDashboard
+                netProfit={netProfit}
+                totalRevenue={totalRevenue}
+                totalCOGS={totalCOGS}
+                totalFees={totalFees}
+                inventoryVal={inventoryVal}
+                filteredSales={filteredSales}
+                pendingCosts={pendingCosts}
+                goals={goals}
+                year={year}
+                c={c}
+                fmt={fmt}
+                setPage={setPage}
+              />
+            );
+          }
+
+          // DESKTOP: Original dashboard with all the bells and whistles
           // Live Pulse Component
           const LivePulse = ({ color = '#10b981', size = 8, speed = 2, label = null, style = {} }) => (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, ...style }}>
