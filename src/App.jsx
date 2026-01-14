@@ -1213,6 +1213,25 @@ function App() {
       });
       
       console.log(`Image dimensions: ${img.width} x ${img.height}`);
+      console.log(`Image file size: ${imageFile.size} bytes`);
+      
+      // Check if image is too small or corrupted
+      if (img.width < 200) {
+        console.error('Image too narrow - likely corrupted during upload');
+        setNikeReceipt({ 
+          scanning: false, 
+          items: [], 
+          image: null, 
+          date: '', 
+          orderNum: '', 
+          error: `Image appears corrupted (only ${img.width}px wide). Try saving the screenshot to Photos first, then uploading from there.`
+        });
+        return;
+      }
+      
+      if (img.width < 300 || img.height < 300) {
+        console.warn('Image is very small, OCR may not work well');
+      }
       
       // For very tall images (scroll screenshots), process in chunks
       const isLargeImage = img.height > 3000 || (img.width * img.height) > 4000000;
