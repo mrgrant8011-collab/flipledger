@@ -81,6 +81,218 @@ class ErrorBoundary extends Component {
   }
 }
 
+// Mobile Inventory Item Card
+function MobileInventoryCard({ item, selected, onSelect, onEdit, onDelete, onToggleSold, fmt, c }) {
+  const daysInStock = Math.floor((new Date() - new Date(item.date)) / (1000 * 60 * 60 * 24));
+  
+  return (
+    <div style={{
+      background: selected ? 'rgba(239,68,68,0.1)' : item.sold ? 'rgba(251,191,36,0.05)' : c.card,
+      border: `1px solid ${selected ? 'rgba(239,68,68,0.3)' : c.border}`,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 10
+    }}>
+      {/* Top Row: Checkbox, Name, Status */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+        <input 
+          type="checkbox" 
+          checked={selected} 
+          onChange={(e) => onSelect(e.target.checked)} 
+          style={{ width: 18, height: 18, cursor: 'pointer', accentColor: c.green, marginTop: 2 }} 
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ 
+            fontSize: 14, 
+            fontWeight: 600, 
+            color: item.sold ? c.textMuted : '#fff',
+            marginBottom: 4,
+            lineHeight: 1.3
+          }}>
+            {item.name}
+          </div>
+          <div style={{ fontSize: 11, color: c.green }}>{item.sku || '-'}</div>
+        </div>
+        <button 
+          onClick={onToggleSold}
+          style={{ 
+            padding: '5px 10px', 
+            background: item.sold ? 'rgba(251,191,36,0.2)' : 'rgba(16,185,129,0.15)', 
+            border: `1px solid ${item.sold ? 'rgba(251,191,36,0.3)' : 'rgba(16,185,129,0.3)'}`, 
+            borderRadius: 6, 
+            color: item.sold ? c.gold : c.green, 
+            fontSize: 10, 
+            fontWeight: 700, 
+            cursor: 'pointer',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          {item.sold ? '🟡 SOLD' : 'IN STOCK'}
+        </button>
+      </div>
+
+      {/* Stats Row */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: '1fr 1fr 1fr 1fr', 
+        gap: 8,
+        padding: '12px 0',
+        borderTop: `1px solid ${c.border}`,
+        borderBottom: `1px solid ${c.border}`
+      }}>
+        <div>
+          <div style={{ fontSize: 9, color: c.textMuted, marginBottom: 2 }}>SIZE</div>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>{item.size || '-'}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: c.textMuted, marginBottom: 2 }}>COST</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: c.gold }}>{fmt(item.cost)}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: c.textMuted, marginBottom: 2 }}>DATE</div>
+          <div style={{ fontSize: 12 }}>{item.date}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: c.textMuted, marginBottom: 2 }}>DAYS</div>
+          <div style={{ 
+            fontSize: 14, 
+            fontWeight: 600,
+            color: !item.sold && daysInStock > 60 ? c.red : !item.sold && daysInStock > 30 ? c.gold : c.textMuted 
+          }}>
+            {item.sold ? '-' : daysInStock}
+          </div>
+        </div>
+      </div>
+
+      {/* Actions Row */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16, paddingTop: 12 }}>
+        <button 
+          onClick={onEdit}
+          style={{ background: 'none', border: 'none', color: c.green, cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}
+        >
+          ✏️ Edit
+        </button>
+        <button 
+          onClick={onDelete}
+          style={{ background: 'none', border: 'none', color: c.red, cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}
+        >
+          🗑️ Delete
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Mobile Sale Item Card
+function MobileSaleCard({ sale, selected, onSelect, onEdit, onDelete, fmt, c }) {
+  return (
+    <div style={{
+      background: selected ? 'rgba(239,68,68,0.1)' : c.card,
+      border: `1px solid ${selected ? 'rgba(239,68,68,0.3)' : c.border}`,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 10
+    }}>
+      {/* Top Row: Checkbox, Name, Profit */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+        <input 
+          type="checkbox" 
+          checked={selected} 
+          onChange={(e) => onSelect(e.target.checked)} 
+          style={{ width: 18, height: 18, cursor: 'pointer', accentColor: c.green, marginTop: 2 }} 
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ 
+            fontSize: 14, 
+            fontWeight: 600, 
+            color: '#fff',
+            marginBottom: 4,
+            lineHeight: 1.3
+          }}>
+            {sale.name}
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11, color: c.green }}>{sale.sku || '-'}</span>
+            <span style={{ fontSize: 10, color: c.textMuted }}>•</span>
+            <span style={{ 
+              fontSize: 10, 
+              padding: '2px 8px', 
+              background: sale.platform?.includes('StockX') ? 'rgba(0,193,101,0.15)' : sale.platform?.includes('eBay') ? 'rgba(229,50,56,0.15)' : 'rgba(255,255,255,0.1)',
+              color: sale.platform?.includes('StockX') ? '#00c165' : sale.platform?.includes('eBay') ? '#e53238' : c.textMuted,
+              borderRadius: 4,
+              fontWeight: 600
+            }}>
+              {sale.platform}
+            </span>
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ 
+            fontSize: 18, 
+            fontWeight: 800, 
+            color: (sale.profit || 0) >= 0 ? c.green : c.red 
+          }}>
+            {(sale.profit || 0) >= 0 ? '+' : ''}{fmt(sale.profit || 0)}
+          </div>
+          <div style={{ fontSize: 10, color: c.textMuted }}>profit</div>
+        </div>
+      </div>
+
+      {/* Stats Row */}
+      <div style={{ 
+        display: 'grid', 
+        gridTemplateColumns: '1fr 1fr 1fr 1fr', 
+        gap: 8,
+        padding: '12px 0',
+        borderTop: `1px solid ${c.border}`,
+        borderBottom: `1px solid ${c.border}`
+      }}>
+        <div>
+          <div style={{ fontSize: 9, color: c.textMuted, marginBottom: 2 }}>DATE</div>
+          <div style={{ fontSize: 12 }}>{sale.saleDate}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: c.textMuted, marginBottom: 2 }}>SIZE</div>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>{sale.size || '-'}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: c.textMuted, marginBottom: 2 }}>COST</div>
+          <div style={{ fontSize: 12, color: c.gold }}>{fmt(sale.cost || 0)}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 9, color: c.textMuted, marginBottom: 2 }}>SOLD</div>
+          <div style={{ fontSize: 12, fontWeight: 600 }}>{fmt(sale.salePrice || 0)}</div>
+        </div>
+      </div>
+
+      {/* Fees Row */}
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between',
+        paddingTop: 10,
+        fontSize: 11,
+        color: c.textMuted
+      }}>
+        <span>Fees: <span style={{ color: c.red }}>{fmt(sale.fees || 0)}</span></span>
+        <div style={{ display: 'flex', gap: 16 }}>
+          <button 
+            onClick={onEdit}
+            style={{ background: 'none', border: 'none', color: c.green, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
+          >
+            ✏️
+          </button>
+          <button 
+            onClick={onDelete}
+            style={{ background: 'none', border: 'none', color: c.red, cursor: 'pointer', fontSize: 12 }}
+          >
+            ×
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Mobile Dashboard Component - Premium, same energy as desktop
 function MobileDashboard({ 
   netProfit, totalRevenue, totalCOGS, totalFees, inventoryVal, 
@@ -383,7 +595,7 @@ function MobileDashboard({
 }
 
 // SalesPage as separate component for proper re-rendering
-function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPage, selectedSales, setSelectedSales, sales, setSales, settings, setModal, ITEMS_PER_PAGE, cardStyle, btnPrimary, c, fmt, exportCSV }) {
+function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPage, selectedSales, setSelectedSales, sales, setSales, settings, setModal, ITEMS_PER_PAGE, cardStyle, btnPrimary, c, fmt, exportCSV, isMobile }) {
   // Filter
   const searchTerm = (formData.salesSearch || '').toLowerCase().trim();
   const platformFilter = formData.salesFilter || 'all';
@@ -484,7 +696,65 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
       </div>
     </div>}
 
-    <div style={cardStyle}>
+    {isMobile ? (
+      /* MOBILE: Card Layout for Sales */
+      <div>
+        <div style={{ 
+          padding: '12px 16px', 
+          background: c.card, 
+          border: `1px solid ${c.border}`, 
+          borderRadius: '12px 12px 0 0',
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          marginBottom: 1
+        }}>
+          <span style={{ fontSize: 12, color: c.textMuted }}>
+            {total > 0 ? `${start + 1}-${end} of ${total}` : 'No sales'}
+          </span>
+          <button onClick={() => exportCSV(sorted, 'sales.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
+        </div>
+        
+        {items.length > 0 ? items.map(s => (
+          <MobileSaleCard
+            key={s.id}
+            sale={s}
+            selected={selectedSales.has(s.id)}
+            onSelect={(checked) => {
+              const n = new Set(selectedSales);
+              checked ? n.add(s.id) : n.delete(s.id);
+              setSelectedSales(n);
+            }}
+            onEdit={() => { 
+              setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, saleImage: s.image, sellerLevel: s.sellerLevel || settings.stockxLevel }); 
+              setModal('editSale'); 
+            }}
+            onDelete={() => { 
+              setSales(sales.filter(x => x.id !== s.id)); 
+              setSelectedSales(prev => { const n = new Set(prev); n.delete(s.id); return n; }); 
+            }}
+            fmt={fmt}
+            c={c}
+          />
+        )) : (
+          <div style={{ padding: 50, textAlign: 'center', background: c.card, borderRadius: 12 }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>💵</div>
+            <p style={{ color: c.textMuted }}>No sales</p>
+          </div>
+        )}
+        
+        {/* Mobile Pagination */}
+        {pages > 1 && (
+          <div style={{ padding: '16px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
+            <button onClick={() => setSalesPage(Math.max(1, page - 1))} disabled={page === 1} style={{ padding: '10px 16px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 8, color: page === 1 ? c.textMuted : '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer', fontSize: 13 }}>← Prev</button>
+            <span style={{ padding: '10px 16px', fontSize: 13, color: c.textMuted }}>{page} / {pages}</span>
+            <button onClick={() => setSalesPage(Math.min(pages, page + 1))} disabled={page === pages} style={{ padding: '10px 16px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 8, color: page === pages ? c.textMuted : '#fff', cursor: page === pages ? 'not-allowed' : 'pointer', fontSize: 13 }}>Next →</button>
+          </div>
+        )}
+      </div>
+    ) : (
+      /* DESKTOP: Table Layout for Sales */
+      <div style={cardStyle}>
       <div style={{ padding: '14px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: 13, color: c.textMuted }}>{total > 0 ? `Showing ${start + 1}-${end} of ${total}` : 'No sales'}</span>
         <button onClick={() => exportCSV(sorted, 'sales.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
@@ -541,6 +811,7 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
         <button onClick={() => setSalesPage(pages)} disabled={page === pages} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: page === pages ? c.textMuted : '#fff', cursor: page === pages ? 'not-allowed' : 'pointer', fontSize: 12 }}>»</button>
       </div>}
     </div>
+    )}
   </div>;
 }
 
@@ -2486,7 +2757,70 @@ function App() {
           )}
 
           {/* INVENTORY TABLE */}
-          <div style={cardStyle}>
+          {isMobile ? (
+            /* MOBILE: Card Layout */
+            <div>
+              <div style={{ 
+                padding: '12px 16px', 
+                background: c.card, 
+                border: `1px solid ${c.border}`, 
+                borderRadius: '12px 12px 0 0',
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                marginBottom: 1
+              }}>
+                <span style={{ fontSize: 12, color: c.textMuted }}>
+                  {startIdx + 1}-{Math.min(startIdx + ITEMS_PER_PAGE, sortedInventory.length)} of {sortedInventory.length}
+                </span>
+                <button onClick={() => exportCSV(sortedInventory, 'inventory.csv', ['date','name','sku','size','cost','sold'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
+              </div>
+              
+              {paginatedInventory.length ? paginatedInventory.map(p => (
+                <MobileInventoryCard
+                  key={p.id}
+                  item={p}
+                  selected={selectedInventory.has(p.id)}
+                  onSelect={(checked) => {
+                    setSelectedInventory(prev => {
+                      const newSet = new Set(prev);
+                      if (checked) newSet.add(p.id);
+                      else newSet.delete(p.id);
+                      return newSet;
+                    });
+                  }}
+                  onEdit={() => { 
+                    setFormData({ editId: p.id, name: p.name, sku: p.sku, size: p.size, cost: p.cost, date: p.date }); 
+                    setModal('editInventory'); 
+                  }}
+                  onDelete={() => { 
+                    setPurchases(purchases.filter(x => x.id !== p.id)); 
+                    setSelectedInventory(prev => { const n = new Set(prev); n.delete(p.id); return n; }); 
+                  }}
+                  onToggleSold={() => setPurchases(purchases.map(x => x.id === p.id ? { ...x, sold: !x.sold } : x))}
+                  fmt={fmt}
+                  c={c}
+                />
+              )) : (
+                <div style={{ padding: 50, textAlign: 'center', background: c.card, borderRadius: 12 }}>
+                  <div style={{ fontSize: 48, marginBottom: 12 }}>📦</div>
+                  <p style={{ color: c.textMuted }}>No inventory matches your filters</p>
+                  <button onClick={() => { setFormData(prev => ({ ...prev, bulkRows: [{ size: '', cost: '' }] })); setModal('bulkAdd'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Add Items</button>
+                </div>
+              )}
+              
+              {/* Mobile Pagination */}
+              {totalPages > 1 && (
+                <div style={{ padding: '16px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
+                  <button onClick={() => setInventoryPage(Math.max(1, inventoryPage - 1))} disabled={inventoryPage === 1} style={{ padding: '10px 16px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 8, color: inventoryPage === 1 ? c.textMuted : '#fff', cursor: inventoryPage === 1 ? 'not-allowed' : 'pointer', fontSize: 13 }}>← Prev</button>
+                  <span style={{ padding: '10px 16px', fontSize: 13, color: c.textMuted }}>{inventoryPage} / {totalPages}</span>
+                  <button onClick={() => setInventoryPage(Math.min(totalPages, inventoryPage + 1))} disabled={inventoryPage === totalPages} style={{ padding: '10px 16px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 8, color: inventoryPage === totalPages ? c.textMuted : '#fff', cursor: inventoryPage === totalPages ? 'not-allowed' : 'pointer', fontSize: 13 }}>Next →</button>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* DESKTOP: Table Layout */
+            <div style={cardStyle}>
             <div style={{ padding: '14px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 13, color: c.textMuted }}>Showing {startIdx + 1}-{Math.min(startIdx + ITEMS_PER_PAGE, sortedInventory.length)} of {sortedInventory.length} items</span>
               <button onClick={() => exportCSV(sortedInventory, 'inventory.csv', ['date','name','sku','size','cost','sold'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
@@ -2566,6 +2900,7 @@ function App() {
               </div>
             )}
           </div>
+          )}
         </div>;
         })()}
 
@@ -2589,6 +2924,7 @@ function App() {
           c={c}
           fmt={fmt}
           exportCSV={exportCSV}
+          isMobile={isMobile}
         />}
 
         {/* EXPENSES */}
