@@ -1183,6 +1183,63 @@ function App() {
         if (currentItem && currentItem.sku && currentItem.price > 0) items.push(currentItem);
       }
       
+      // FALLBACK 2: If still nothing, parse by NAME + PRICE pairs (OCR often misses SKU/Size)
+      if (items.length === 0) {
+        console.log('Line-by-line found nothing, trying NAME+PRICE pairing...');
+        
+        // Find all product names and prices in order
+        const nameRegex = /(Air Jordan \d* ?[A-Za-z]*|Nike Air Max \d*|Air Max \d+|Nike Dunk [A-Za-z]*|Dunk (?:Low|High|Mid)|Air Force \d*|Nike [A-Za-z]+)/gi;
+        const priceRegex = /\$(\d+\.\d{2})/g;
+        
+        const names = [];
+        const prices = [];
+        
+        let match;
+        while ((match = nameRegex.exec(text)) !== null) {
+          names.push({ name: match[1].trim(), index: match.index });
+        }
+        while ((match = priceRegex.exec(text)) !== null) {
+          const price = parseFloat(match[1]);
+          if (price > 10 && price < 500) { // Filter reasonable shoe prices
+            prices.push({ price, index: match.index });
+          }
+        }
+        
+        console.log('Found', names.length, 'names and', prices.length, 'prices');
+        
+        // Match each name with the price that comes after it
+        for (let i = 0; i < names.length; i++) {
+          const { name, index: nameIndex } = names[i];
+          
+          // Find the first price after this name (but before next name)
+          const nextNameIndex = i < names.length - 1 ? names[i + 1].index : text.length;
+          const priceAfter = prices.find(p => p.index > nameIndex && p.index < nextNameIndex);
+          
+          if (priceAfter) {
+            // Try to find size between name and price
+            const blockText = text.substring(nameIndex, priceAfter.index + 20);
+            const sizeMatch = blockText.match(/Size\s+(\d+\.?\d*)/i);
+            const size = sizeMatch ? sizeMatch[1] : '';
+            
+            // Generate a placeholder SKU based on name
+            let sku = '';
+            if (name.toLowerCase().includes('jordan')) sku = 'AJ-TBD';
+            else if (name.toLowerCase().includes('max')) sku = 'AM-TBD';
+            else if (name.toLowerCase().includes('dunk')) sku = 'NK-TBD';
+            else sku = 'NK-TBD';
+            
+            items.push({
+              name: name,
+              sku: sku,
+              size: size,
+              price: priceAfter.price
+            });
+            
+            console.log(`Paired: "${name}" + $${priceAfter.price} (size: ${size || 'unknown'})`);
+          }
+        }
+      }
+      
       console.log('Final items:', items.length);
       
       // Tax distribution
