@@ -1192,19 +1192,19 @@ function App() {
   const addStorage = () => { if (!formData.amount) return; setStorageFees([...storageFees, { id: Date.now(), month: formData.month || '2025-01', amount: parseFloat(formData.amount), notes: formData.notes || '' }]); setModal(null); setFormData({}); };
   const addMileage = () => { if (!formData.miles) return; setMileage([...mileage, { id: Date.now(), date: formData.date || new Date().toISOString().split('T')[0], miles: parseFloat(formData.miles), purpose: formData.purpose || 'Pickup/Dropoff', from: formData.from || '', to: formData.to || '' }]); setModal(null); setFormData({}); };
 
-  // Nike Receipt Scanner - Optimized for large scroll screenshots
+  // Nike Receipt Scanner - Maximum power Tesseract with preprocessing
   const parseNikeReceipt = async (imageFile) => {
     setNikeReceipt(prev => ({ ...prev, scanning: true, items: [], image: null, error: null }));
     
     try {
-      // Convert image to base64 for storage
+      // Convert image to base64
       const reader = new FileReader();
       const imageBase64 = await new Promise((resolve) => {
         reader.onload = (e) => resolve(e.target.result);
         reader.readAsDataURL(imageFile);
       });
       
-      // Create an image element to check dimensions
+      // Load image to check dimensions and preprocess
       const img = new Image();
       await new Promise((resolve, reject) => {
         img.onload = resolve;
@@ -1212,333 +1212,213 @@ function App() {
         img.src = imageBase64;
       });
       
-      console.log(`Image dimensions: ${img.width} x ${img.height}`);
-      console.log(`Image file size: ${imageFile.size} bytes`);
+      console.log(`Original image: ${img.width} x ${img.height}, ${imageFile.size} bytes`);
       
-      // Check if image is too small or corrupted
       if (img.width < 200) {
-        console.error('Image too narrow - likely corrupted during upload');
         setNikeReceipt({ 
-          scanning: false, 
-          items: [], 
-          image: null, 
-          date: '', 
-          orderNum: '', 
-          error: `Image appears corrupted (only ${img.width}px wide). Try saving the screenshot to Photos first, then uploading from there.`
+          scanning: false, items: [], image: null, date: '', orderNum: '', 
+          error: `Image too narrow (${img.width}px). Save to Photos first, then upload.`
         });
         return;
       }
       
-      if (img.width < 300 || img.height < 300) {
-        console.warn('Image is very small, OCR may not work well');
+      // PREPROCESSING: Scale up small images, increase contrast for better OCR
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      // Scale factor - make sure image is at least 1000px wide for good OCR
+      const scale = img.width < 1000 ? Math.min(3, 1000 / img.width) : 1;
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      
+      // Draw scaled image
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      
+      // Increase contrast for better text recognition
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+      const contrast = 1.3; // Boost contrast
+      const factor = (259 * (contrast * 100 + 255)) / (255 * (259 - contrast * 100));
+      
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = Math.min(255, Math.max(0, factor * (data[i] - 128) + 128));     // R
+        data[i+1] = Math.min(255, Math.max(0, factor * (data[i+1] - 128) + 128)); // G
+        data[i+2] = Math.min(255, Math.max(0, factor * (data[i+2] - 128) + 128)); // B
       }
+      ctx.putImageData(imageData, 0, 0);
       
-      // For very tall images (scroll screenshots), process in chunks
-      const isLargeImage = img.height > 3000 || (img.width * img.height) > 4000000;
+      console.log(`Preprocessed image: ${canvas.width} x ${canvas.height}`);
       
+      // For very tall images, process in chunks with more overlap
       let fullText = '';
+      const isLargeImage = canvas.height > 2500;
       
       if (isLargeImage) {
-        console.log('Large image detected, processing in chunks...');
-        
-        // Create canvas for chunking
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        // Process in chunks of ~2000px height with overlap
-        const chunkHeight = 2000;
-        const overlap = 200;
-        const chunks = Math.ceil((img.height - overlap) / (chunkHeight - overlap));
+        const chunkHeight = 1500;
+        const overlap = 300; // More overlap to catch items at boundaries
+        const chunks = Math.ceil((canvas.height - overlap) / (chunkHeight - overlap));
         
         console.log(`Processing ${chunks} chunks...`);
         
         for (let i = 0; i < chunks; i++) {
-          const startY = i * (chunkHeight - overlap);
-          const actualHeight = Math.min(chunkHeight, img.height - startY);
+          const startY = Math.max(0, i * (chunkHeight - overlap));
+          const actualHeight = Math.min(chunkHeight, canvas.height - startY);
           
-          canvas.width = img.width;
-          canvas.height = actualHeight;
+          const chunkCanvas = document.createElement('canvas');
+          chunkCanvas.width = canvas.width;
+          chunkCanvas.height = actualHeight;
+          const chunkCtx = chunkCanvas.getContext('2d');
+          chunkCtx.drawImage(canvas, 0, startY, canvas.width, actualHeight, 0, 0, canvas.width, actualHeight);
           
-          // Draw chunk
-          ctx.drawImage(img, 0, startY, img.width, actualHeight, 0, 0, img.width, actualHeight);
+          const chunkBlob = await new Promise(resolve => chunkCanvas.toBlob(resolve, 'image/png'));
           
-          // Convert chunk to blob
-          const chunkBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-          
-          // OCR the chunk
+          console.log(`OCR chunk ${i + 1}/${chunks}...`);
           const { data: { text } } = await Tesseract.recognize(chunkBlob, 'eng', {
-            logger: m => {
-              if (m.status === 'recognizing text') {
-                console.log(`Chunk ${i + 1}/${chunks}: ${Math.round(m.progress * 100)}%`);
-              }
-            }
+            tessedit_pageseg_mode: '6', // Assume uniform block of text
+            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-$., ',
           });
           
-          fullText += text + '\n';
+          fullText += '\n' + text;
         }
       } else {
-        // Normal image - process directly
-        const { data: { text } } = await Tesseract.recognize(imageFile, 'eng', {
-          logger: m => console.log(m)
+        // Single pass for smaller images
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        const { data: { text } } = await Tesseract.recognize(blob, 'eng', {
+          tessedit_pageseg_mode: '6',
         });
         fullText = text;
       }
       
-      console.log('Full OCR Result length:', fullText.length);
-      console.log('OCR Result preview:', fullText.substring(0, 1000));
+      console.log('OCR text length:', fullText.length);
+      console.log('OCR preview:', fullText.substring(0, 500));
       
-      // Parse the text - improved patterns for Nike receipts
-      const lines = fullText.split('\n').map(l => l.trim()).filter(l => l);
-      
-      // Extract date and order number
-      let orderDate = '';
-      let orderNum = '';
-      
-      for (const line of lines) {
-        // Date patterns: "Jan 08, 2026", "Dec 22, 2025", etc.
-        const dateMatch = line.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}/i);
-        if (dateMatch && !orderDate) {
-          const parsed = new Date(dateMatch[0]);
-          if (!isNaN(parsed)) {
-            orderDate = parsed.toISOString().split('T')[0];
-          }
-        }
-        
-        // Order number: T1C0000000A32EPF, T110000009YDB7Y
-        const orderMatch = line.match(/T[A-Z0-9]{10,}/i);
-        if (orderMatch && !orderNum) {
-          orderNum = orderMatch[0];
-        }
-      }
-      
-      // IMPROVED: Extract all SKUs first, then build items around them
-      // Nike style codes: 2-4 letters followed by 4-5 digits, dash, 3 digits
-      // Examples: HF5074-120, DX3276-003, AV3595-400, FB8171-010, IH3991-700, DD9315-115
-      const skuPattern = /\b([A-Z]{2,4}\d{4,5}-\d{3})\b/gi;
-      const skuMatches = fullText.match(skuPattern) || [];
-      const allSkus = [...new Set(skuMatches.map(s => s.toUpperCase()))];
-      
-      console.log('Found SKUs:', allSkus);
-      console.log('Full text sample for debugging:', fullText.substring(0, 2000));
-      
+      // PARSING: Multiple strategies to find all items
       const items = [];
+      const foundSkus = new Set();
       
-      // For each SKU, find associated data
-      for (const sku of allSkus) {
-        // Find where this SKU appears in the text
-        const skuIndex = fullText.indexOf(sku);
-        if (skuIndex === -1) continue;
+      // Strategy 1: Find all SKU patterns (Nike style codes)
+      const skuRegex = /\b([A-Z]{2}[A-Z0-9]?\d{3,4}-\d{3})\b/gi;
+      const skuMatches = [...fullText.matchAll(skuRegex)];
+      console.log('SKU matches found:', skuMatches.length);
+      
+      for (const match of skuMatches) {
+        const sku = match[1].toUpperCase();
+        if (foundSkus.has(sku)) continue;
         
-        // Get context around the SKU (300 chars before, 150 after)
-        const contextStart = Math.max(0, skuIndex - 300);
-        const contextEnd = Math.min(fullText.length, skuIndex + 150);
+        const skuIndex = match.index;
+        const contextStart = Math.max(0, skuIndex - 250);
+        const contextEnd = Math.min(fullText.length, skuIndex + 200);
         const context = fullText.substring(contextStart, contextEnd);
         
-        // Extract name - look for Nike product patterns
-        let name = '';
-        const namePatterns = [
-          /Nike\s+(?:Air\s+)?(?:Zoom\s+)?(?:Pegasus|Vomero|Structure|Invincible|React|Free|Flex|Revolution|Downshifter|Winflo|Renew)[\w\s\-"']*(?=\s*(?:Men|Women|Size|\$|Style))/i,
-          /Nike\s+(?:Dunk|Force|Max|Cortez|Blazer|Waffle|Metcon|SuperRep|ZoomX)[\w\s\-"']*(?=\s*(?:Men|Women|Size|\$|Style))/i,
-          /Air\s+Jordan\s+\d*[\w\s\-"']*(?=\s*(?:Men|Women|Size|\$|Style))/i,
-          /Jordan\s+\d+[\w\s\-"']*(?=\s*(?:Men|Women|Size|\$|Style))/i,
-          /Nike\s+[\w\s\-"']{5,40}/i,
-          /Air\s+(?:Max|Force|Jordan)[\w\s\-"']{5,30}/i
-        ];
-        
-        for (const pattern of namePatterns) {
-          const match = context.match(pattern);
-          if (match) {
-            name = match[0].trim()
-              .replace(/\s+/g, ' ')
-              .replace(/Men's|Women's|Men s|Women s/gi, '')
-              .replace(/\s*$/, '')
-              .trim();
-            if (name.length > 10) break;
-          }
-        }
-        
-        // If no name found, use generic
-        if (!name || name.length < 5) {
-          name = 'Nike ' + sku;
-        }
-        
-        // Extract size - look for size patterns
-        let size = '';
-        const sizePatterns = [
-          /Size\s+(\d+\.?\d*)/i,
-          /Size\s+([XSML]{1,3})/i,
-          /\b(\d{1,2}\.?5?)\s*(?:US|M|W)?\s*$/m
-        ];
-        
-        for (const pattern of sizePatterns) {
-          const match = context.match(pattern);
-          if (match) {
-            size = match[1];
-            break;
-          }
-        }
-        
-        // Extract price - get the LOWER price (sale price, not original)
-        const prices = [];
-        const priceMatches = context.matchAll(/\$(\d+(?:\.\d{2})?)/g);
-        for (const match of priceMatches) {
-          const price = parseFloat(match[1]);
-          if (price > 10 && price < 500) { // Reasonable shoe price range
-            prices.push(price);
-          }
-        }
-        
-        // Get the lower price (sale price)
+        // Find price - get lowest price (sale price)
+        const prices = [...context.matchAll(/\$\s?(\d+(?:[.,]\d{2})?)/g)]
+          .map(m => parseFloat(m[1].replace(',', '.')))
+          .filter(p => p > 15 && p < 400);
         const price = prices.length > 0 ? Math.min(...prices) : 0;
         
-        // Only add if we have SKU and price
-        if (sku && price > 0) {
-          // Check for duplicates (same SKU and size)
-          const isDupe = items.some(item => item.sku === sku && item.size === size);
-          if (!isDupe) {
-            items.push({ name, sku, size, price });
-            console.log(`Found item: ${name} | ${sku} | Size ${size} | $${price}`);
-          }
+        // Find size
+        const sizeMatch = context.match(/Size\s*:?\s*(\d+\.?\d*)/i) ||
+                         context.match(/\b(\d{1,2}\.5?)\s*(?:US|M|W)\b/i);
+        const size = sizeMatch ? sizeMatch[1] : '';
+        
+        // Find name
+        let name = '';
+        const namePatterns = [
+          /Nike\s+Air\s+(?:Zoom\s+)?(?:Pegasus|Vomero|Structure|Max|Force|Jordan)[\w\s\-]*/i,
+          /Nike\s+(?:Dunk|Blazer|Cortez|Revolution|Downshifter|Free|Metcon)[\w\s\-]*/i,
+          /Air\s+Jordan\s+\d*[\w\s\-]*/i,
+          /Nike\s+[\w\s\-]{5,35}/i
+        ];
+        for (const p of namePatterns) {
+          const m = context.match(p);
+          if (m) { name = m[0].trim().substring(0, 50); break; }
+        }
+        if (!name) name = 'Nike ' + sku;
+        
+        if (price > 0) {
+          items.push({ name, sku, size, price });
+          foundSkus.add(sku);
+          console.log(`Found: ${name} | ${sku} | ${size} | $${price}`);
         }
       }
       
-      // FALLBACK 1: If SKU method found nothing, try splitting by "Shop Similar" which appears after each item
-      if (items.length === 0) {
-        console.log('SKU method found no items, trying Shop Similar split...');
+      // Strategy 2: Split by "Shop Similar" and parse each block
+      if (items.length < 3) {
+        console.log('Trying Shop Similar split...');
+        const blocks = fullText.split(/Shop\s*Simi?l?a?r?/i);
         
-        // Split by "Shop Similar" or "Shop Simi" (OCR might misread)
-        const itemBlocks = fullText.split(/Shop\s*Simi?l?a?r?/i);
-        console.log(`Found ${itemBlocks.length} potential item blocks`);
-        
-        for (const block of itemBlocks) {
-          if (block.length < 20) continue;
+        for (const block of blocks) {
+          if (block.length < 30) continue;
           
-          // Look for SKU pattern with OCR error tolerance
-          // OCR might read 0 as O, 1 as I/l, etc.
-          let sku = '';
-          const skuMatch = block.match(/\b([A-Z0-9]{2,4}[\d0O]{4,5}-[\d0O]{3})\b/i);
-          if (skuMatch) {
-            // Clean up common OCR errors
-            sku = skuMatch[1].toUpperCase()
-              .replace(/O/g, '0')  // O -> 0 in the numeric part
-              .replace(/I/g, '1')  // I -> 1
-              .replace(/l/g, '1')  // l -> 1
-              .replace(/S/g, '5'); // S -> 5 sometimes
-          }
+          const skuMatch = block.match(/\b([A-Z]{2}[A-Z0-9]?\d{3,4}-\d{3})\b/i);
+          if (!skuMatch) continue;
           
-          // Look for price
-          const priceMatches = block.match(/\$[\d,.]+/g) || [];
-          const prices = priceMatches
-            .map(p => parseFloat(p.replace(/[$,]/g, '')))
-            .filter(p => p > 10 && p < 500);
+          const sku = skuMatch[1].toUpperCase();
+          if (foundSkus.has(sku)) continue;
+          
+          const prices = [...block.matchAll(/\$\s?(\d+(?:[.,]\d{2})?)/g)]
+            .map(m => parseFloat(m[1].replace(',', '.')))
+            .filter(p => p > 15 && p < 400);
           const price = prices.length > 0 ? Math.min(...prices) : 0;
           
-          // Look for size
-          let size = '';
-          const sizeMatch = block.match(/Size\s*[:\-]?\s*(\d+\.?\d*)/i) || 
-                           block.match(/\b(\d{1,2}\.?5?)\s*(?:US|M|W)?\b/);
-          if (sizeMatch) size = sizeMatch[1];
+          const sizeMatch = block.match(/Size\s*:?\s*(\d+\.?\d*)/i);
+          const size = sizeMatch ? sizeMatch[1] : '';
           
-          // Look for name
-          let name = '';
-          const namePatterns = [
-            /Nike\s+(?:Air\s+)?[\w\s\-]+(?:Pegasus|Vomero|Max|Force|Dunk|Jordan|Cortez|Blazer)/i,
-            /Air\s+Jordan\s*\d*[\w\s\-]*/i,
-            /Nike\s+[\w\s\-]{5,40}/i
-          ];
-          for (const pattern of namePatterns) {
-            const match = block.match(pattern);
-            if (match) {
-              name = match[0].trim().substring(0, 60);
-              break;
-            }
-          }
-          if (!name && sku) name = 'Nike ' + sku;
+          let name = 'Nike ' + sku;
+          const nameMatch = block.match(/Nike\s+[\w\s\-]{5,40}/i);
+          if (nameMatch) name = nameMatch[0].trim();
           
-          if (price > 0 && (sku || name)) {
-            const isDupe = items.some(item => 
-              (item.sku && sku && item.sku === sku) || 
-              (item.name === name && item.size === size && item.price === price)
-            );
-            if (!isDupe) {
-              items.push({ name: name || 'Nike Product', sku: sku || '', size, price });
-              console.log(`Fallback found: ${name} | ${sku} | Size ${size} | $${price}`);
-            }
+          if (price > 0) {
+            items.push({ name, sku, size, price });
+            foundSkus.add(sku);
+            console.log(`Block found: ${name} | ${sku} | ${size} | $${price}`);
           }
         }
       }
       
-      // FALLBACK 2: If still nothing, try line-by-line parsing
-      if (items.length === 0) {
-        console.log('Shop Similar method found no items, trying line-by-line...');
+      // Strategy 3: Find prices and work backwards to find associated SKUs
+      if (items.length < 3) {
+        console.log('Trying price-first strategy...');
+        const priceMatches = [...fullText.matchAll(/\$\s?(\d+(?:\.\d{2})?)/g)];
         
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i];
-          const nextLines = lines.slice(i, i + 8).join(' ');
+        for (const priceMatch of priceMatches) {
+          const price = parseFloat(priceMatch[1]);
+          if (price < 20 || price > 350) continue;
           
-          // Look for SKU in current or nearby lines (with OCR tolerance)
-          const styleMatch = line.match(/\b([A-Z0-9]{2,4}[\d0OIl]{4,5}-[\d0OIl]{3})\b/i) || 
-                            nextLines.match(/\b([A-Z0-9]{2,4}[\d0OIl]{4,5}-[\d0OIl]{3})\b/i);
+          const priceIndex = priceMatch.index;
+          const context = fullText.substring(Math.max(0, priceIndex - 300), priceIndex + 50);
           
-          if (styleMatch) {
-            // Clean up SKU
-            let sku = styleMatch[1].toUpperCase()
-              .replace(/O(?=\d)/g, '0')
-              .replace(/(?<=\d)O/g, '0')
-              .replace(/I(?=\d)/g, '1')
-              .replace(/(?<=\d)I/g, '1');
-            
-            // Look for price nearby
-            const priceMatch = nextLines.match(/\$([\d,.]+)/);
-            const price = priceMatch ? parseFloat(priceMatch[1].replace(/,/g, '')) : 0;
-            
-            // Look for size nearby
-            const sizeMatch = nextLines.match(/Size\s*[:\-]?\s*(\d+\.?\d*)/i);
-            const size = sizeMatch ? sizeMatch[1] : '';
-            
-            // Look for name
-            let name = 'Nike ' + sku;
-            const nameMatch = nextLines.match(/Nike\s+[\w\s\-"']+/i) || 
-                             nextLines.match(/Air\s+(?:Jordan|Max|Force)[\w\s\-"']+/i);
-            if (nameMatch) {
-              name = nameMatch[0].trim().substring(0, 50);
-            }
-            
-            if (price > 0) {
-              const isDupe = items.some(item => item.sku === sku && item.size === size);
-              if (!isDupe) {
-                items.push({ name, sku, size, price });
-                console.log(`Line-by-line found: ${name} | ${sku} | Size ${size} | $${price}`);
-              }
-            }
-          }
+          const skuMatch = context.match(/\b([A-Z]{2}[A-Z0-9]?\d{3,4}-\d{3})\b/i);
+          if (!skuMatch) continue;
+          
+          const sku = skuMatch[1].toUpperCase();
+          if (foundSkus.has(sku)) continue;
+          
+          const sizeMatch = context.match(/Size\s*:?\s*(\d+\.?\d*)/i);
+          const size = sizeMatch ? sizeMatch[1] : '';
+          
+          let name = 'Nike ' + sku;
+          const nameMatch = context.match(/Nike\s+[\w\s\-]{5,35}/i);
+          if (nameMatch) name = nameMatch[0].trim();
+          
+          items.push({ name, sku, size, price });
+          foundSkus.add(sku);
+          console.log(`Price-first found: ${name} | ${sku} | ${size} | $${price}`);
         }
       }
       
-      // Sort items by price descending (usually how they appear on receipt)
-      items.sort((a, b) => b.price - a.price);
-      
-      // Calculate tax split if applicable
-      const subtotalMatch = fullText.match(/Subtotal[:\s]*\$?(\d+\.?\d{0,2})/i);
-      const totalMatch = fullText.match(/(?:Order\s+)?Total[:\s]*\$?(\d+\.?\d{0,2})/i);
-      
-      if (subtotalMatch && totalMatch && items.length > 0) {
-        const subtotal = parseFloat(subtotalMatch[1]);
-        const total = parseFloat(totalMatch[1]);
-        const tax = total - subtotal;
-        
-        if (tax > 0 && tax < subtotal * 0.15) { // Sanity check: tax shouldn't be more than 15%
-          const itemsTotal = items.reduce((sum, item) => sum + item.price, 0);
-          if (itemsTotal > 0) {
-            items.forEach(item => {
-              const taxShare = (item.price / itemsTotal) * tax;
-              item.price = Math.round((item.price + taxShare) * 100) / 100;
-            });
-          }
-        }
+      // Extract order date and number
+      let orderDate = '';
+      let orderNum = '';
+      const dateMatch = fullText.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}/i);
+      if (dateMatch) {
+        const d = new Date(dateMatch[0]);
+        if (!isNaN(d)) orderDate = d.toISOString().split('T')[0];
       }
+      const orderMatch = fullText.match(/\b(T[A-Z0-9]{10,}|C[A-Z0-9]{10,})\b/i);
+      if (orderMatch) orderNum = orderMatch[1];
       
-      console.log(`Final items found: ${items.length}`);
+      console.log(`Final: ${items.length} items found`);
       
       setNikeReceipt({ 
         scanning: false, 
@@ -1546,18 +1426,14 @@ function App() {
         image: imageBase64, 
         date: orderDate, 
         orderNum,
-        error: items.length === 0 ? 'No items found. Try a clearer screenshot.' : null
+        error: items.length === 0 ? 'No items found. Try a clearer or higher resolution screenshot.' : null
       });
       
     } catch (error) {
       console.error('Receipt scan error:', error);
       setNikeReceipt({ 
-        scanning: false, 
-        items: [], 
-        image: null, 
-        date: '', 
-        orderNum: '', 
-        error: 'Failed to scan receipt: ' + error.message 
+        scanning: false, items: [], image: null, date: '', orderNum: '', 
+        error: 'Scan failed: ' + error.message 
       });
     }
   };
