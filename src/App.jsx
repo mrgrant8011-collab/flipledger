@@ -81,521 +81,8 @@ class ErrorBoundary extends Component {
   }
 }
 
-// Mobile Inventory Item Card
-function MobileInventoryCard({ item, selected, onSelect, onEdit, onDelete, onToggleSold, fmt, c }) {
-  const daysInStock = Math.floor((new Date() - new Date(item.date)) / (1000 * 60 * 60 * 24));
-  
-  return (
-    <div style={{
-      background: selected ? 'rgba(239,68,68,0.1)' : item.sold ? 'rgba(251,191,36,0.05)' : c.card,
-      border: `1px solid ${selected ? 'rgba(239,68,68,0.3)' : c.border}`,
-      borderRadius: 12,
-      padding: 16,
-      marginBottom: 10
-    }}>
-      {/* Top Row: Checkbox, Name, Status */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
-        <input 
-          type="checkbox" 
-          checked={selected} 
-          onChange={(e) => onSelect(e.target.checked)} 
-          style={{ width: 18, height: 18, cursor: 'pointer', accentColor: c.green, marginTop: 2 }} 
-        />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ 
-            fontSize: 14, 
-            fontWeight: 600, 
-            color: item.sold ? c.textMuted : '#fff',
-            marginBottom: 4,
-            lineHeight: 1.3
-          }}>
-            {item.name}
-          </div>
-          <div style={{ fontSize: 11, color: c.green }}>{item.sku || '-'}</div>
-        </div>
-        <button 
-          onClick={onToggleSold}
-          style={{ 
-            padding: '5px 10px', 
-            background: item.sold ? 'rgba(251,191,36,0.2)' : 'rgba(16,185,129,0.15)', 
-            border: `1px solid ${item.sold ? 'rgba(251,191,36,0.3)' : 'rgba(16,185,129,0.3)'}`, 
-            borderRadius: 6, 
-            color: item.sold ? c.gold : c.green, 
-            fontSize: 10, 
-            fontWeight: 700, 
-            cursor: 'pointer',
-            whiteSpace: 'nowrap'
-          }}
-        >
-          {item.sold ? '🟡 SOLD' : 'IN STOCK'}
-        </button>
-      </div>
-
-      {/* Stats Row */}
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: '1fr 1fr 1fr 1fr', 
-        gap: 8,
-        padding: '12px 0',
-        borderTop: `1px solid ${c.border}`,
-        borderBottom: `1px solid ${c.border}`
-      }}>
-        <div>
-          <div style={{ fontSize: 9, color: c.textMuted, marginBottom: 2 }}>SIZE</div>
-          <div style={{ fontSize: 14, fontWeight: 700 }}>{item.size || '-'}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 9, color: c.textMuted, marginBottom: 2 }}>COST</div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: c.gold }}>{fmt(item.cost)}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 9, color: c.textMuted, marginBottom: 2 }}>DATE</div>
-          <div style={{ fontSize: 12 }}>{item.date}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 9, color: c.textMuted, marginBottom: 2 }}>DAYS</div>
-          <div style={{ 
-            fontSize: 14, 
-            fontWeight: 600,
-            color: !item.sold && daysInStock > 60 ? c.red : !item.sold && daysInStock > 30 ? c.gold : c.textMuted 
-          }}>
-            {item.sold ? '-' : daysInStock}
-          </div>
-        </div>
-      </div>
-
-      {/* Actions Row */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16, paddingTop: 12 }}>
-        <button 
-          onClick={onEdit}
-          style={{ background: 'none', border: 'none', color: c.green, cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}
-        >
-          ✏️ Edit
-        </button>
-        <button 
-          onClick={onDelete}
-          style={{ background: 'none', border: 'none', color: c.red, cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}
-        >
-          🗑️ Delete
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// Mobile Sale Item Card
-function MobileSaleCard({ sale, selected, onSelect, onEdit, onDelete, fmt, c }) {
-  return (
-    <div style={{
-      background: selected ? 'rgba(239,68,68,0.1)' : c.card,
-      border: `1px solid ${selected ? 'rgba(239,68,68,0.3)' : c.border}`,
-      borderRadius: 12,
-      padding: 16,
-      marginBottom: 10
-    }}>
-      {/* Top Row: Checkbox, Name, Profit */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
-        <input 
-          type="checkbox" 
-          checked={selected} 
-          onChange={(e) => onSelect(e.target.checked)} 
-          style={{ width: 18, height: 18, cursor: 'pointer', accentColor: c.green, marginTop: 2 }} 
-        />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ 
-            fontSize: 14, 
-            fontWeight: 600, 
-            color: '#fff',
-            marginBottom: 4,
-            lineHeight: 1.3
-          }}>
-            {sale.name}
-          </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 11, color: c.green }}>{sale.sku || '-'}</span>
-            <span style={{ fontSize: 10, color: c.textMuted }}>•</span>
-            <span style={{ 
-              fontSize: 10, 
-              padding: '2px 8px', 
-              background: sale.platform?.includes('StockX') ? 'rgba(0,193,101,0.15)' : sale.platform?.includes('eBay') ? 'rgba(229,50,56,0.15)' : 'rgba(255,255,255,0.1)',
-              color: sale.platform?.includes('StockX') ? '#00c165' : sale.platform?.includes('eBay') ? '#e53238' : c.textMuted,
-              borderRadius: 4,
-              fontWeight: 600
-            }}>
-              {sale.platform}
-            </span>
-          </div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ 
-            fontSize: 18, 
-            fontWeight: 800, 
-            color: (sale.profit || 0) >= 0 ? c.green : c.red 
-          }}>
-            {(sale.profit || 0) >= 0 ? '+' : ''}{fmt(sale.profit || 0)}
-          </div>
-          <div style={{ fontSize: 10, color: c.textMuted }}>profit</div>
-        </div>
-      </div>
-
-      {/* Stats Row */}
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: '1fr 1fr 1fr 1fr', 
-        gap: 8,
-        padding: '12px 0',
-        borderTop: `1px solid ${c.border}`,
-        borderBottom: `1px solid ${c.border}`
-      }}>
-        <div>
-          <div style={{ fontSize: 9, color: c.textMuted, marginBottom: 2 }}>DATE</div>
-          <div style={{ fontSize: 12 }}>{sale.saleDate}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 9, color: c.textMuted, marginBottom: 2 }}>SIZE</div>
-          <div style={{ fontSize: 14, fontWeight: 600 }}>{sale.size || '-'}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 9, color: c.textMuted, marginBottom: 2 }}>COST</div>
-          <div style={{ fontSize: 12, color: c.gold }}>{fmt(sale.cost || 0)}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 9, color: c.textMuted, marginBottom: 2 }}>SOLD</div>
-          <div style={{ fontSize: 12, fontWeight: 600 }}>{fmt(sale.salePrice || 0)}</div>
-        </div>
-      </div>
-
-      {/* Fees Row */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between',
-        paddingTop: 10,
-        fontSize: 11,
-        color: c.textMuted
-      }}>
-        <span>Fees: <span style={{ color: c.red }}>{fmt(sale.fees || 0)}</span></span>
-        <div style={{ display: 'flex', gap: 16 }}>
-          <button 
-            onClick={onEdit}
-            style={{ background: 'none', border: 'none', color: c.green, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
-          >
-            ✏️
-          </button>
-          <button 
-            onClick={onDelete}
-            style={{ background: 'none', border: 'none', color: c.red, cursor: 'pointer', fontSize: 12 }}
-          >
-            ×
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Mobile Dashboard Component - Premium, same energy as desktop
-function MobileDashboard({ 
-  netProfit, totalRevenue, totalCOGS, totalFees, inventoryVal, 
-  filteredSales, pendingCosts, goals, year, 
-  c, fmt, setPage 
-}) {
-  const pendingCount = pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length;
-  const marginPct = totalRevenue > 0 ? (netProfit / totalRevenue * 100).toFixed(0) : 0;
-
-  // Monthly data for chart
-  const monthlyData = Array.from({ length: 12 }, (_, i) => {
-    const monthNum = String(i + 1).padStart(2, '0');
-    const monthSales = filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === monthNum);
-    return {
-      revenue: monthSales.reduce((sum, s) => sum + (s.salePrice || 0), 0),
-      profit: monthSales.reduce((sum, s) => sum + (s.profit || 0), 0),
-      count: monthSales.length
-    };
-  });
-  const maxRevenue = Math.max(...monthlyData.map(m => m.revenue), 1);
-
-  return (
-    <div>
-      {/* Pending Costs Alert - Pulsing */}
-      {pendingCount > 0 && (
-        <div 
-          onClick={() => setPage('import')}
-          className="pending-pulse"
-          style={{ 
-            background: 'rgba(251,191,36,0.1)', 
-            border: '1px solid rgba(251,191,36,0.2)', 
-            borderRadius: 14, 
-            padding: '14px 16px', 
-            marginBottom: 16, 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            cursor: 'pointer'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ position: 'relative', width: 10, height: 10 }}>
-              <div className="pulse-ring" style={{ position: 'absolute', inset: -4, borderRadius: '50%', background: '#fbbf24', opacity: 0.3 }} />
-              <div className="pulse-glow" style={{ width: 10, height: 10, borderRadius: '50%', background: '#fbbf24', boxShadow: '0 0 15px #fbbf24' }} />
-            </div>
-            <span style={{ color: c.gold, fontWeight: 600, fontSize: 14 }}>{pendingCount} sales need cost basis</span>
-          </div>
-          <div style={{ padding: '6px 14px', background: c.gold, borderRadius: 8, fontWeight: 700, fontSize: 12, color: '#000' }}>REVIEW</div>
-        </div>
-      )}
-
-      {/* HERO PROFIT CARD - Full Premium Feel */}
-      <div style={{
-        background: c.card,
-        border: `1px solid ${c.border}`,
-        borderRadius: 20,
-        padding: '28px 24px',
-        marginBottom: 16,
-        position: 'relative',
-        overflow: 'hidden'
-      }}>
-        {/* Animated top border */}
-        <div className="border-flow" style={{ 
-          position: 'absolute', top: 0, left: 0, right: 0, height: 2, 
-          background: `linear-gradient(90deg, transparent, ${c.gold}, ${c.green}, ${c.gold}, transparent)`, 
-          backgroundSize: '200% 100%' 
-        }} />
-        
-        {/* Breathing glow */}
-        <div className="breathe" style={{ 
-          position: 'absolute', top: -80, right: -60, width: 250, height: 250, 
-          background: `radial-gradient(circle, rgba(201,169,98,0.15) 0%, transparent 60%)`, 
-          pointerEvents: 'none' 
-        }} />
-
-        <div style={{ position: 'relative', zIndex: 1 }}>
-          {/* Header with LIVE badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '1px', color: c.textDim, textTransform: 'uppercase' }}>Net Profit YTD</span>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)', borderRadius: 100 }}>
-              <div className="pulse-glow" style={{ width: 6, height: 6, background: c.green, borderRadius: '50%', boxShadow: `0 0 10px ${c.green}` }} />
-              <span style={{ fontSize: 9, fontWeight: 700, color: c.green, letterSpacing: '1px' }}>LIVE</span>
-            </div>
-          </div>
-          
-          {/* Big Profit Number */}
-          <div style={{ fontSize: 52, fontWeight: 900, lineHeight: 1, letterSpacing: '-2px', marginBottom: 12 }}>
-            <span style={{ color: c.gold, textShadow: `0 0 30px rgba(201,169,98,0.4)` }}>$</span>
-            <span style={{ 
-              background: 'linear-gradient(180deg, #FFFFFF 0%, #34D399 100%)', 
-              WebkitBackgroundClip: 'text', 
-              WebkitTextFillColor: 'transparent', 
-              filter: 'drop-shadow(0 0 20px rgba(52,211,153,0.4))' 
-            }}>
-              {Math.abs(netProfit).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-            </span>
-          </div>
-          
-          {/* Stats row */}
-          <div style={{ fontSize: 13, color: c.textMuted }}>
-            <span style={{ color: c.green, fontWeight: 600 }}>↑ {marginPct}%</span>
-            <span style={{ margin: '0 8px' }}>·</span>
-            {filteredSales.length} transactions
-          </div>
-
-          {/* Margin Ring - Compact */}
-          <div style={{ 
-            position: 'absolute', 
-            top: 20, 
-            right: 0, 
-            width: 100, 
-            height: 100 
-          }}>
-            <div className="spin-slow" style={{ 
-              position: 'absolute', top: -3, left: -3, right: -3, bottom: -3, 
-              border: '1px dashed rgba(201,169,98,0.3)', 
-              borderRadius: '50%' 
-            }} />
-            <svg width="100" height="100" style={{ transform: 'rotate(-90deg)', filter: 'drop-shadow(0 0 15px rgba(201,169,98,0.3))' }}>
-              <circle cx="50" cy="50" r="38" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="6" />
-              <circle className="ring-pulse" cx="50" cy="50" r="38" fill="none" stroke="url(#mobileMarginGrad)" strokeWidth="6" strokeLinecap="round"
-                strokeDasharray={`${totalRevenue > 0 ? Math.max(0, marginPct) * 2.39 : 0} 239`} />
-              <defs><linearGradient id="mobileMarginGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor={c.green} /><stop offset="100%" stopColor={c.gold} /></linearGradient></defs>
-            </svg>
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontSize: 8, fontWeight: 600, letterSpacing: '1px', color: c.textDim, textTransform: 'uppercase' }}>Margin</span>
-              <span style={{ fontSize: 22, fontWeight: 800, color: c.gold, textShadow: '0 0 20px rgba(201,169,98,0.4)' }}>{marginPct}%</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* STATS ROW - 2x2 Grid with shimmer */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-        {[
-          { label: 'Gross Revenue', value: totalRevenue, icon: '📈', color: c.gold, glow: 'rgba(201,169,98,0.3)' },
-          { label: 'Cost of Goods', value: totalCOGS, icon: '💎', color: c.green, glow: 'rgba(52,211,153,0.3)' },
-          { label: 'Platform Fees', value: totalFees, icon: '⚡', color: c.red, glow: 'rgba(248,113,113,0.3)' },
-          { label: 'Inventory Value', value: inventoryVal, icon: '🏦', color: '#8B5CF6', glow: 'rgba(139,92,246,0.3)' },
-        ].map((stat, i) => (
-          <div key={i} className="stat-card-hover" style={{
-            background: c.card,
-            border: `1px solid ${c.border}`,
-            borderRadius: 16,
-            padding: '20px 16px',
-            position: 'relative',
-            overflow: 'hidden'
-          }}>
-            {/* Shimmer line */}
-            <div className="shimmer-line" style={{ 
-              position: 'absolute', top: 0, left: 0, right: 0, height: 2, 
-              background: `linear-gradient(90deg, transparent, ${stat.color}, transparent)` 
-            }} />
-            
-            {/* Pulse dot */}
-            <div className="pulse-glow" style={{ 
-              position: 'absolute', top: 14, right: 14, width: 6, height: 6, 
-              background: stat.color, borderRadius: '50%', 
-              boxShadow: `0 0 10px ${stat.color}`,
-              animationDelay: `${i * 0.5}s`
-            }} />
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-              <div style={{ 
-                width: 36, height: 36, borderRadius: 10, 
-                background: 'rgba(255,255,255,0.03)', 
-                border: `1px solid ${c.border}`, 
-                display: 'flex', alignItems: 'center', justifyContent: 'center', 
-                fontSize: 16 
-              }}>{stat.icon}</div>
-            </div>
-            <p style={{ margin: '0 0 6px', fontSize: 10, fontWeight: 500, color: c.textDim, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{stat.label}</p>
-            <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: stat.color, textShadow: `0 0 15px ${stat.glow}` }}>{fmt(stat.value)}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* MONTHLY BREAKDOWN - Compact Table */}
-      <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, overflow: 'hidden', marginBottom: 16 }}>
-        <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Monthly Breakdown</h3>
-          <div className="pulse-glow" style={{ width: 6, height: 6, background: c.green, borderRadius: '50%', boxShadow: `0 0 10px ${c.green}` }} />
-        </div>
-        <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-          {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, i) => {
-            const data = monthlyData[i];
-            if (data.count === 0) return null;
-            return (
-              <div key={month} style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center',
-                padding: '12px 20px', 
-                borderBottom: `1px solid ${c.border}` 
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div className="pulse-glow" style={{ width: 5, height: 5, background: c.green, borderRadius: '50%' }} />
-                  <span style={{ fontWeight: 600, fontSize: 13 }}>{month}</span>
-                </div>
-                <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, color: c.textMuted }}>{data.count}</span>
-                  <span style={{ fontSize: 12, color: c.textMuted }}>{fmt(data.revenue)}</span>
-                  <span style={{ 
-                    fontSize: 13, fontWeight: 700, color: c.green,
-                    background: 'rgba(16,185,129,0.1)', 
-                    padding: '4px 10px', 
-                    borderRadius: 6 
-                  }}>+{fmt(data.profit)}</span>
-                </div>
-              </div>
-            );
-          })}
-          {/* Total row */}
-          <div style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            padding: '14px 20px', 
-            background: 'rgba(16,185,129,0.08)' 
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div className="pulse-glow" style={{ width: 6, height: 6, background: c.green, borderRadius: '50%', boxShadow: `0 0 10px ${c.green}` }} />
-              <span style={{ fontWeight: 800, fontSize: 13 }}>TOTAL</span>
-            </div>
-            <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
-              <span style={{ fontSize: 12, fontWeight: 700 }}>{filteredSales.length}</span>
-              <span style={{ fontSize: 12, fontWeight: 700 }}>{fmt(totalRevenue)}</span>
-              <span style={{ fontSize: 14, fontWeight: 800, color: c.green, textShadow: '0 0 15px rgba(16,185,129,0.4)' }}>+{fmt(netProfit)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* PERFORMANCE CHART - Bars */}
-      <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, overflow: 'hidden' }}>
-        <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Performance Chart</h3>
-            <div className="pulse-glow" style={{ width: 6, height: 6, background: c.green, borderRadius: '50%' }} />
-          </div>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 100, padding: '5px 12px' }}>
-            <div className="pulse-glow" style={{ width: 5, height: 5, background: c.green, borderRadius: '50%' }} />
-            <span style={{ fontSize: 9, fontWeight: 700, color: c.green, letterSpacing: '0.5px' }}>REALTIME</span>
-          </div>
-        </div>
-        <div style={{ padding: '20px 16px' }}>
-          {/* Legend */}
-          <div style={{ display: 'flex', gap: 20, marginBottom: 20 }}>
-            {[{ label: 'Revenue', color: 'rgba(255,255,255,0.5)' }, { label: 'Profit', color: '#10b981' }].map((item, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ width: 10, height: 10, borderRadius: 2, background: item.color }} />
-                <span style={{ fontSize: 11, color: c.textMuted }}>{item.label}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Bars */}
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 100, paddingBottom: 24, position: 'relative' }}>
-            {['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'].map((month, i) => {
-              const data = monthlyData[i];
-              const revHeight = data.revenue > 0 ? Math.max((data.revenue / maxRevenue) * 70, 3) : 0;
-              const profitHeight = data.profit > 0 ? Math.max((data.profit / maxRevenue) * 70, 3) : 0;
-              const hasData = data.revenue > 0;
-              
-              return (
-                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 2, height: 70, width: '100%' }}>
-                    <div style={{ 
-                      width: hasData ? 8 : 4, 
-                      height: hasData ? revHeight : 2,
-                      background: hasData 
-                        ? 'linear-gradient(180deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0.15) 100%)' 
-                        : 'rgba(255,255,255,0.05)',
-                      borderRadius: hasData ? 3 : 1
-                    }} />
-                    <div style={{ 
-                      width: hasData ? 8 : 4, 
-                      height: hasData ? profitHeight : 2,
-                      background: hasData 
-                        ? 'linear-gradient(180deg, #10b981 0%, rgba(16,185,129,0.4) 100%)' 
-                        : 'rgba(16,185,129,0.08)',
-                      borderRadius: hasData ? 3 : 1,
-                      boxShadow: hasData ? '0 0 8px rgba(16,185,129,0.3)' : 'none'
-                    }} />
-                  </div>
-                  <span style={{ 
-                    fontSize: 9, 
-                    fontWeight: 600, 
-                    color: hasData ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.2)',
-                    marginTop: 6
-                  }}>{month}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // SalesPage as separate component for proper re-rendering
-function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPage, selectedSales, setSelectedSales, sales, setSales, settings, setModal, ITEMS_PER_PAGE, cardStyle, btnPrimary, c, fmt, exportCSV, isMobile }) {
+function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPage, selectedSales, setSelectedSales, sales, setSales, settings, setModal, ITEMS_PER_PAGE, cardStyle, btnPrimary, c, fmt, exportCSV }) {
   // Filter
   const searchTerm = (formData.salesSearch || '').toLowerCase().trim();
   const platformFilter = formData.salesFilter || 'all';
@@ -696,65 +183,7 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
       </div>
     </div>}
 
-    {isMobile ? (
-      /* MOBILE: Card Layout for Sales */
-      <div>
-        <div style={{ 
-          padding: '12px 16px', 
-          background: c.card, 
-          border: `1px solid ${c.border}`, 
-          borderRadius: '12px 12px 0 0',
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          marginBottom: 1
-        }}>
-          <span style={{ fontSize: 12, color: c.textMuted }}>
-            {total > 0 ? `${start + 1}-${end} of ${total}` : 'No sales'}
-          </span>
-          <button onClick={() => exportCSV(sorted, 'sales.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
-        </div>
-        
-        {items.length > 0 ? items.map(s => (
-          <MobileSaleCard
-            key={s.id}
-            sale={s}
-            selected={selectedSales.has(s.id)}
-            onSelect={(checked) => {
-              const n = new Set(selectedSales);
-              checked ? n.add(s.id) : n.delete(s.id);
-              setSelectedSales(n);
-            }}
-            onEdit={() => { 
-              setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, saleImage: s.image, sellerLevel: s.sellerLevel || settings.stockxLevel }); 
-              setModal('editSale'); 
-            }}
-            onDelete={() => { 
-              setSales(sales.filter(x => x.id !== s.id)); 
-              setSelectedSales(prev => { const n = new Set(prev); n.delete(s.id); return n; }); 
-            }}
-            fmt={fmt}
-            c={c}
-          />
-        )) : (
-          <div style={{ padding: 50, textAlign: 'center', background: c.card, borderRadius: 12 }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>💵</div>
-            <p style={{ color: c.textMuted }}>No sales</p>
-          </div>
-        )}
-        
-        {/* Mobile Pagination */}
-        {pages > 1 && (
-          <div style={{ padding: '16px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-            <button onClick={() => setSalesPage(Math.max(1, page - 1))} disabled={page === 1} style={{ padding: '10px 16px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 8, color: page === 1 ? c.textMuted : '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer', fontSize: 13 }}>← Prev</button>
-            <span style={{ padding: '10px 16px', fontSize: 13, color: c.textMuted }}>{page} / {pages}</span>
-            <button onClick={() => setSalesPage(Math.min(pages, page + 1))} disabled={page === pages} style={{ padding: '10px 16px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 8, color: page === pages ? c.textMuted : '#fff', cursor: page === pages ? 'not-allowed' : 'pointer', fontSize: 13 }}>Next →</button>
-          </div>
-        )}
-      </div>
-    ) : (
-      /* DESKTOP: Table Layout for Sales */
-      <div style={cardStyle}>
+    <div style={cardStyle}>
       <div style={{ padding: '14px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: 13, color: c.textMuted }}>{total > 0 ? `Showing ${start + 1}-${end} of ${total}` : 'No sales'}</span>
         <button onClick={() => exportCSV(sorted, 'sales.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
@@ -811,7 +240,6 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
         <button onClick={() => setSalesPage(pages)} disabled={page === pages} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: page === pages ? c.textMuted : '#fff', cursor: page === pages ? 'not-allowed' : 'pointer', fontSize: 12 }}>»</button>
       </div>}
     </div>
-    )}
   </div>;
 }
 
@@ -819,14 +247,6 @@ function App() {
   const [page, setPage] = useState('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [modal, setModal] = useState(null);
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 850);
-  
-  // Track window resize for mobile detection
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth <= 850);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
   const [year, setYear] = useState('2025');
   const [stockxImport, setStockxImport] = useState({ show: false, data: [], year: 'all', month: 'all', headers: [] });
   const [ebayImport, setEbayImport] = useState({ show: false, data: [], year: 'all', month: 'all', headers: [] });
@@ -1192,249 +612,186 @@ function App() {
   const addStorage = () => { if (!formData.amount) return; setStorageFees([...storageFees, { id: Date.now(), month: formData.month || '2025-01', amount: parseFloat(formData.amount), notes: formData.notes || '' }]); setModal(null); setFormData({}); };
   const addMileage = () => { if (!formData.miles) return; setMileage([...mileage, { id: Date.now(), date: formData.date || new Date().toISOString().split('T')[0], miles: parseFloat(formData.miles), purpose: formData.purpose || 'Pickup/Dropoff', from: formData.from || '', to: formData.to || '' }]); setModal(null); setFormData({}); };
 
-  // Nike Receipt Scanner - Maximum power Tesseract with preprocessing
+  // Nike Receipt Scanner
   const parseNikeReceipt = async (imageFile) => {
-    setNikeReceipt(prev => ({ ...prev, scanning: true, items: [], image: null, error: null }));
+    setNikeReceipt(prev => ({ ...prev, scanning: true, items: [], image: null }));
     
     try {
-      // Convert image to base64
+      // Convert image to base64 for storage
       const reader = new FileReader();
       const imageBase64 = await new Promise((resolve) => {
         reader.onload = (e) => resolve(e.target.result);
         reader.readAsDataURL(imageFile);
       });
       
-      // Load image to check dimensions and preprocess
-      const img = new Image();
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = imageBase64;
+      // Run OCR
+      const { data: { text } } = await Tesseract.recognize(imageFile, 'eng', {
+        logger: m => console.log(m)
       });
       
-      console.log(`Original image: ${img.width} x ${img.height}, ${imageFile.size} bytes`);
+      console.log('OCR Result:', text);
       
-      if (img.width < 200) {
-        setNikeReceipt({ 
-          scanning: false, items: [], image: null, date: '', orderNum: '', 
-          error: `Image too narrow (${img.width}px). Save to Photos first, then upload.`
-        });
-        return;
-      }
+      // Parse the text
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l);
       
-      // PREPROCESSING: Scale up small images, increase contrast for better OCR
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
+      // Extract date and order number
+      let orderDate = '';
+      let orderNum = '';
       
-      // Scale factor - make sure image is at least 1000px wide for good OCR
-      const scale = img.width < 1000 ? Math.min(3, 1000 / img.width) : 1;
-      canvas.width = img.width * scale;
-      canvas.height = img.height * scale;
-      
-      // Draw scaled image
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      
-      // Increase contrast for better text recognition
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imageData.data;
-      const contrast = 1.3; // Boost contrast
-      const factor = (259 * (contrast * 100 + 255)) / (255 * (259 - contrast * 100));
-      
-      for (let i = 0; i < data.length; i += 4) {
-        data[i] = Math.min(255, Math.max(0, factor * (data[i] - 128) + 128));     // R
-        data[i+1] = Math.min(255, Math.max(0, factor * (data[i+1] - 128) + 128)); // G
-        data[i+2] = Math.min(255, Math.max(0, factor * (data[i+2] - 128) + 128)); // B
-      }
-      ctx.putImageData(imageData, 0, 0);
-      
-      console.log(`Preprocessed image: ${canvas.width} x ${canvas.height}`);
-      
-      // For very tall images, process in chunks with more overlap
-      let fullText = '';
-      const isLargeImage = canvas.height > 2500;
-      
-      if (isLargeImage) {
-        const chunkHeight = 1500;
-        const overlap = 300; // More overlap to catch items at boundaries
-        const chunks = Math.ceil((canvas.height - overlap) / (chunkHeight - overlap));
-        
-        console.log(`Processing ${chunks} chunks...`);
-        
-        for (let i = 0; i < chunks; i++) {
-          const startY = Math.max(0, i * (chunkHeight - overlap));
-          const actualHeight = Math.min(chunkHeight, canvas.height - startY);
-          
-          const chunkCanvas = document.createElement('canvas');
-          chunkCanvas.width = canvas.width;
-          chunkCanvas.height = actualHeight;
-          const chunkCtx = chunkCanvas.getContext('2d');
-          chunkCtx.drawImage(canvas, 0, startY, canvas.width, actualHeight, 0, 0, canvas.width, actualHeight);
-          
-          const chunkBlob = await new Promise(resolve => chunkCanvas.toBlob(resolve, 'image/png'));
-          
-          console.log(`OCR chunk ${i + 1}/${chunks}...`);
-          const { data: { text } } = await Tesseract.recognize(chunkBlob, 'eng', {
-            tessedit_pageseg_mode: '6', // Assume uniform block of text
-            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-$., ',
-          });
-          
-          fullText += '\n' + text;
+      for (const line of lines) {
+        // Date patterns: "Jan 08, 2026", "Dec 22, 2025", etc.
+        const dateMatch = line.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}/i);
+        if (dateMatch) {
+          const parsed = new Date(dateMatch[0]);
+          if (!isNaN(parsed)) {
+            orderDate = parsed.toISOString().split('T')[0];
+          }
         }
-      } else {
-        // Single pass for smaller images
-        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-        const { data: { text } } = await Tesseract.recognize(blob, 'eng', {
-          tessedit_pageseg_mode: '6',
-        });
-        fullText = text;
+        
+        // Order number: T1C0000000A32EPF, T110000009YDB7Y
+        const orderMatch = line.match(/T[A-Z0-9]{10,}/i);
+        if (orderMatch) {
+          orderNum = orderMatch[0];
+        }
       }
       
-      console.log('OCR text length:', fullText.length);
-      console.log('OCR preview:', fullText.substring(0, 500));
-      
-      // PARSING: Multiple strategies to find all items
+      // Extract items - look for patterns with style codes
       const items = [];
-      const foundSkus = new Set();
+      let currentItem = null;
       
-      // Strategy 1: Find all SKU patterns (Nike style codes)
-      const skuRegex = /\b([A-Z]{2}[A-Z0-9]?\d{3,4}-\d{3})\b/gi;
-      const skuMatches = [...fullText.matchAll(skuRegex)];
-      console.log('SKU matches found:', skuMatches.length);
-      
-      for (const match of skuMatches) {
-        const sku = match[1].toUpperCase();
-        if (foundSkus.has(sku)) continue;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
         
-        const skuIndex = match.index;
-        const contextStart = Math.max(0, skuIndex - 250);
-        const contextEnd = Math.min(fullText.length, skuIndex + 200);
-        const context = fullText.substring(contextStart, contextEnd);
+        // Style code pattern: XX0000-000 or XXXX00-000
+        const styleMatch = line.match(/Style\s+([A-Z]{2,4}\d{3,5}-\d{3})/i) || line.match(/([A-Z]{2,4}\d{3,5}-\d{3})/);
         
-        // Find price - get lowest price (sale price)
-        const prices = [...context.matchAll(/\$\s?(\d+(?:[.,]\d{2})?)/g)]
-          .map(m => parseFloat(m[1].replace(',', '.')))
-          .filter(p => p > 15 && p < 400);
-        const price = prices.length > 0 ? Math.min(...prices) : 0;
+        // Price pattern: $XX.XX
+        const priceMatch = line.match(/\$(\d+\.\d{2})/);
         
-        // Find size
-        const sizeMatch = context.match(/Size\s*:?\s*(\d+\.?\d*)/i) ||
-                         context.match(/\b(\d{1,2}\.5?)\s*(?:US|M|W)\b/i);
-        const size = sizeMatch ? sizeMatch[1] : '';
+        // Size pattern: Size X, Size XX, Size X.X
+        const sizeMatch = line.match(/Size\s+(\d+\.?\d*|[XSMLX]{1,3})/i);
         
-        // Find name
-        let name = '';
+        // Product name patterns - Nike products
         const namePatterns = [
-          /Nike\s+Air\s+(?:Zoom\s+)?(?:Pegasus|Vomero|Structure|Max|Force|Jordan)[\w\s\-]*/i,
-          /Nike\s+(?:Dunk|Blazer|Cortez|Revolution|Downshifter|Free|Metcon)[\w\s\-]*/i,
-          /Air\s+Jordan\s+\d*[\w\s\-]*/i,
-          /Nike\s+[\w\s\-]{5,35}/i
+          /Nike\s+[\w\s\-"']+/i,
+          /Air\s+Jordan\s+[\w\s\-"']+/i,
+          /Jordan\s+\d+[\w\s\-"']+/i,
+          /Air\s+Max\s+[\w\s\-"']+/i,
+          /Air\s+Force\s+[\w\s\-"']+/i,
+          /Dunk\s+[\w\s\-"']+/i
         ];
-        for (const p of namePatterns) {
-          const m = context.match(p);
-          if (m) { name = m[0].trim().substring(0, 50); break; }
-        }
-        if (!name) name = 'Nike ' + sku;
         
-        if (price > 0) {
-          items.push({ name, sku, size, price });
-          foundSkus.add(sku);
-          console.log(`Found: ${name} | ${sku} | ${size} | $${price}`);
+        let nameMatch = null;
+        for (const pattern of namePatterns) {
+          const match = line.match(pattern);
+          if (match) {
+            nameMatch = match[0].trim();
+            break;
+          }
         }
-      }
-      
-      // Strategy 2: Split by "Shop Similar" and parse each block
-      if (items.length < 3) {
-        console.log('Trying Shop Similar split...');
-        const blocks = fullText.split(/Shop\s*Simi?l?a?r?/i);
         
-        for (const block of blocks) {
-          if (block.length < 30) continue;
+        // Start new item when we find a name
+        if (nameMatch && !currentItem) {
+          currentItem = { name: nameMatch, sku: '', size: '', price: 0 };
+        }
+        
+        // Add details to current item
+        if (currentItem) {
+          if (styleMatch && !currentItem.sku) {
+            currentItem.sku = styleMatch[1] || styleMatch[0];
+          }
+          if (sizeMatch && !currentItem.size) {
+            currentItem.size = sizeMatch[1];
+          }
+          if (priceMatch && !currentItem.price) {
+            // Take the first price as sale price (discounted)
+            currentItem.price = parseFloat(priceMatch[1]);
+          }
           
-          const skuMatch = block.match(/\b([A-Z]{2}[A-Z0-9]?\d{3,4}-\d{3})\b/i);
-          if (!skuMatch) continue;
-          
-          const sku = skuMatch[1].toUpperCase();
-          if (foundSkus.has(sku)) continue;
-          
-          const prices = [...block.matchAll(/\$\s?(\d+(?:[.,]\d{2})?)/g)]
-            .map(m => parseFloat(m[1].replace(',', '.')))
-            .filter(p => p > 15 && p < 400);
-          const price = prices.length > 0 ? Math.min(...prices) : 0;
-          
-          const sizeMatch = block.match(/Size\s*:?\s*(\d+\.?\d*)/i);
-          const size = sizeMatch ? sizeMatch[1] : '';
-          
-          let name = 'Nike ' + sku;
-          const nameMatch = block.match(/Nike\s+[\w\s\-]{5,40}/i);
-          if (nameMatch) name = nameMatch[0].trim();
-          
-          if (price > 0) {
-            items.push({ name, sku, size, price });
-            foundSkus.add(sku);
-            console.log(`Block found: ${name} | ${sku} | ${size} | $${price}`);
+          // If we have all required fields, save and reset
+          if (currentItem.sku && currentItem.size && currentItem.price > 0) {
+            items.push({ ...currentItem });
+            currentItem = null;
           }
         }
       }
       
-      // Strategy 3: Find prices and work backwards to find associated SKUs
-      if (items.length < 3) {
-        console.log('Trying price-first strategy...');
-        const priceMatches = [...fullText.matchAll(/\$\s?(\d+(?:\.\d{2})?)/g)];
+      // Handle case where last item wasn't closed
+      if (currentItem && currentItem.sku && currentItem.price > 0) {
+        items.push(currentItem);
+      }
+      
+      // If no items found with the above parsing, try alternative method
+      if (items.length === 0) {
+        // Look for style codes and associate nearby prices/sizes
+        const styleMatches = text.match(/([A-Z]{2,4}\d{3,5}-\d{3})/g) || [];
+        const priceMatches = text.match(/\$(\d+\.\d{2})/g) || [];
+        const sizeMatches = text.match(/Size\s+(\d+\.?\d*|[XSMLX]{1,3})/gi) || [];
         
-        for (const priceMatch of priceMatches) {
-          const price = parseFloat(priceMatch[1]);
-          if (price < 20 || price > 350) continue;
+        // Get unique style codes
+        const uniqueStyles = [...new Set(styleMatches)];
+        
+        // Try to match with prices
+        for (let i = 0; i < uniqueStyles.length; i++) {
+          const sku = uniqueStyles[i];
+          // Find name near SKU
+          const skuIndex = text.indexOf(sku);
+          const nearbyText = text.substring(Math.max(0, skuIndex - 200), skuIndex);
           
-          const priceIndex = priceMatch.index;
-          const context = fullText.substring(Math.max(0, priceIndex - 300), priceIndex + 50);
+          let name = 'Nike Product';
+          for (const pattern of [/Nike\s+[\w\s\-"']+/i, /Air\s+Jordan\s+[\w\s\-"']+/i, /Jordan\s+\d+[\w\s\-"']+/i, /Air\s+Max\s+[\w\s\-"']+/i]) {
+            const match = nearbyText.match(pattern);
+            if (match) {
+              name = match[0].trim();
+              break;
+            }
+          }
           
-          const skuMatch = context.match(/\b([A-Z]{2}[A-Z0-9]?\d{3,4}-\d{3})\b/i);
-          if (!skuMatch) continue;
+          // Find size near SKU
+          const sizeNearby = nearbyText.match(/Size\s+(\d+\.?\d*|[XSMLX]{1,3})/i);
+          const size = sizeNearby ? sizeNearby[1] : '';
           
-          const sku = skuMatch[1].toUpperCase();
-          if (foundSkus.has(sku)) continue;
+          // Find price near SKU (get the lower one if two exist - sale price)
+          const pricesNearby = nearbyText.match(/\$(\d+\.\d{2})/g) || [];
+          const prices = pricesNearby.map(p => parseFloat(p.replace('$', '')));
+          const price = prices.length > 0 ? Math.min(...prices) : 0;
           
-          const sizeMatch = context.match(/Size\s*:?\s*(\d+\.?\d*)/i);
-          const size = sizeMatch ? sizeMatch[1] : '';
-          
-          let name = 'Nike ' + sku;
-          const nameMatch = context.match(/Nike\s+[\w\s\-]{5,35}/i);
-          if (nameMatch) name = nameMatch[0].trim();
-          
-          items.push({ name, sku, size, price });
-          foundSkus.add(sku);
-          console.log(`Price-first found: ${name} | ${sku} | ${size} | $${price}`);
+          if (sku && price > 0) {
+            items.push({ name, sku, size: size || '', price });
+          }
         }
       }
       
-      // Extract order date and number
-      let orderDate = '';
-      let orderNum = '';
-      const dateMatch = fullText.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}/i);
-      if (dateMatch) {
-        const d = new Date(dateMatch[0]);
-        if (!isNaN(d)) orderDate = d.toISOString().split('T')[0];
-      }
-      const orderMatch = fullText.match(/\b(T[A-Z0-9]{10,}|C[A-Z0-9]{10,})\b/i);
-      if (orderMatch) orderNum = orderMatch[1];
+      // Calculate tax split if applicable
+      const subtotalMatch = text.match(/Subtotal[:\s]*\$?(\d+\.\d{2})/i);
+      const totalMatch = text.match(/(?:Order\s+)?Total[:\s]*\$?(\d+\.\d{2})/i);
       
-      console.log(`Final: ${items.length} items found`);
+      if (subtotalMatch && totalMatch) {
+        const subtotal = parseFloat(subtotalMatch[1]);
+        const total = parseFloat(totalMatch[1]);
+        const tax = total - subtotal;
+        
+        if (tax > 0 && subtotal > 0) {
+          // Distribute tax proportionally
+          const itemsTotal = items.reduce((sum, item) => sum + item.price, 0);
+          items.forEach(item => {
+            const taxShare = (item.price / itemsTotal) * tax;
+            item.price = Math.round((item.price + taxShare) * 100) / 100;
+          });
+        }
+      }
       
       setNikeReceipt({ 
         scanning: false, 
         items, 
         image: imageBase64, 
         date: orderDate, 
-        orderNum,
-        error: items.length === 0 ? 'No items found. Try a clearer or higher resolution screenshot.' : null
+        orderNum 
       });
       
     } catch (error) {
       console.error('Receipt scan error:', error);
-      setNikeReceipt({ 
-        scanning: false, items: [], image: null, date: '', orderNum: '', 
-        error: 'Scan failed: ' + error.message 
-      });
+      setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '', error: 'Failed to scan receipt. Try a clearer image.' });
     }
   };
   
@@ -2180,27 +1537,6 @@ function App() {
 
         {/* DASHBOARD */}
         {page === 'dashboard' && (() => {
-          // MOBILE: Render clean mobile dashboard
-          if (isMobile) {
-            return (
-              <MobileDashboard
-                netProfit={netProfit}
-                totalRevenue={totalRevenue}
-                totalCOGS={totalCOGS}
-                totalFees={totalFees}
-                inventoryVal={inventoryVal}
-                filteredSales={filteredSales}
-                pendingCosts={pendingCosts}
-                goals={goals}
-                year={year}
-                c={c}
-                fmt={fmt}
-                setPage={setPage}
-              />
-            );
-          }
-
-          // DESKTOP: Original dashboard with all the bells and whistles
           // Live Pulse Component
           const LivePulse = ({ color = '#10b981', size = 8, speed = 2, label = null, style = {} }) => (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, ...style }}>
@@ -2820,70 +2156,7 @@ function App() {
           )}
 
           {/* INVENTORY TABLE */}
-          {isMobile ? (
-            /* MOBILE: Card Layout */
-            <div>
-              <div style={{ 
-                padding: '12px 16px', 
-                background: c.card, 
-                border: `1px solid ${c.border}`, 
-                borderRadius: '12px 12px 0 0',
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center',
-                marginBottom: 1
-              }}>
-                <span style={{ fontSize: 12, color: c.textMuted }}>
-                  {startIdx + 1}-{Math.min(startIdx + ITEMS_PER_PAGE, sortedInventory.length)} of {sortedInventory.length}
-                </span>
-                <button onClick={() => exportCSV(sortedInventory, 'inventory.csv', ['date','name','sku','size','cost','sold'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
-              </div>
-              
-              {paginatedInventory.length ? paginatedInventory.map(p => (
-                <MobileInventoryCard
-                  key={p.id}
-                  item={p}
-                  selected={selectedInventory.has(p.id)}
-                  onSelect={(checked) => {
-                    setSelectedInventory(prev => {
-                      const newSet = new Set(prev);
-                      if (checked) newSet.add(p.id);
-                      else newSet.delete(p.id);
-                      return newSet;
-                    });
-                  }}
-                  onEdit={() => { 
-                    setFormData({ editId: p.id, name: p.name, sku: p.sku, size: p.size, cost: p.cost, date: p.date }); 
-                    setModal('editInventory'); 
-                  }}
-                  onDelete={() => { 
-                    setPurchases(purchases.filter(x => x.id !== p.id)); 
-                    setSelectedInventory(prev => { const n = new Set(prev); n.delete(p.id); return n; }); 
-                  }}
-                  onToggleSold={() => setPurchases(purchases.map(x => x.id === p.id ? { ...x, sold: !x.sold } : x))}
-                  fmt={fmt}
-                  c={c}
-                />
-              )) : (
-                <div style={{ padding: 50, textAlign: 'center', background: c.card, borderRadius: 12 }}>
-                  <div style={{ fontSize: 48, marginBottom: 12 }}>📦</div>
-                  <p style={{ color: c.textMuted }}>No inventory matches your filters</p>
-                  <button onClick={() => { setFormData(prev => ({ ...prev, bulkRows: [{ size: '', cost: '' }] })); setModal('bulkAdd'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Add Items</button>
-                </div>
-              )}
-              
-              {/* Mobile Pagination */}
-              {totalPages > 1 && (
-                <div style={{ padding: '16px 0', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-                  <button onClick={() => setInventoryPage(Math.max(1, inventoryPage - 1))} disabled={inventoryPage === 1} style={{ padding: '10px 16px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 8, color: inventoryPage === 1 ? c.textMuted : '#fff', cursor: inventoryPage === 1 ? 'not-allowed' : 'pointer', fontSize: 13 }}>← Prev</button>
-                  <span style={{ padding: '10px 16px', fontSize: 13, color: c.textMuted }}>{inventoryPage} / {totalPages}</span>
-                  <button onClick={() => setInventoryPage(Math.min(totalPages, inventoryPage + 1))} disabled={inventoryPage === totalPages} style={{ padding: '10px 16px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 8, color: inventoryPage === totalPages ? c.textMuted : '#fff', cursor: inventoryPage === totalPages ? 'not-allowed' : 'pointer', fontSize: 13 }}>Next →</button>
-                </div>
-              )}
-            </div>
-          ) : (
-            /* DESKTOP: Table Layout */
-            <div style={cardStyle}>
+          <div style={cardStyle}>
             <div style={{ padding: '14px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 13, color: c.textMuted }}>Showing {startIdx + 1}-{Math.min(startIdx + ITEMS_PER_PAGE, sortedInventory.length)} of {sortedInventory.length} items</span>
               <button onClick={() => exportCSV(sortedInventory, 'inventory.csv', ['date','name','sku','size','cost','sold'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
@@ -2963,7 +2236,6 @@ function App() {
               </div>
             )}
           </div>
-          )}
         </div>;
         })()}
 
@@ -2987,7 +2259,6 @@ function App() {
           c={c}
           fmt={fmt}
           exportCSV={exportCSV}
-          isMobile={isMobile}
         />}
 
         {/* EXPENSES */}
