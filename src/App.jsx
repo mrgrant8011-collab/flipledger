@@ -923,22 +923,128 @@ function App() {
 
   // Nike Receipt Scanner
   const parseNikeReceipt = async (imageFile) => {
-    setNikeReceipt(prev => ({ ...prev, scanning: true, items: [], image: null }));
+    setNikeReceipt(prev => ({ ...prev, scanning: true, items: [], image: null, error: null }));
     
     try {
-      // Convert image to base64 for storage
-      const reader = new FileReader();
-      const imageBase64 = await new Promise((resolve) => {
+      console.log('=== NIKE RECEIPT SCANNER ===');
+      console.log('Input:', imageFile.name, '|', imageFile.type, '|', (imageFile.size / 1024).toFixed(1), 'KB');
+      
+      // Step 1: Load image and get original dimensions
+      const imageBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
         reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = () => reject(new Error('Failed to read file'));
         reader.readAsDataURL(imageFile);
       });
       
-      // Run OCR
-      const { data: { text } } = await Tesseract.recognize(imageFile, 'eng', {
-        logger: m => console.log(m)
+      // Step 2: Process image for optimal OCR
+      const processedImage = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          
+          // Calculate optimal size for OCR
+          // Tesseract works best with text ~30-40px tall
+          // Nike receipt text is roughly 20px on a 400px wide screenshot
+          // So we want to scale to at least 1500px wide for good results
+          
+          let targetWidth = img.width;
+          let targetHeight = img.height;
+          
+          // Scale up small images aggressively
+          if (img.width < 800) {
+            const scale = 1800 / img.width;
+            targetWidth = Math.round(img.width * scale);
+            targetHeight = Math.round(img.height * scale);
+          } else if (img.width < 1200) {
+            const scale = 1600 / img.width;
+            targetWidth = Math.round(img.width * scale);
+            targetHeight = Math.round(img.height * scale);
+          } else if (img.width < 1600) {
+            const scale = 1.5;
+            targetWidth = Math.round(img.width * scale);
+            targetHeight = Math.round(img.height * scale);
+          }
+          
+          // Cap max dimensions to avoid memory issues
+          const maxDim = 4000;
+          if (targetWidth > maxDim) {
+            const ratio = maxDim / targetWidth;
+            targetWidth = maxDim;
+            targetHeight = Math.round(targetHeight * ratio);
+          }
+          if (targetHeight > maxDim * 3) {
+            const ratio = (maxDim * 3) / targetHeight;
+            targetHeight = maxDim * 3;
+            targetWidth = Math.round(targetWidth * ratio);
+          }
+          
+          canvas.width = targetWidth;
+          canvas.height = targetHeight;
+          
+          // White background
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, targetWidth, targetHeight);
+          
+          // Use better image smoothing for upscaling
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          
+          // Draw scaled image
+          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+          
+          // Apply sharpening for compressed images
+          // This helps with JPEG artifacts from phone transfers
+          const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+          const data = imageData.data;
+          
+          // Increase contrast - helps with gray text on white
+          const contrast = 1.3; // 30% more contrast
+          const factor = (259 * (contrast * 255 + 255)) / (255 * (259 - contrast * 255));
+          
+          for (let i = 0; i < data.length; i += 4) {
+            data[i] = Math.min(255, Math.max(0, factor * (data[i] - 128) + 128));     // R
+            data[i+1] = Math.min(255, Math.max(0, factor * (data[i+1] - 128) + 128)); // G
+            data[i+2] = Math.min(255, Math.max(0, factor * (data[i+2] - 128) + 128)); // B
+          }
+          
+          ctx.putImageData(imageData, 0, 0);
+          
+          console.log('Processed:', img.width, 'x', img.height, '→', targetWidth, 'x', targetHeight);
+          
+          // Convert to blob for Tesseract
+          canvas.toBlob(blob => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error('Failed to process image'));
+            }
+          }, 'image/png', 1.0);
+        };
+        img.onerror = () => reject(new Error('Failed to load image - may be corrupted'));
+        img.src = imageBase64;
       });
       
-      console.log('OCR Result:', text);
+      // Step 3: Run Tesseract OCR with optimized settings
+      console.log('Running OCR...');
+      const { data: { text } } = await Tesseract.recognize(processedImage, 'eng', {
+        logger: m => {
+          if (m.status === 'recognizing text' && m.progress) {
+            const pct = Math.round(m.progress * 100);
+            if (pct % 20 === 0) console.log('OCR Progress:', pct + '%');
+          }
+        }
+      });
+      
+      console.log('OCR Complete. Text length:', text.length);
+      console.log('--- RAW TEXT ---');
+      console.log(text);
+      console.log('--- END TEXT ---');
+      
+      if (!text || text.trim().length < 30) {
+        throw new Error('Could not read text from image. The image may be too blurry or small.');
+      }
       
       // Parse the text
       const lines = text.split('\n').map(l => l.trim()).filter(l => l);
@@ -1097,11 +1203,28 @@ function App() {
         }
       }
       
-      setNikeReceipt({ scanning: false, items, image: imageBase64, date: orderDate, orderNum });
+      setNikeReceipt({ 
+        scanning: false, 
+        items, 
+        image: imageBase64, 
+        date: orderDate, 
+        orderNum,
+        error: items.length === 0 ? 'No items found. Check browser console (F12) for debug info.' : null
+      });
+      
+      console.log('=== SCAN COMPLETE ===');
+      console.log('Found', items.length, 'items');
       
     } catch (error) {
-      console.error('Receipt scan error:', error);
-      setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '', error: 'Failed to scan receipt. Try a clearer image.' });
+      console.error('=== SCAN ERROR ===', error);
+      setNikeReceipt({ 
+        scanning: false, 
+        items: [], 
+        image: null, 
+        date: '', 
+        orderNum: '', 
+        error: error.message || 'Failed to scan receipt. Try a clearer image.' 
+      });
     }
   };
   
