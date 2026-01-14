@@ -2206,7 +2206,7 @@ function App() {
     if (isExcel) {
       // Handle Excel file
       const reader = new FileReader();
-      reader.onload = (event) => {
+      reader.onload = async (event) => {
         try {
           const data = new Uint8Array(event.target.result);
           const workbook = XLSX.read(data, { type: 'array' });
@@ -2288,7 +2288,7 @@ function App() {
     } else {
       // Handle CSV file
       const reader = new FileReader();
-      reader.onload = (event) => {
+      reader.onload = async (event) => {
         const text = event.target.result;
         const lines = text.split('\n');
         
@@ -2598,7 +2598,7 @@ function App() {
   };
 
   // Import StockX sales
-  const importStockxSales = () => {
+  const importStockxSales = async () => {
     const filtered = filterStockxData();
     
     const newPending = filtered.map((row, idx) => {
@@ -2676,7 +2676,7 @@ function App() {
   };
 
   // Import eBay sales
-  const importEbaySales = () => {
+  const importEbaySales = async () => {
     const filtered = filterEbayData();
     const parseAmount = (val) => {
       if (!val || val === '--') return 0;
