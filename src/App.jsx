@@ -81,330 +81,303 @@ class ErrorBoundary extends Component {
   }
 }
 
-// Mobile Dashboard Component - Clean, focused, action-oriented
+// Mobile Dashboard Component - Premium, same energy as desktop
 function MobileDashboard({ 
   netProfit, totalRevenue, totalCOGS, totalFees, inventoryVal, 
   filteredSales, pendingCosts, goals, year, 
   c, fmt, setPage 
 }) {
   const pendingCount = pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length;
-  const marginPct = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : 0;
-  const goalProgress = goals.yearly > 0 ? Math.min((netProfit / goals.yearly) * 100, 100) : 0;
-  
-  // Get recent sales (last 5)
-  const recentSales = [...filteredSales]
-    .sort((a, b) => new Date(b.saleDate) - new Date(a.saleDate))
-    .slice(0, 5);
+  const marginPct = totalRevenue > 0 ? (netProfit / totalRevenue * 100).toFixed(0) : 0;
 
-  // Monthly totals for sparkline
+  // Monthly data for chart
   const monthlyData = Array.from({ length: 12 }, (_, i) => {
     const monthNum = String(i + 1).padStart(2, '0');
     const monthSales = filteredSales.filter(s => s.saleDate && s.saleDate.substring(5, 7) === monthNum);
-    return monthSales.reduce((sum, s) => sum + (s.profit || 0), 0);
+    return {
+      revenue: monthSales.reduce((sum, s) => sum + (s.salePrice || 0), 0),
+      profit: monthSales.reduce((sum, s) => sum + (s.profit || 0), 0),
+      count: monthSales.length
+    };
   });
-  const maxMonth = Math.max(...monthlyData, 1);
+  const maxRevenue = Math.max(...monthlyData.map(m => m.revenue), 1);
 
   return (
-    <div style={{ padding: '0 4px' }}>
-      {/* Action Alert - Pending Costs */}
+    <div>
+      {/* Pending Costs Alert - Pulsing */}
       {pendingCount > 0 && (
         <div 
           onClick={() => setPage('import')}
+          className="pending-pulse"
           style={{ 
-            background: 'linear-gradient(135deg, rgba(251,191,36,0.15) 0%, rgba(251,191,36,0.05) 100%)',
-            border: '1px solid rgba(251,191,36,0.3)',
-            borderRadius: 16,
-            padding: '16px 20px',
-            marginBottom: 16,
-            display: 'flex',
+            background: 'rgba(251,191,36,0.1)', 
+            border: '1px solid rgba(251,191,36,0.2)', 
+            borderRadius: 14, 
+            padding: '14px 16px', 
+            marginBottom: 16, 
+            display: 'flex', 
+            justifyContent: 'space-between', 
             alignItems: 'center',
-            justifyContent: 'space-between',
             cursor: 'pointer'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ 
-              width: 40, height: 40, 
-              background: 'rgba(251,191,36,0.2)', 
-              borderRadius: 10,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 18
-            }}>⚡</div>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 15, color: '#fbbf24' }}>{pendingCount} Need Costs</div>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>Tap to complete</div>
+            <div style={{ position: 'relative', width: 10, height: 10 }}>
+              <div className="pulse-ring" style={{ position: 'absolute', inset: -4, borderRadius: '50%', background: '#fbbf24', opacity: 0.3 }} />
+              <div className="pulse-glow" style={{ width: 10, height: 10, borderRadius: '50%', background: '#fbbf24', boxShadow: '0 0 15px #fbbf24' }} />
             </div>
+            <span style={{ color: c.gold, fontWeight: 600, fontSize: 14 }}>{pendingCount} sales need cost basis</span>
           </div>
-          <div style={{ fontSize: 20, color: 'rgba(251,191,36,0.6)' }}>→</div>
+          <div style={{ padding: '6px 14px', background: c.gold, borderRadius: 8, fontWeight: 700, fontSize: 12, color: '#000' }}>REVIEW</div>
         </div>
       )}
 
-      {/* Main Profit Card - Clean & Bold */}
+      {/* HERO PROFIT CARD - Full Premium Feel */}
       <div style={{
-        background: '#141414',
-        border: '1px solid rgba(255,255,255,0.06)',
+        background: c.card,
+        border: `1px solid ${c.border}`,
         borderRadius: 20,
-        padding: '24px 20px',
-        marginBottom: 16
+        padding: '28px 24px',
+        marginBottom: 16,
+        position: 'relative',
+        overflow: 'hidden'
       }}>
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'flex-start',
-          marginBottom: 20
-        }}>
-          <div>
-            <div style={{ 
-              fontSize: 11, 
-              fontWeight: 600, 
-              color: 'rgba(255,255,255,0.4)', 
-              textTransform: 'uppercase',
-              letterSpacing: '0.5px',
-              marginBottom: 8
-            }}>
-              Net Profit {year}
-            </div>
-            <div style={{ 
-              fontSize: 42, 
-              fontWeight: 800, 
-              color: netProfit >= 0 ? '#34D399' : '#F87171',
-              lineHeight: 1,
-              letterSpacing: '-1px'
-            }}>
-              {fmt(netProfit)}
+        {/* Animated top border */}
+        <div className="border-flow" style={{ 
+          position: 'absolute', top: 0, left: 0, right: 0, height: 2, 
+          background: `linear-gradient(90deg, transparent, ${c.gold}, ${c.green}, ${c.gold}, transparent)`, 
+          backgroundSize: '200% 100%' 
+        }} />
+        
+        {/* Breathing glow */}
+        <div className="breathe" style={{ 
+          position: 'absolute', top: -80, right: -60, width: 250, height: 250, 
+          background: `radial-gradient(circle, rgba(201,169,98,0.15) 0%, transparent 60%)`, 
+          pointerEvents: 'none' 
+        }} />
+
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          {/* Header with LIVE badge */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '1px', color: c.textDim, textTransform: 'uppercase' }}>Net Profit YTD</span>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)', borderRadius: 100 }}>
+              <div className="pulse-glow" style={{ width: 6, height: 6, background: c.green, borderRadius: '50%', boxShadow: `0 0 10px ${c.green}` }} />
+              <span style={{ fontSize: 9, fontWeight: 700, color: c.green, letterSpacing: '1px' }}>LIVE</span>
             </div>
           </div>
-          <div style={{
-            background: netProfit >= 0 ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)',
-            border: `1px solid ${netProfit >= 0 ? 'rgba(52,211,153,0.2)' : 'rgba(248,113,113,0.2)'}`,
-            borderRadius: 8,
-            padding: '6px 10px'
-          }}>
+          
+          {/* Big Profit Number */}
+          <div style={{ fontSize: 52, fontWeight: 900, lineHeight: 1, letterSpacing: '-2px', marginBottom: 12 }}>
+            <span style={{ color: c.gold, textShadow: `0 0 30px rgba(201,169,98,0.4)` }}>$</span>
             <span style={{ 
-              fontSize: 13, 
-              fontWeight: 700, 
-              color: netProfit >= 0 ? '#34D399' : '#F87171' 
+              background: 'linear-gradient(180deg, #FFFFFF 0%, #34D399 100%)', 
+              WebkitBackgroundClip: 'text', 
+              WebkitTextFillColor: 'transparent', 
+              filter: 'drop-shadow(0 0 20px rgba(52,211,153,0.4))' 
             }}>
-              {marginPct}%
+              {Math.abs(netProfit).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
             </span>
           </div>
-        </div>
+          
+          {/* Stats row */}
+          <div style={{ fontSize: 13, color: c.textMuted }}>
+            <span style={{ color: c.green, fontWeight: 600 }}>↑ {marginPct}%</span>
+            <span style={{ margin: '0 8px' }}>·</span>
+            {filteredSales.length} transactions
+          </div>
 
-        {/* Mini Stats Row */}
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: '1fr 1fr 1fr',
-          gap: 12,
-          padding: '16px 0',
-          borderTop: '1px solid rgba(255,255,255,0.06)'
-        }}>
-          <div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 4 }}>REVENUE</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>{fmt(totalRevenue)}</div>
-          </div>
-          <div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 4 }}>COGS</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#C9A962' }}>{fmt(totalCOGS)}</div>
-          </div>
-          <div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginBottom: 4 }}>FEES</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#F87171' }}>{fmt(totalFees)}</div>
-          </div>
-        </div>
-
-        {/* Yearly Goal Progress */}
-        {goals.yearly > 0 && (
-          <div style={{ paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              marginBottom: 8
-            }}>
-              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>YEARLY GOAL</span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: '#C9A962' }}>
-                {goalProgress.toFixed(0)}% of {fmt(goals.yearly)}
-              </span>
-            </div>
-            <div style={{ 
-              height: 6, 
-              background: 'rgba(255,255,255,0.06)', 
-              borderRadius: 3,
-              overflow: 'hidden'
-            }}>
-              <div style={{ 
-                height: '100%', 
-                width: `${goalProgress}%`,
-                background: 'linear-gradient(90deg, #C9A962, #34D399)',
-                borderRadius: 3,
-                transition: 'width 0.5s ease'
-              }} />
+          {/* Margin Ring - Compact */}
+          <div style={{ 
+            position: 'absolute', 
+            top: 20, 
+            right: 0, 
+            width: 100, 
+            height: 100 
+          }}>
+            <div className="spin-slow" style={{ 
+              position: 'absolute', top: -3, left: -3, right: -3, bottom: -3, 
+              border: '1px dashed rgba(201,169,98,0.3)', 
+              borderRadius: '50%' 
+            }} />
+            <svg width="100" height="100" style={{ transform: 'rotate(-90deg)', filter: 'drop-shadow(0 0 15px rgba(201,169,98,0.3))' }}>
+              <circle cx="50" cy="50" r="38" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="6" />
+              <circle className="ring-pulse" cx="50" cy="50" r="38" fill="none" stroke="url(#mobileMarginGrad)" strokeWidth="6" strokeLinecap="round"
+                strokeDasharray={`${totalRevenue > 0 ? Math.max(0, marginPct) * 2.39 : 0} 239`} />
+              <defs><linearGradient id="mobileMarginGrad" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor={c.green} /><stop offset="100%" stopColor={c.gold} /></linearGradient></defs>
+            </svg>
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontSize: 8, fontWeight: 600, letterSpacing: '1px', color: c.textDim, textTransform: 'uppercase' }}>Margin</span>
+              <span style={{ fontSize: 22, fontWeight: 800, color: c.gold, textShadow: '0 0 20px rgba(201,169,98,0.4)' }}>{marginPct}%</span>
             </div>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Quick Stats Cards - 2x2 Grid */}
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: '1fr 1fr',
-        gap: 12,
-        marginBottom: 16
-      }}>
+      {/* STATS ROW - 2x2 Grid with shimmer */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
         {[
-          { label: 'Sales', value: filteredSales.length, icon: '💰', color: '#34D399' },
-          { label: 'Inventory', value: fmt(inventoryVal), icon: '📦', color: '#C9A962' },
+          { label: 'Gross Revenue', value: totalRevenue, icon: '📈', color: c.gold, glow: 'rgba(201,169,98,0.3)' },
+          { label: 'Cost of Goods', value: totalCOGS, icon: '💎', color: c.green, glow: 'rgba(52,211,153,0.3)' },
+          { label: 'Platform Fees', value: totalFees, icon: '⚡', color: c.red, glow: 'rgba(248,113,113,0.3)' },
+          { label: 'Inventory Value', value: inventoryVal, icon: '🏦', color: '#8B5CF6', glow: 'rgba(139,92,246,0.3)' },
         ].map((stat, i) => (
-          <div key={i} style={{
-            background: '#141414',
-            border: '1px solid rgba(255,255,255,0.06)',
+          <div key={i} className="stat-card-hover" style={{
+            background: c.card,
+            border: `1px solid ${c.border}`,
             borderRadius: 16,
-            padding: '20px 16px'
+            padding: '20px 16px',
+            position: 'relative',
+            overflow: 'hidden'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-              <span style={{ fontSize: 20 }}>{stat.icon}</span>
-              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>{stat.label}</span>
+            {/* Shimmer line */}
+            <div className="shimmer-line" style={{ 
+              position: 'absolute', top: 0, left: 0, right: 0, height: 2, 
+              background: `linear-gradient(90deg, transparent, ${stat.color}, transparent)` 
+            }} />
+            
+            {/* Pulse dot */}
+            <div className="pulse-glow" style={{ 
+              position: 'absolute', top: 14, right: 14, width: 6, height: 6, 
+              background: stat.color, borderRadius: '50%', 
+              boxShadow: `0 0 10px ${stat.color}`,
+              animationDelay: `${i * 0.5}s`
+            }} />
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <div style={{ 
+                width: 36, height: 36, borderRadius: 10, 
+                background: 'rgba(255,255,255,0.03)', 
+                border: `1px solid ${c.border}`, 
+                display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                fontSize: 16 
+              }}>{stat.icon}</div>
             </div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: stat.color }}>
-              {stat.value}
-            </div>
+            <p style={{ margin: '0 0 6px', fontSize: 10, fontWeight: 500, color: c.textDim, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{stat.label}</p>
+            <p style={{ margin: 0, fontSize: 20, fontWeight: 700, color: stat.color, textShadow: `0 0 15px ${stat.glow}` }}>{fmt(stat.value)}</p>
           </div>
         ))}
       </div>
 
-      {/* Monthly Sparkline */}
-      <div style={{
-        background: '#141414',
-        border: '1px solid rgba(255,255,255,0.06)',
-        borderRadius: 16,
-        padding: '20px 16px',
-        marginBottom: 16
-      }}>
-        <div style={{ 
-          fontSize: 11, 
-          color: 'rgba(255,255,255,0.4)', 
-          textTransform: 'uppercase',
-          marginBottom: 16
-        }}>
-          Monthly Profit
+      {/* MONTHLY BREAKDOWN - Compact Table */}
+      <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, overflow: 'hidden', marginBottom: 16 }}>
+        <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Monthly Breakdown</h3>
+          <div className="pulse-glow" style={{ width: 6, height: 6, background: c.green, borderRadius: '50%', boxShadow: `0 0 10px ${c.green}` }} />
         </div>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 60 }}>
-          {monthlyData.map((val, i) => {
-            const height = val > 0 ? Math.max((val / maxMonth) * 50, 4) : 2;
-            const isCurrentMonth = i === new Date().getMonth();
+        <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+          {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, i) => {
+            const data = monthlyData[i];
+            if (data.count === 0) return null;
             return (
-              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                <div style={{
-                  width: '100%',
-                  height: height,
-                  background: val > 0 
-                    ? (isCurrentMonth ? '#34D399' : 'rgba(52,211,153,0.4)')
-                    : 'rgba(255,255,255,0.06)',
-                  borderRadius: 2
-                }} />
-                <span style={{ 
-                  fontSize: 9, 
-                  color: isCurrentMonth ? '#34D399' : 'rgba(255,255,255,0.3)'
-                }}>
-                  {['J','F','M','A','M','J','J','A','S','O','N','D'][i]}
-                </span>
+              <div key={month} style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                padding: '12px 20px', 
+                borderBottom: `1px solid ${c.border}` 
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div className="pulse-glow" style={{ width: 5, height: 5, background: c.green, borderRadius: '50%' }} />
+                  <span style={{ fontWeight: 600, fontSize: 13 }}>{month}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: c.textMuted }}>{data.count}</span>
+                  <span style={{ fontSize: 12, color: c.textMuted }}>{fmt(data.revenue)}</span>
+                  <span style={{ 
+                    fontSize: 13, fontWeight: 700, color: c.green,
+                    background: 'rgba(16,185,129,0.1)', 
+                    padding: '4px 10px', 
+                    borderRadius: 6 
+                  }}>+{fmt(data.profit)}</span>
+                </div>
               </div>
             );
           })}
+          {/* Total row */}
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            padding: '14px 20px', 
+            background: 'rgba(16,185,129,0.08)' 
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div className="pulse-glow" style={{ width: 6, height: 6, background: c.green, borderRadius: '50%', boxShadow: `0 0 10px ${c.green}` }} />
+              <span style={{ fontWeight: 800, fontSize: 13 }}>TOTAL</span>
+            </div>
+            <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
+              <span style={{ fontSize: 12, fontWeight: 700 }}>{filteredSales.length}</span>
+              <span style={{ fontSize: 12, fontWeight: 700 }}>{fmt(totalRevenue)}</span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: c.green, textShadow: '0 0 15px rgba(16,185,129,0.4)' }}>+{fmt(netProfit)}</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Recent Sales */}
-      {recentSales.length > 0 && (
-        <div style={{
-          background: '#141414',
-          border: '1px solid rgba(255,255,255,0.06)',
-          borderRadius: 16,
-          overflow: 'hidden'
-        }}>
-          <div style={{ 
-            padding: '16px 16px 12px',
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}>
-            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>Recent Sales</span>
-            <span 
-              onClick={() => setPage('sales')}
-              style={{ fontSize: 12, color: '#C9A962', cursor: 'pointer' }}
-            >
-              View All →
-            </span>
+      {/* PERFORMANCE CHART - Bars */}
+      <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, overflow: 'hidden' }}>
+        <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Performance Chart</h3>
+            <div className="pulse-glow" style={{ width: 6, height: 6, background: c.green, borderRadius: '50%' }} />
           </div>
-          {recentSales.map((sale, i) => (
-            <div key={sale.id} style={{
-              padding: '14px 16px',
-              borderBottom: i < recentSales.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between'
-            }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ 
-                  fontSize: 13, 
-                  fontWeight: 600, 
-                  color: '#fff',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  marginBottom: 2
-                }}>
-                  {sale.name}
-                </div>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>
-                  {sale.saleDate} • {sale.platform}
-                </div>
-              </div>
-              <div style={{ 
-                fontSize: 14, 
-                fontWeight: 700, 
-                color: (sale.profit || 0) >= 0 ? '#34D399' : '#F87171',
-                marginLeft: 12
-              }}>
-                {(sale.profit || 0) >= 0 ? '+' : ''}{fmt(sale.profit || 0)}
-              </div>
-            </div>
-          ))}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: 100, padding: '5px 12px' }}>
+            <div className="pulse-glow" style={{ width: 5, height: 5, background: c.green, borderRadius: '50%' }} />
+            <span style={{ fontSize: 9, fontWeight: 700, color: c.green, letterSpacing: '0.5px' }}>REALTIME</span>
+          </div>
         </div>
-      )}
+        <div style={{ padding: '20px 16px' }}>
+          {/* Legend */}
+          <div style={{ display: 'flex', gap: 20, marginBottom: 20 }}>
+            {[{ label: 'Revenue', color: 'rgba(255,255,255,0.5)' }, { label: 'Profit', color: '#10b981' }].map((item, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ width: 10, height: 10, borderRadius: 2, background: item.color }} />
+                <span style={{ fontSize: 11, color: c.textMuted }}>{item.label}</span>
+              </div>
+            ))}
+          </div>
 
-      {/* Empty State */}
-      {filteredSales.length === 0 && pendingCount === 0 && (
-        <div style={{
-          background: '#141414',
-          border: '1px solid rgba(255,255,255,0.06)',
-          borderRadius: 16,
-          padding: '40px 20px',
-          textAlign: 'center'
-        }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
-          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>No data for {year}</div>
-          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginBottom: 20 }}>
-            Import sales from StockX or eBay to get started
+          {/* Bars */}
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 100, paddingBottom: 24, position: 'relative' }}>
+            {['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'].map((month, i) => {
+              const data = monthlyData[i];
+              const revHeight = data.revenue > 0 ? Math.max((data.revenue / maxRevenue) * 70, 3) : 0;
+              const profitHeight = data.profit > 0 ? Math.max((data.profit / maxRevenue) * 70, 3) : 0;
+              const hasData = data.revenue > 0;
+              
+              return (
+                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 2, height: 70, width: '100%' }}>
+                    <div style={{ 
+                      width: hasData ? 8 : 4, 
+                      height: hasData ? revHeight : 2,
+                      background: hasData 
+                        ? 'linear-gradient(180deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0.15) 100%)' 
+                        : 'rgba(255,255,255,0.05)',
+                      borderRadius: hasData ? 3 : 1
+                    }} />
+                    <div style={{ 
+                      width: hasData ? 8 : 4, 
+                      height: hasData ? profitHeight : 2,
+                      background: hasData 
+                        ? 'linear-gradient(180deg, #10b981 0%, rgba(16,185,129,0.4) 100%)' 
+                        : 'rgba(16,185,129,0.08)',
+                      borderRadius: hasData ? 3 : 1,
+                      boxShadow: hasData ? '0 0 8px rgba(16,185,129,0.3)' : 'none'
+                    }} />
+                  </div>
+                  <span style={{ 
+                    fontSize: 9, 
+                    fontWeight: 600, 
+                    color: hasData ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.2)',
+                    marginTop: 6
+                  }}>{month}</span>
+                </div>
+              );
+            })}
           </div>
-          <button 
-            onClick={() => setPage('import')}
-            style={{
-              padding: '12px 24px',
-              background: 'linear-gradient(135deg, #C9A962 0%, #8B7355 100%)',
-              border: 'none',
-              borderRadius: 10,
-              color: '#000',
-              fontSize: 14,
-              fontWeight: 600,
-              cursor: 'pointer'
-            }}
-          >
-            Import Sales
-          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
