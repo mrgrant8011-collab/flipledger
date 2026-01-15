@@ -1742,83 +1742,51 @@ function App() {
     setNikeReceipt(prev => ({ ...prev, scanning: true, items: [], image: null, error: null }));
     
     try {
-      console.log('=== NIKE RECEIPT SCANNER (Chunked OCR + Claude) ===');
+      console.log('=== NIKE RECEIPT SCANNER (Google Vision + Claude) ===');
       console.log('Input:', imageFile.name, '|', imageFile.type, '|', (imageFile.size / 1024).toFixed(1), 'KB');
       
-      // Load image and get dimensions
-      const imageData = await new Promise((resolve, reject) => {
+      // Load image
+      const imageBase64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = (e) => {
-          const img = new Image();
-          img.onload = () => resolve({ img, dataUrl: e.target.result });
-          img.onerror = () => reject(new Error('Failed to load image'));
-          img.src = e.target.result;
-        };
+        reader.onload = (e) => resolve(e.target.result);
         reader.onerror = () => reject(new Error('Failed to read file'));
         reader.readAsDataURL(imageFile);
       });
       
-      const { img, dataUrl } = imageData;
-      console.log('Image dimensions:', img.width, 'x', img.height);
+      // STEP 1: Google Vision OCR (accurate text extraction)
+      console.log('Step 1: Google Vision OCR...');
+      const ocrResponse = await fetch('/api/google-ocr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageBase64 })
+      });
       
-      // STEP 1: Split into overlapping chunks
-      const chunkHeight = 1500;
-      const overlap = 300;
-      const chunks = [];
+      const ocrResult = await ocrResponse.json();
       
-      let y = 0;
-      while (y < img.height) {
-        const height = Math.min(chunkHeight, img.height - y);
-        
-        // Create canvas for this chunk
-        const canvas = document.createElement('canvas');
-        canvas.width = img.width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        
-        // Draw portion of image
-        ctx.drawImage(img, 0, y, img.width, height, 0, 0, img.width, height);
-        
-        chunks.push(canvas.toDataURL('image/png'));
-        
-        // Move to next chunk with overlap
-        y += chunkHeight - overlap;
-        
-        // Prevent infinite loop on small images
-        if (height < chunkHeight) break;
+      if (ocrResult.error) {
+        throw new Error(ocrResult.message || ocrResult.error);
       }
       
-      console.log('Split into', chunks.length, 'chunks');
+      const ocrText = ocrResult.text;
+      console.log('OCR complete. Text length:', ocrText.length);
+      console.log('--- OCR TEXT PREVIEW ---');
+      console.log(ocrText.substring(0, 1500));
+      console.log('--- END PREVIEW ---');
       
-      // STEP 2: OCR each chunk with Tesseract (FREE)
-      console.log('Running OCR on chunks...');
-      let allText = '';
-      
-      for (let i = 0; i < chunks.length; i++) {
-        console.log(`OCR chunk ${i + 1}/${chunks.length}...`);
-        const { data: { text } } = await Tesseract.recognize(chunks[i], 'eng', {
-          logger: () => {} // Silent
-        });
-        allText += text + '\n\n--- CHUNK BREAK ---\n\n';
+      if (!ocrText || ocrText.length < 50) {
+        throw new Error('Could not read text from image. Please try a clearer screenshot.');
       }
       
-      console.log('OCR complete. Total text length:', allText.length);
-      console.log('--- RAW OCR TEXT ---');
-      console.log(allText.substring(0, 2000) + '...');
-      console.log('--- END TEXT ---');
-      
-      // STEP 3: Send TEXT (not image) to Claude for structuring
-      console.log('Sending text to Claude for structuring...');
-      
+      // STEP 2: Send text to Claude for structuring
+      console.log('Step 2: Claude structuring...');
       const response = await fetch('/api/scan-receipt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: allText, mode: 'text' })
+        body: JSON.stringify({ text: ocrText, mode: 'text' })
       });
       
       const result = await response.json();
       
-      // Check for errors
       if (result.error) {
         throw new Error(result.message || result.error);
       }
@@ -1837,7 +1805,7 @@ function App() {
         price: parseFloat(item.price) || 0
       }));
       
-      console.log('Claude found', items.length, 'unique items');
+      console.log('Found', items.length, 'unique items');
       
       // Distribute tax if present
       if (result.tax && result.tax > 0 && items.length > 0) {
@@ -1852,10 +1820,10 @@ function App() {
       setNikeReceipt({ 
         scanning: false, 
         items, 
-        image: dataUrl, 
+        image: imageBase64, 
         date: result.orderDate || '', 
         orderNum: result.orderNumber || '',
-        error: items.length === 0 ? 'No items found. Please make sure this is a Nike order screenshot.' : null
+        error: items.length === 0 ? 'No items found. Make sure this is a Nike order screenshot.' : null
       });
       
       console.log('=== SCAN COMPLETE ===');
