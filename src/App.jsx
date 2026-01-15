@@ -1173,7 +1173,12 @@ function App() {
 
   // Bulk save inventory items to Supabase
   const bulkSaveInventoryToSupabase = async (items) => {
-    if (!user || items.length === 0) return [];
+    console.log('bulkSaveInventoryToSupabase called with:', items);
+    console.log('Current user:', user);
+    if (!user || items.length === 0) {
+      console.log('No user or empty items, returning []');
+      return [];
+    }
     try {
       const records = items.map(item => ({
         user_id: user.id,
@@ -1185,13 +1190,16 @@ function App() {
         date: item.date,
         sold: item.sold || false
       }));
+      console.log('Inserting records:', records);
 
       const { data, error } = await supabase
         .from('inventory')
         .insert(records)
         .select();
+      
+      console.log('Supabase response - data:', data, 'error:', error);
       if (error) throw error;
-      return data;
+      return data || [];
     } catch (error) {
       console.error('Error bulk saving inventory:', error);
       return [];
@@ -3501,7 +3509,7 @@ function App() {
               <option value="sold">Sold ({purchases.filter(p => p.sold).length})</option>
             </select>
             <button onClick={() => setShowInvCsvImport(true)} style={{ padding: '14px 20px', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 12, color: c.gold, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>📥 IMPORT CSV</button>
-            <button onClick={() => { setFormData(prev => ({ ...prev, bulkRows: [{ size: '', cost: '' }] })); setModal('bulkAdd'); }} style={{ padding: '14px 24px', ...btnPrimary, fontSize: 13 }}>+ BULK ADD</button>
+            <button onClick={() => { setFormData(prev => ({ ...prev, bulkRows: [{ qty: 1, size: '', cost: '' }], bulkSameCost: false, bulkUniformCost: '' })); setModal('bulkAdd'); }} style={{ padding: '14px 24px', ...btnPrimary, fontSize: 13 }}>+ BULK ADD</button>
             <button onClick={() => { setFormData({}); setModal('purchase'); }} style={{ padding: '14px 20px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>+ SINGLE</button>
           </div>
 
@@ -3597,64 +3605,132 @@ function App() {
             </div>
           )}
 
-          {/* INVENTORY TABLE */}
+          {/* INVENTORY TABLE/CARDS */}
           <div style={cardStyle}>
             <div style={{ padding: '14px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 13, color: c.textMuted }}>Showing {startIdx + 1}-{Math.min(startIdx + ITEMS_PER_PAGE, sortedInventory.length)} of {sortedInventory.length} items</span>
               <button onClick={() => exportCSV(sortedInventory, 'inventory.csv', ['date','name','sku','size','cost','sold'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
             </div>
             
-            {/* TABLE HEADER - Clickable for sorting */}
-            <div style={{ display: 'grid', gridTemplateColumns: '40px 90px 1fr 130px 60px 80px 70px 90px 60px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <input type="checkbox" checked={allSelected} onChange={(e) => handleSelectAll(e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }} />
+            {/* MOBILE CARD VIEW */}
+            {isMobile ? (
+              <div style={{ padding: 12 }}>
+                {paginatedInventory.length ? paginatedInventory.map(p => {
+                  const daysInStock = Math.floor((new Date() - new Date(p.date)) / (1000 * 60 * 60 * 24));
+                  return (
+                    <div key={p.id} style={{ 
+                      background: selectedInventory.has(p.id) ? 'rgba(239,68,68,0.1)' : p.sold ? 'rgba(251,191,36,0.05)' : 'rgba(255,255,255,0.02)', 
+                      border: `1px solid ${c.border}`, 
+                      borderRadius: 12, 
+                      padding: 14, 
+                      marginBottom: 10 
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 10 }}>
+                        <input 
+                          type="checkbox" 
+                          checked={selectedInventory.has(p.id)} 
+                          onChange={(e) => handleSelectOne(p.id, e.target.checked)} 
+                          style={{ width: 18, height: 18, marginRight: 12, marginTop: 2, accentColor: c.green }} 
+                        />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: 14, color: p.sold ? c.textMuted : '#fff', marginBottom: 4 }}>{p.name}</div>
+                          <div style={{ fontSize: 12, color: c.green }}>{p.sku || '-'}</div>
+                        </div>
+                        <div style={{ fontSize: 11, color: c.textMuted }}>{p.date}</div>
+                      </div>
+                      
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: `1px solid ${c.border}`, borderBottom: `1px solid ${c.border}`, marginBottom: 10 }}>
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: 9, color: c.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>Size</div>
+                          <div style={{ fontSize: 14, fontWeight: 600 }}>{p.size || '-'}</div>
+                        </div>
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: 9, color: c.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>Cost</div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: c.gold }}>{fmt(p.cost)}</div>
+                        </div>
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: 9, color: c.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>Days</div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: !p.sold && daysInStock > 60 ? c.red : !p.sold && daysInStock > 30 ? c.gold : c.textMuted }}>{p.sold ? '-' : daysInStock}</div>
+                        </div>
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: 9, color: c.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>Status</div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: p.sold ? c.gold : c.green }}>{p.sold ? 'SOLD' : 'IN STOCK'}</div>
+                        </div>
+                      </div>
+                      
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button 
+                          onClick={() => { setFormData({ editId: p.id, name: p.name, sku: p.sku, size: p.size, cost: p.cost, date: p.date }); setModal('editInventory'); }} 
+                          style={{ flex: 1, padding: 10, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                        >✏️ Edit</button>
+                        <button 
+                          onClick={() => { const updated = { ...p, sold: !p.sold }; updateInventoryInSupabase(updated); setPurchases(purchases.map(x => x.id === p.id ? updated : x)); }} 
+                          style={{ flex: 1, padding: 10, background: p.sold ? 'rgba(251,191,36,0.1)' : 'rgba(16,185,129,0.1)', border: `1px solid ${p.sold ? 'rgba(251,191,36,0.3)' : 'rgba(16,185,129,0.3)'}`, borderRadius: 8, color: p.sold ? c.gold : c.green, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                        >{p.sold ? '↩️ Unmark' : '💰 Sold'}</button>
+                        <button 
+                          onClick={() => { deleteInventoryFromSupabase(p.id); setPurchases(purchases.filter(x => x.id !== p.id)); setSelectedInventory(prev => { const n = new Set(prev); n.delete(p.id); return n; }); }} 
+                          style={{ padding: 10, background: 'rgba(239,68,68,0.1)', border: `1px solid rgba(239,68,68,0.3)`, borderRadius: 8, color: c.red, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                        >🗑️</button>
+                      </div>
+                    </div>
+                  );
+                }) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>📦</div><p style={{ color: c.textMuted }}>No inventory matches your filters</p><button onClick={() => { setFormData(prev => ({ ...prev, bulkRows: [{ qty: 1, size: '', cost: '' }] })); setModal('bulkAdd'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Add Items</button></div>}
               </div>
-              <span onClick={() => handleSort('oldest', 'newest')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('oldest', 'newest') ? c.green : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
-                DATE {isActiveSort('oldest', 'newest') && getSortArrow('oldest')}
-              </span>
-              <span onClick={() => handleSort('nameAZ', 'nameZA')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('nameAZ', 'nameZA') ? c.green : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
-                NAME {isActiveSort('nameAZ', 'nameZA') && getSortArrow('nameAZ')}
-              </span>
-              <span onClick={() => handleSort('skuAZ', 'skuZA')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('skuAZ', 'skuZA') ? c.green : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
-                SKU {isActiveSort('skuAZ', 'skuZA') && getSortArrow('skuAZ')}
-              </span>
-              <span onClick={() => handleSort('sizeAsc', 'sizeDesc')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('sizeAsc', 'sizeDesc') ? c.green : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
-                SIZE {isActiveSort('sizeAsc', 'sizeDesc') && getSortArrow('sizeAsc')}
-              </span>
-              <span onClick={() => handleSort('costLow', 'costHigh')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('costLow', 'costHigh') ? c.green : c.textMuted, cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}>
-                COST {isActiveSort('costLow', 'costHigh') && getSortArrow('costLow')}
-              </span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'center' }}>DAYS</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'center' }}>STATUS</span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'center' }}>ACTIONS</span>
-            </div>
-
-            {/* TABLE ROWS */}
-            {paginatedInventory.length ? paginatedInventory.map(p => {
-              const daysInStock = Math.floor((new Date() - new Date(p.date)) / (1000 * 60 * 60 * 24));
-              return (
-                <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '40px 90px 1fr 130px 60px 80px 70px 90px 60px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', background: selectedInventory.has(p.id) ? 'rgba(239,68,68,0.1)' : p.sold ? 'rgba(251,191,36,0.05)' : 'transparent' }}>
-                  <div>
-                    <input type="checkbox" checked={selectedInventory.has(p.id)} onChange={(e) => handleSelectOne(p.id, e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }} />
+            ) : (
+              <>
+                {/* TABLE HEADER - Clickable for sorting */}
+                <div style={{ display: 'grid', gridTemplateColumns: '40px 90px 1fr 130px 60px 80px 70px 90px 60px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <input type="checkbox" checked={allSelected} onChange={(e) => handleSelectAll(e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }} />
                   </div>
-                  <span style={{ fontSize: 12, color: c.textMuted }}>{p.date}</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: p.sold ? c.textMuted : '#fff' }}>{p.name}</span>
-                  <span style={{ fontSize: 11, color: c.green }}>{p.sku || '-'}</span>
-                  <span style={{ fontSize: 13 }}>{p.size || '-'}</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, textAlign: 'right' }}>{fmt(p.cost)}</span>
-                  <span style={{ fontSize: 12, textAlign: 'center', color: !p.sold && daysInStock > 60 ? c.red : !p.sold && daysInStock > 30 ? c.gold : c.textMuted }}>{p.sold ? '-' : daysInStock}</span>
-                  <div style={{ textAlign: 'center' }}>
-                    <button onClick={() => { const updated = { ...p, sold: !p.sold }; updateInventoryInSupabase(updated); setPurchases(purchases.map(x => x.id === p.id ? updated : x)); }} style={{ padding: '4px 10px', background: p.sold ? 'rgba(251,191,36,0.2)' : 'rgba(16,185,129,0.1)', border: `1px solid ${p.sold ? 'rgba(251,191,36,0.3)' : 'rgba(16,185,129,0.2)'}`, borderRadius: 6, color: p.sold ? c.gold : c.green, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
-                      {p.sold ? '🟡 SOLD' : 'IN STOCK'}
-                    </button>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-                    <button onClick={() => { setFormData({ editId: p.id, name: p.name, sku: p.sku, size: p.size, cost: p.cost, date: p.date }); setModal('editInventory'); }} style={{ background: 'none', border: 'none', color: c.green, cursor: 'pointer', fontSize: 14 }}>✏️</button>
-                    <button onClick={() => { deleteInventoryFromSupabase(p.id); setPurchases(purchases.filter(x => x.id !== p.id)); setSelectedInventory(prev => { const n = new Set(prev); n.delete(p.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14 }}>×</button>
-                  </div>
+                  <span onClick={() => handleSort('oldest', 'newest')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('oldest', 'newest') ? c.green : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
+                    DATE {isActiveSort('oldest', 'newest') && getSortArrow('oldest')}
+                  </span>
+                  <span onClick={() => handleSort('nameAZ', 'nameZA')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('nameAZ', 'nameZA') ? c.green : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
+                    NAME {isActiveSort('nameAZ', 'nameZA') && getSortArrow('nameAZ')}
+                  </span>
+                  <span onClick={() => handleSort('skuAZ', 'skuZA')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('skuAZ', 'skuZA') ? c.green : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
+                    SKU {isActiveSort('skuAZ', 'skuZA') && getSortArrow('skuAZ')}
+                  </span>
+                  <span onClick={() => handleSort('sizeAsc', 'sizeDesc')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('sizeAsc', 'sizeDesc') ? c.green : c.textMuted, cursor: 'pointer', userSelect: 'none' }}>
+                    SIZE {isActiveSort('sizeAsc', 'sizeDesc') && getSortArrow('sizeAsc')}
+                  </span>
+                  <span onClick={() => handleSort('costLow', 'costHigh')} style={{ fontSize: 10, fontWeight: 700, color: isActiveSort('costLow', 'costHigh') ? c.green : c.textMuted, cursor: 'pointer', userSelect: 'none', textAlign: 'right' }}>
+                    COST {isActiveSort('costLow', 'costHigh') && getSortArrow('costLow')}
+                  </span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'center' }}>DAYS</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'center' }}>STATUS</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'center' }}>ACTIONS</span>
                 </div>
-              );
-            }) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>📦</div><p style={{ color: c.textMuted }}>No inventory matches your filters</p><button onClick={() => { setFormData(prev => ({ ...prev, bulkRows: [{ size: '', cost: '' }] })); setModal('bulkAdd'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Add Items</button></div>}
+
+                {/* TABLE ROWS */}
+                {paginatedInventory.length ? paginatedInventory.map(p => {
+                  const daysInStock = Math.floor((new Date() - new Date(p.date)) / (1000 * 60 * 60 * 24));
+                  return (
+                    <div key={p.id} style={{ display: 'grid', gridTemplateColumns: '40px 90px 1fr 130px 60px 80px 70px 90px 60px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', background: selectedInventory.has(p.id) ? 'rgba(239,68,68,0.1)' : p.sold ? 'rgba(251,191,36,0.05)' : 'transparent' }}>
+                      <div>
+                        <input type="checkbox" checked={selectedInventory.has(p.id)} onChange={(e) => handleSelectOne(p.id, e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }} />
+                      </div>
+                      <span style={{ fontSize: 12, color: c.textMuted }}>{p.date}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: p.sold ? c.textMuted : '#fff' }}>{p.name}</span>
+                      <span style={{ fontSize: 11, color: c.green }}>{p.sku || '-'}</span>
+                      <span style={{ fontSize: 13 }}>{p.size || '-'}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, textAlign: 'right' }}>{fmt(p.cost)}</span>
+                      <span style={{ fontSize: 12, textAlign: 'center', color: !p.sold && daysInStock > 60 ? c.red : !p.sold && daysInStock > 30 ? c.gold : c.textMuted }}>{p.sold ? '-' : daysInStock}</span>
+                      <div style={{ textAlign: 'center' }}>
+                        <button onClick={() => { const updated = { ...p, sold: !p.sold }; updateInventoryInSupabase(updated); setPurchases(purchases.map(x => x.id === p.id ? updated : x)); }} style={{ padding: '4px 10px', background: p.sold ? 'rgba(251,191,36,0.2)' : 'rgba(16,185,129,0.1)', border: `1px solid ${p.sold ? 'rgba(251,191,36,0.3)' : 'rgba(16,185,129,0.2)'}`, borderRadius: 6, color: p.sold ? c.gold : c.green, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
+                          {p.sold ? '🟡 SOLD' : 'IN STOCK'}
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                        <button onClick={() => { setFormData({ editId: p.id, name: p.name, sku: p.sku, size: p.size, cost: p.cost, date: p.date }); setModal('editInventory'); }} style={{ background: 'none', border: 'none', color: c.green, cursor: 'pointer', fontSize: 14 }}>✏️</button>
+                        <button onClick={() => { deleteInventoryFromSupabase(p.id); setPurchases(purchases.filter(x => x.id !== p.id)); setSelectedInventory(prev => { const n = new Set(prev); n.delete(p.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14 }}>×</button>
+                      </div>
+                    </div>
+                  );
+                }) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>📦</div><p style={{ color: c.textMuted }}>No inventory matches your filters</p><button onClick={() => { setFormData(prev => ({ ...prev, bulkRows: [{ qty: 1, size: '', cost: '' }] })); setModal('bulkAdd'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Add Items</button></div>}
+              </>
+            )}
             
             {/* PAGINATION */}
             {totalPages > 1 && (
@@ -5450,39 +5526,76 @@ Let me know if you need anything else.`;
               <input value={formData.bulkSku || ''} onChange={e => setFormData({ ...formData, bulkSku: e.target.value })} placeholder="Style Code (e.g., DH6927-111)" style={{ ...inputStyle, marginBottom: 12 }} />
               <input type="date" value={formData.bulkDate || new Date().toISOString().split('T')[0]} onChange={e => setFormData({ ...formData, bulkDate: e.target.value })} style={{ ...inputStyle, marginBottom: 16 }} />
               
+              {/* Same cost for all toggle */}
+              <div style={{ marginBottom: 16, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
+                <input 
+                  type="checkbox" 
+                  id="sameCostToggle"
+                  checked={formData.bulkSameCost || false}
+                  onChange={e => setFormData({ ...formData, bulkSameCost: e.target.checked })}
+                  style={{ width: 18, height: 18, accentColor: c.green, cursor: 'pointer' }}
+                />
+                <label htmlFor="sameCostToggle" style={{ fontSize: 13, color: c.textMuted, cursor: 'pointer', flex: 1 }}>
+                  Same cost for all sizes
+                </label>
+                {formData.bulkSameCost && (
+                  <input 
+                    type="number"
+                    value={formData.bulkUniformCost || ''} 
+                    onChange={e => setFormData({ ...formData, bulkUniformCost: e.target.value })}
+                    placeholder="Cost" 
+                    style={{ ...inputStyle, width: 100, padding: 8, textAlign: 'center' }} 
+                  />
+                )}
+              </div>
+
               <div style={{ marginBottom: 12 }}>
                 <div style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
+                  <span style={{ width: 60, fontSize: 11, fontWeight: 700, color: c.textMuted }}>QTY</span>
                   <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: c.textMuted }}>SIZE</span>
-                  <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: c.textMuted }}>COST</span>
+                  {!formData.bulkSameCost && <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: c.textMuted }}>COST</span>}
                   <span style={{ width: 32 }}></span>
                 </div>
-                {(formData.bulkRows || [{ size: '', cost: '' }]).map((row, i) => (
+                {(formData.bulkRows || [{ qty: 1, size: '', cost: '' }]).map((row, i) => (
                   <div key={i} style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
+                    <input 
+                      type="number"
+                      min="1"
+                      value={row.qty || 1} 
+                      onChange={e => {
+                        const newRows = [...(formData.bulkRows || [{ qty: 1, size: '', cost: '' }])];
+                        newRows[i].qty = parseInt(e.target.value) || 1;
+                        setFormData({ ...formData, bulkRows: newRows });
+                      }}
+                      style={{ ...inputStyle, width: 60, padding: 10, textAlign: 'center' }} 
+                    />
                     <input 
                       value={row.size} 
                       onChange={e => {
-                        const newRows = [...(formData.bulkRows || [{ size: '', cost: '' }])];
+                        const newRows = [...(formData.bulkRows || [{ qty: 1, size: '', cost: '' }])];
                         newRows[i].size = e.target.value;
                         setFormData({ ...formData, bulkRows: newRows });
                       }}
                       placeholder="10.5" 
                       style={{ ...inputStyle, flex: 1, padding: 10 }} 
                     />
-                    <input 
-                      type="number"
-                      value={row.cost} 
-                      onChange={e => {
-                        const newRows = [...(formData.bulkRows || [{ size: '', cost: '' }])];
-                        newRows[i].cost = e.target.value;
-                        setFormData({ ...formData, bulkRows: newRows });
-                      }}
-                      placeholder="76.97" 
-                      style={{ ...inputStyle, flex: 1, padding: 10 }} 
-                    />
+                    {!formData.bulkSameCost && (
+                      <input 
+                        type="number"
+                        value={row.cost} 
+                        onChange={e => {
+                          const newRows = [...(formData.bulkRows || [{ qty: 1, size: '', cost: '' }])];
+                          newRows[i].cost = e.target.value;
+                          setFormData({ ...formData, bulkRows: newRows });
+                        }}
+                        placeholder="76.97" 
+                        style={{ ...inputStyle, flex: 1, padding: 10 }} 
+                      />
+                    )}
                     <button 
                       onClick={() => {
                         const newRows = (formData.bulkRows || []).filter((_, idx) => idx !== i);
-                        setFormData({ ...formData, bulkRows: newRows.length ? newRows : [{ size: '', cost: '' }] });
+                        setFormData({ ...formData, bulkRows: newRows.length ? newRows : [{ qty: 1, size: '', cost: '' }] });
                       }}
                       style={{ width: 32, background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 8, color: c.red, cursor: 'pointer', fontSize: 16 }}
                     >×</button>
@@ -5490,17 +5603,41 @@ Let me know if you need anything else.`;
                 ))}
                 <button 
                   onClick={() => {
-                    const newRows = [...(formData.bulkRows || [{ size: '', cost: '' }]), { size: '', cost: '' }];
+                    const newRows = [...(formData.bulkRows || [{ qty: 1, size: '', cost: '' }]), { qty: 1, size: '', cost: '' }];
                     setFormData({ ...formData, bulkRows: newRows });
                   }}
                   style={{ width: '100%', padding: 10, background: 'rgba(16,185,129,0.1)', border: `1px dashed rgba(16,185,129,0.3)`, borderRadius: 8, color: c.green, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                 >+ Add Another Size</button>
               </div>
               
-              <div style={{ padding: 14, background: 'rgba(16,185,129,0.1)', borderRadius: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ color: c.textMuted, fontSize: 13 }}>Items to add:</span>
-                <span style={{ fontWeight: 800, fontSize: 20, color: c.green }}>{(formData.bulkRows || []).filter(r => r.size && r.cost).length}</span>
-              </div>
+              {/* Running total */}
+              {(() => {
+                const rows = formData.bulkRows || [{ qty: 1, size: '', cost: '' }];
+                const uniformCost = parseFloat(formData.bulkUniformCost) || 0;
+                const useSameCost = formData.bulkSameCost;
+                let totalItems = 0;
+                let totalCost = 0;
+                rows.forEach(r => {
+                  if (r.size) {
+                    const qty = parseInt(r.qty) || 1;
+                    const cost = useSameCost ? uniformCost : (parseFloat(r.cost) || 0);
+                    totalItems += qty;
+                    totalCost += qty * cost;
+                  }
+                });
+                return (
+                  <div style={{ padding: 14, background: 'rgba(16,185,129,0.1)', borderRadius: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <span style={{ color: c.textMuted, fontSize: 13 }}>Items to add:</span>
+                      <span style={{ fontWeight: 800, fontSize: 20, color: c.green }}>{totalItems}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: c.textMuted, fontSize: 13 }}>Total cost:</span>
+                      <span style={{ fontWeight: 700, fontSize: 16, color: c.gold }}>{fmt(totalCost)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
             </>}
             {modal === 'sale' && <>
               {formData.saleImage && (
@@ -5648,16 +5785,32 @@ Let me know if you need anything else.`;
             <button onClick={() => { 
               if (modal === 'purchase') addPurchase(); 
               else if (modal === 'bulkAdd') {
-                const rows = (formData.bulkRows || []).filter(r => r.size && r.cost);
-                if (!formData.bulkName || rows.length === 0) return;
-                const itemsToSave = rows.map((row) => ({
-                  name: formData.bulkName,
-                  sku: formData.bulkSku || '',
-                  size: row.size,
-                  cost: parseFloat(row.cost),
-                  date: formData.bulkDate || new Date().toISOString().split('T')[0],
-                  sold: false
-                }));
+                const useSameCost = formData.bulkSameCost;
+                const uniformCost = parseFloat(formData.bulkUniformCost) || 0;
+                const rows = (formData.bulkRows || []).filter(r => r.size && (useSameCost ? uniformCost > 0 : r.cost));
+                
+                if (!formData.bulkName || rows.length === 0) {
+                  alert('Please enter product name and at least one size with cost');
+                  return;
+                }
+                
+                // Build items array with qty expansion
+                const itemsToSave = [];
+                rows.forEach(row => {
+                  const qty = parseInt(row.qty) || 1;
+                  const cost = useSameCost ? uniformCost : parseFloat(row.cost);
+                  for (let i = 0; i < qty; i++) {
+                    itemsToSave.push({
+                      name: formData.bulkName,
+                      sku: formData.bulkSku || '',
+                      size: row.size,
+                      cost: cost,
+                      date: formData.bulkDate || new Date().toISOString().split('T')[0],
+                      sold: false
+                    });
+                  }
+                });
+                
                 // Save to Supabase
                 bulkSaveInventoryToSupabase(itemsToSave).then(savedItems => {
                   if (savedItems.length > 0) {
