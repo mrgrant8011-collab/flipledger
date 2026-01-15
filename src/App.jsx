@@ -5524,7 +5524,10 @@ Let me know if you need anything else.`;
             {modal === 'bulkAdd' && <>
               <input value={formData.bulkName || ''} onChange={e => setFormData({ ...formData, bulkName: e.target.value })} placeholder="Product name *" style={{ ...inputStyle, marginBottom: 12 }} />
               <input value={formData.bulkSku || ''} onChange={e => setFormData({ ...formData, bulkSku: e.target.value })} placeholder="Style Code (e.g., DH6927-111)" style={{ ...inputStyle, marginBottom: 12 }} />
-              <input type="date" value={formData.bulkDate || ''} onChange={e => setFormData({ ...formData, bulkDate: e.target.value })} placeholder="Date (optional)" style={{ ...inputStyle, marginBottom: 16 }} />
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: c.textMuted, display: 'block', marginBottom: 6 }}>PURCHASE DATE</label>
+                <input type="date" value={formData.bulkDate || ''} onChange={e => setFormData({ ...formData, bulkDate: e.target.value })} style={inputStyle} />
+              </div>
               
               {/* Same cost for all toggle */}
               <div style={{ marginBottom: 16, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
