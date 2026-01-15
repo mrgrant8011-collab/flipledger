@@ -81,7 +81,8 @@ export default async function handler(req, res) {
         const blockText = itemsText.substring(blockStart, blockEnd);
         
         // Find size in this block (get the LAST size mentioned before Style)
-        const sizeRegex = /Size\s+([0-9]+\.?[0-9]*Y?)/gi;
+        // Handles: Size 10, Size 7Y, Size M, Size XL, Size Large, ONE SIZE
+        const sizeRegex = /Size\s+((?:[0-9]+\.?[0-9]*Y?)|(?:X{0,2}S|X{0,3}L|M)|(?:ONE\s*SIZE))/gi;
         let sizeMatch;
         let size = '';
         while ((sizeMatch = sizeRegex.exec(blockText)) !== null) {
@@ -193,22 +194,35 @@ Use the exact product name as shown in the receipt. Just the mapping, nothing el
       // STEP 6: Extract tax from summary section
       // ========================================
       
-      const summaryText = summaryIndex > 0 ? text.substring(summaryIndex) : '';
+      const summaryText = summaryIndex > 0 ? text.substring(summaryIndex) : text;
+      console.log('Summary section length:', summaryText.length);
+      
       let tax = 0;
       
+      // More comprehensive tax patterns
       const taxPatterns = [
         /(?:Estimated\s+)?Tax\s*:?\s*\$([0-9]+\.[0-9]{2})/i,
         /Tax\s+\$([0-9]+\.[0-9]{2})/i,
-        /Sales\s+Tax\s*:?\s*\$([0-9]+\.[0-9]{2})/i
+        /Sales\s+Tax\s*:?\s*\$([0-9]+\.[0-9]{2})/i,
+        /Tax\s*\n?\s*\$([0-9]+\.[0-9]{2})/i,
+        /\bTax\b[^\$]*\$([0-9]+\.[0-9]{2})/i
       ];
       
+      // Search in summary first, then full text
       for (const pattern of taxPatterns) {
-        const taxMatch = summaryText.match(pattern) || text.match(pattern);
+        let taxMatch = summaryText.match(pattern);
+        if (!taxMatch) {
+          taxMatch = text.match(pattern);
+        }
         if (taxMatch) {
           tax = parseFloat(taxMatch[1]);
-          console.log('Found tax:', tax);
+          console.log('Found tax:', tax, 'using pattern:', pattern.toString());
           break;
         }
+      }
+      
+      if (tax === 0) {
+        console.log('No tax found in text');
       }
       
       const subtotal = finalItems.reduce((sum, item) => sum + item.price, 0);
