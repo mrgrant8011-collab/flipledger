@@ -788,7 +788,7 @@ function App() {
   const [selectedPendingItem, setSelectedPendingItem] = useState(null);
   const [showInvCsvImport, setShowInvCsvImport] = useState(false);
   const [selectedInvLookup, setSelectedInvLookup] = useState(new Set());
-  const [nikeReceipt, setNikeReceipt] = useState({ scanning: false, items: [], image: null, date: '', orderNum: '', tax: 0, manualTax: '' });
+  const [nikeReceipt, setNikeReceipt] = useState({ scanning: false, items: [], image: null, date: '', orderNum: '', tax: 0, manualTax: '', editingItem: null });
   const [showNikeExample, setShowNikeExample] = useState(false);
 
   const ITEMS_PER_PAGE = 50;
@@ -1819,6 +1819,7 @@ function App() {
         orderNum: result.orderNumber || '',
         tax: result.tax || 0,
         manualTax: '',
+        editingItem: null,
         error: items.length === 0 ? 'No items found. Make sure this is a Nike order screenshot.' : null
       });
       
@@ -1887,7 +1888,7 @@ function App() {
       }));
       setPurchases(prev => [...prev, ...newItems]);
     }
-    setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '', tax: 0, manualTax: '' });
+    setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '', tax: 0, manualTax: '', editingItem: null });
   };
 
   const exportCSV = (data, filename, headers) => {
@@ -3135,85 +3136,176 @@ function App() {
               <div style={{ padding: 24, background: 'rgba(239,68,68,0.1)', border: `2px solid rgba(239,68,68,0.3)`, borderRadius: 16, textAlign: 'center', marginBottom: 16 }}>
                 <div style={{ fontSize: 36, marginBottom: 12 }}>😕</div>
                 <p style={{ margin: '0 0 12px', color: c.red, fontWeight: 600 }}>{nikeReceipt.error}</p>
-                <button onClick={() => setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '', tax: 0, manualTax: '' })} style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer' }}>Try Again</button>
+                <button onClick={() => setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '', tax: 0, manualTax: '', editingItem: null })} style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer' }}>Try Again</button>
               </div>
             )}
             
             {/* Scanned Items Review */}
             {nikeReceipt.items.length > 0 && (
               <div style={{ background: 'rgba(249,115,22,0.05)', border: `2px solid rgba(249,115,22,0.3)`, borderRadius: 16, overflow: 'hidden' }}>
+                {/* Header */}
                 <div style={{ padding: '16px 20px', background: 'rgba(249,115,22,0.1)', borderBottom: `1px solid rgba(249,115,22,0.2)`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#F97316' }}>📸 Found {nikeReceipt.items.length} Items</h3>
                     {nikeReceipt.date && <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>{nikeReceipt.date} • {nikeReceipt.orderNum || 'Nike Order'}</p>}
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '', tax: 0, manualTax: '' })} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, color: c.textMuted, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
-                    <button onClick={addNikeItemsToInventory} style={{ padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>✓ Add All to Inventory</button>
-                  </div>
+                  <button onClick={() => setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '', tax: 0, manualTax: '', editingItem: null })} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, color: c.textMuted, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
                 </div>
                 
-                <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                {/* TAX INPUT - REQUIRED - AT TOP */}
+                <div style={{ padding: '20px', background: nikeReceipt.tax > 0 ? 'rgba(34,197,94,0.1)' : 'rgba(251,191,36,0.15)', borderBottom: `2px solid ${nikeReceipt.tax > 0 ? 'rgba(34,197,94,0.3)' : 'rgba(251,191,36,0.4)'}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12 }}>
+                    <span style={{ fontSize: 20 }}>{nikeReceipt.tax > 0 ? '✅' : '💰'}</span>
+                    <div style={{ flex: 1 }}>
+                      <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: nikeReceipt.tax > 0 ? c.green : c.gold }}>
+                        {nikeReceipt.tax > 0 ? `Tax Detected: ${fmt(nikeReceipt.tax)}` : 'Enter Sales Tax'}
+                      </h4>
+                      <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>
+                        {nikeReceipt.tax > 0 ? 'Tax will be distributed across all items' : 'Enter the tax from your receipt (or $0 if none)'}
+                      </p>
+                    </div>
+                  </div>
+                  {nikeReceipt.tax === 0 && (
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                      <span style={{ fontSize: 18, color: c.gold }}>$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={nikeReceipt.manualTax}
+                        onChange={(e) => setNikeReceipt(prev => ({ ...prev, manualTax: e.target.value }))}
+                        style={{ flex: 1, padding: '14px 16px', background: 'rgba(0,0,0,0.4)', border: `2px solid rgba(251,191,36,0.5)`, borderRadius: 10, color: '#fff', fontSize: 18, fontWeight: 700 }}
+                      />
+                      <button 
+                        onClick={() => setNikeReceipt(prev => ({ ...prev, manualTax: '0' }))}
+                        style={{ padding: '14px 20px', background: 'rgba(255,255,255,0.1)', border: `1px solid ${c.border}`, borderRadius: 10, color: c.textMuted, fontSize: 13, cursor: 'pointer' }}
+                      >No Tax</button>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Items List */}
+                <div style={{ maxHeight: 350, overflowY: 'auto' }}>
                   {nikeReceipt.items.map((item, idx) => (
-                    <div key={idx} style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 16 }}>
-                      <div style={{ width: 36, height: 36, background: 'rgba(249,115,22,0.2)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: '#F97316' }}>{idx + 1}</div>
-                      <div style={{ flex: 1 }}>
-                        <h4 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{item.name}</h4>
-                        <div style={{ display: 'flex', gap: 12, fontSize: 12, color: c.textMuted }}>
+                    <div key={idx} style={{ padding: '14px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ width: 32, height: 32, background: 'rgba(249,115,22,0.2)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#F97316' }}>{idx + 1}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <h4 style={{ margin: '0 0 2px', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</h4>
+                        <div style={{ display: 'flex', gap: 8, fontSize: 11, color: c.textMuted }}>
                           <span style={{ color: '#F97316', fontWeight: 600 }}>{item.sku}</span>
                           {item.size && <span>Size {item.size}</span>}
                         </div>
                       </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: c.green }}>{fmt(item.price)}</div>
-                        <div style={{ fontSize: 10, color: c.textDim }}>Cost</div>
-                      </div>
-                      {/* Edit button - opens inline edit */}
+                      <div style={{ fontSize: 16, fontWeight: 800, color: c.green }}>{fmt(item.price)}</div>
                       <button
-                        onClick={() => {
-                          const newValues = window.prompt(
-                            `Edit Item ${idx + 1}\n\nEnter: SKU, Size, Price (comma separated)\nExample: BQ3204-002, 10.5, 31.49`,
-                            `${item.sku}, ${item.size}, ${item.price}`
-                          );
-                          if (newValues) {
-                            const parts = newValues.split(',').map(p => p.trim());
-                            if (parts.length >= 1) {
-                              setNikeReceipt(prev => ({
-                                ...prev,
-                                items: prev.items.map((it, i) => i === idx ? {
-                                  ...it,
-                                  sku: parts[0] || it.sku,
-                                  size: parts[1] !== undefined ? parts[1] : it.size,
-                                  price: parts[2] !== undefined ? (parseFloat(parts[2]) || it.price) : it.price
-                                } : it)
-                              }));
-                            }
-                          }
-                        }}
-                        style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: c.textMuted, fontSize: 11, cursor: 'pointer' }}
-                      >✏️ Edit</button>
+                        onClick={() => setNikeReceipt(prev => ({ ...prev, editingItem: idx }))}
+                        style={{ padding: '6px 10px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: c.textMuted, fontSize: 10, cursor: 'pointer' }}
+                      >✏️</button>
                     </div>
                   ))}
                 </div>
                 
-                {/* Tax Input - only shows when tax not detected */}
-                {nikeReceipt.tax === 0 && (
-                  <div style={{ padding: '16px 20px', background: 'rgba(251,191,36,0.1)', borderBottom: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ fontSize: 13, color: c.gold }}>⚠️ Tax not detected.</span>
+                {/* Summary & Add Button */}
+                <div style={{ padding: '20px', background: 'rgba(0,0,0,0.3)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 13, color: c.textMuted }}>
+                    <span>Subtotal ({nikeReceipt.items.length} items)</span>
+                    <span>{fmt(nikeReceipt.items.reduce((sum, item) => sum + item.price, 0))}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, fontSize: 13, color: c.gold }}>
+                    <span>Tax</span>
+                    <span>{fmt(nikeReceipt.tax > 0 ? nikeReceipt.tax : (parseFloat(nikeReceipt.manualTax) || 0))}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 16, borderTop: `1px solid ${c.border}` }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 4 }}>TOTAL COST</div>
+                      <div style={{ fontSize: 28, fontWeight: 800, color: '#fff' }}>{fmt(nikeReceipt.items.reduce((sum, item) => sum + item.price, 0) + (nikeReceipt.tax > 0 ? nikeReceipt.tax : (parseFloat(nikeReceipt.manualTax) || 0)))}</div>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        if (nikeReceipt.tax === 0 && nikeReceipt.manualTax === '') {
+                          alert('Please enter the tax amount from your receipt.\n\nEnter $0 if there was no tax.');
+                          return;
+                        }
+                        addNikeItemsToInventory();
+                      }}
+                      style={{ padding: '16px 32px', ...btnPrimary, fontSize: 15, fontWeight: 700 }}
+                    >✓ Add All to Inventory</button>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* EDIT ITEM MODAL */}
+            {nikeReceipt.editingItem !== undefined && nikeReceipt.editingItem !== null && (
+              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+                <div style={{ background: c.card, borderRadius: 16, padding: 24, width: '90%', maxWidth: 400, border: `1px solid ${c.border}` }}>
+                  <h3 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 700, color: '#F97316' }}>✏️ Edit Item {nikeReceipt.editingItem + 1}</h3>
+                  
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontSize: 12, color: c.textMuted, marginBottom: 6 }}>PRODUCT NAME</label>
                     <input
                       type="text"
-                      placeholder="Enter tax amount (e.g. 95.79)"
-                      value={nikeReceipt.manualTax}
-                      onChange={(e) => setNikeReceipt(prev => ({ ...prev, manualTax: e.target.value }))}
-                      style={{ flex: 1, padding: '10px 14px', background: 'rgba(0,0,0,0.3)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#fff', fontSize: 14 }}
+                      value={nikeReceipt.items[nikeReceipt.editingItem]?.name || ''}
+                      onChange={(e) => setNikeReceipt(prev => ({
+                        ...prev,
+                        items: prev.items.map((it, i) => i === prev.editingItem ? { ...it, name: e.target.value } : it)
+                      }))}
+                      style={{ width: '100%', padding: '12px 14px', background: 'rgba(0,0,0,0.3)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#fff', fontSize: 14, boxSizing: 'border-box' }}
                     />
-                    <span style={{ fontSize: 12, color: c.textMuted }}>(optional)</span>
                   </div>
-                )}
-                
-                <div style={{ padding: '16px 20px', background: 'rgba(0,0,0,0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 13, color: c.textMuted }}>Total Cost</span>
-                  <span style={{ fontSize: 20, fontWeight: 800, color: '#fff' }}>{fmt(nikeReceipt.items.reduce((sum, item) => sum + item.price, 0) + (parseFloat(nikeReceipt.manualTax) || 0))}</span>
+                  
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontSize: 12, color: c.textMuted, marginBottom: 6 }}>STYLE CODE (SKU)</label>
+                    <input
+                      type="text"
+                      value={nikeReceipt.items[nikeReceipt.editingItem]?.sku || ''}
+                      onChange={(e) => setNikeReceipt(prev => ({
+                        ...prev,
+                        items: prev.items.map((it, i) => i === prev.editingItem ? { ...it, sku: e.target.value } : it)
+                      }))}
+                      style={{ width: '100%', padding: '12px 14px', background: 'rgba(0,0,0,0.3)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#F97316', fontSize: 14, fontWeight: 600, boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, color: c.textMuted, marginBottom: 6 }}>SIZE</label>
+                      <input
+                        type="text"
+                        value={nikeReceipt.items[nikeReceipt.editingItem]?.size || ''}
+                        onChange={(e) => setNikeReceipt(prev => ({
+                          ...prev,
+                          items: prev.items.map((it, i) => i === prev.editingItem ? { ...it, size: e.target.value } : it)
+                        }))}
+                        style={{ width: '100%', padding: '12px 14px', background: 'rgba(0,0,0,0.3)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#fff', fontSize: 14, boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, color: c.textMuted, marginBottom: 6 }}>PRICE ($)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={nikeReceipt.items[nikeReceipt.editingItem]?.price || ''}
+                        onChange={(e) => setNikeReceipt(prev => ({
+                          ...prev,
+                          items: prev.items.map((it, i) => i === prev.editingItem ? { ...it, price: parseFloat(e.target.value) || 0 } : it)
+                        }))}
+                        style={{ width: '100%', padding: '12px 14px', background: 'rgba(0,0,0,0.3)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.green, fontSize: 14, fontWeight: 700, boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <button
+                      onClick={() => setNikeReceipt(prev => ({ ...prev, editingItem: null }))}
+                      style={{ flex: 1, padding: '14px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 10, color: c.textMuted, fontSize: 14, cursor: 'pointer' }}
+                    >Cancel</button>
+                    <button
+                      onClick={() => setNikeReceipt(prev => ({ ...prev, editingItem: null }))}
+                      style={{ flex: 1, padding: '14px', ...btnPrimary, fontSize: 14 }}
+                    >Save Changes</button>
+                  </div>
                 </div>
               </div>
             )}
