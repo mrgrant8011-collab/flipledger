@@ -39,131 +39,103 @@ export default async function handler(req, res) {
       console.log('Items text length:', itemsText.length);
       
       // ========================================
-      // STEP 2: Multi-pattern item extraction
-      // Use multiple methods and cross-validate
+      // STEP 2: Find all Style codes and their positions
+      // Each Style code marks the END of an item block
       // ========================================
       
-      // METHOD 1: Find all Style codes
-      const stylePattern = /Style\s*:?\s*([A-Z]{1,3}[A-Z0-9]{2,7}[\s-]*[0-9]{3})/gi;
+      const stylePattern = /Style\s*:?\s*([A-Z0-9]{2,10}[\s-]*[0-9]{3})/gi;
       const styleMatches = [];
       let match;
+      
       while ((match = stylePattern.exec(itemsText)) !== null) {
+        // Normalize SKU format
         let sku = match[1].toUpperCase().replace(/\s+/g, '');
-        // Ensure proper dash format
         if (!sku.includes('-')) {
           sku = sku.slice(0, -3) + '-' + sku.slice(-3);
         }
         sku = sku.replace(/--+/g, '-');
+        
         styleMatches.push({
           sku: sku,
           index: match.index,
-          fullMatch: match[0]
+          endIndex: match.index + match[0].length
         });
       }
-      console.log('Method 1 - Style codes found:', styleMatches.length);
       
-      // METHOD 2: Count Size patterns (Size 8, Size 11.5, Size 6Y, Size 4.5Y, Size 5.5Y, etc)
-      const sizeMatches = itemsText.match(/Size\s+([0-9]+\.?[0-9]*Y?)\b/gi) || [];
-      console.log('Method 2 - Size patterns found:', sizeMatches.length);
-      
-      // METHOD 3: Count sale price patterns ($48.99, $83.99 - typically ends in .99 or .00)
-      // Look for price followed by strikethrough price: $48.99 $120.00
-      const pricePairMatches = itemsText.match(/\$[0-9]+\.[0-9]{2}\s+\$[0-9]+\.[0-9]{2}/g) || [];
-      console.log('Method 3 - Price pairs found:', pricePairMatches.length);
-      
-      // METHOD 4: Count product name occurrences
-      const jordanCount = (itemsText.match(/Air Jordan/gi) || []).length;
-      const maxCount = (itemsText.match(/Air Max/gi) || []).length;
-      const dunkCount = (itemsText.match(/Dunk/gi) || []).length;
-      const productNameCount = jordanCount + maxCount + dunkCount;
-      console.log('Method 4 - Product names found:', productNameCount, `(Jordan:${jordanCount}, Max:${maxCount}, Dunk:${dunkCount})`);
-      
-      // Use the MAXIMUM count from all methods as our target
-      const targetCount = Math.max(
-        styleMatches.length,
-        sizeMatches.length,
-        pricePairMatches.length,
-        productNameCount
-      );
-      console.log('Target item count:', targetCount);
-      
-      if (targetCount === 0) {
-        return res.status(400).json({ 
-          error: 'invalid', 
-          message: 'Could not find Nike products. Make sure the screenshot shows product details.' 
-        });
-      }
+      console.log('Found', styleMatches.length, 'style codes');
       
       // ========================================
-      // STEP 3: Extract item details using the most reliable method
+      // STEP 3: For each Style code, extract the item block BEFORE it
+      // Look backwards from Style code to find size and price
       // ========================================
       
       const items = [];
       
-      // Parse sizes from OCR (including youth sizes like 4.5Y, 5.5Y, 6Y, 6.5Y, etc)
-      const sizeRegex = /Size\s+([0-9]+\.?[0-9]*Y?)\b/gi;
-      const sizes = [];
-      let sizeMatch;
-      while ((sizeMatch = sizeRegex.exec(itemsText)) !== null) {
-        sizes.push(sizeMatch[1]);
-      }
-      
-      // Parse prices (sale prices - the lower ones)
-      const priceRegex = /\$([0-9]+\.[0-9]{2})\s+\$([0-9]+\.[0-9]{2})/g;
-      const prices = [];
-      let priceMatch;
-      while ((priceMatch = priceRegex.exec(itemsText)) !== null) {
-        // First price is sale price (lower), second is original (higher)
-        const salePrice = parseFloat(priceMatch[1]);
-        const origPrice = parseFloat(priceMatch[2]);
-        prices.push(Math.min(salePrice, origPrice));
-      }
-      
-      console.log('Parsed sizes:', sizes.length, '| Parsed prices:', prices.length);
-      
-      // Build items array - use style matches as primary, fill in sizes/prices
-      if (styleMatches.length >= targetCount - 1) {
-        // Style codes are reliable, use them
-        for (let i = 0; i < styleMatches.length; i++) {
-          items.push({
-            sku: styleMatches[i].sku,
-            size: sizes[i] || '',
-            price: prices[i] || 0,
-            name: ''
-          });
+      for (let i = 0; i < styleMatches.length; i++) {
+        const styleMatch = styleMatches[i];
+        
+        // Get the text block for this item
+        // From the end of the previous Style code to the end of this Style code
+        const blockStart = i > 0 ? styleMatches[i - 1].endIndex : 0;
+        const blockEnd = styleMatch.endIndex;
+        const blockText = itemsText.substring(blockStart, blockEnd);
+        
+        // Find size in this block (get the LAST size mentioned before Style)
+        const sizeRegex = /Size\s+([0-9]+\.?[0-9]*Y?)/gi;
+        let sizeMatch;
+        let size = '';
+        while ((sizeMatch = sizeRegex.exec(blockText)) !== null) {
+          size = sizeMatch[1];
         }
         
-        // If we're short by 1-2 items, add them from sizes/prices
-        while (items.length < targetCount && items.length < sizes.length) {
-          const lastSku = items.length > 0 ? items[items.length - 1].sku : 'UNKNOWN';
-          items.push({
-            sku: lastSku, // Use last known SKU as best guess
-            size: sizes[items.length] || '',
-            price: prices[items.length] || 0,
-            name: ''
-          });
+        // Find price pair in this block ($29.98 $125.00)
+        const priceRegex = /\$([0-9]+\.[0-9]{2})\s+\$([0-9]+\.[0-9]{2})/g;
+        let priceMatch;
+        let price = 0;
+        while ((priceMatch = priceRegex.exec(blockText)) !== null) {
+          // Use the lower price (sale price)
+          const p1 = parseFloat(priceMatch[1]);
+          const p2 = parseFloat(priceMatch[2]);
+          price = Math.min(p1, p2);
         }
-      } else {
-        // Style codes unreliable, use sizes as primary count
-        for (let i = 0; i < sizes.length; i++) {
-          // Try to match size to nearest style code
-          const sku = styleMatches[i]?.sku || styleMatches[styleMatches.length - 1]?.sku || 'UNKNOWN';
-          items.push({
-            sku: sku,
-            size: sizes[i],
-            price: prices[i] || 0,
-            name: ''
-          });
+        
+        // If no price pair found, look for single price
+        if (price === 0) {
+          const singlePriceRegex = /\$([0-9]+\.[0-9]{2})/g;
+          const prices = [];
+          let sp;
+          while ((sp = singlePriceRegex.exec(blockText)) !== null) {
+            prices.push(parseFloat(sp[1]));
+          }
+          if (prices.length > 0) {
+            price = Math.min(...prices);
+          }
         }
+        
+        console.log(`Item ${i + 1}: SKU=${styleMatch.sku}, Size=${size}, Price=${price}`);
+        
+        items.push({
+          sku: styleMatch.sku,
+          size: size,
+          price: price,
+          name: ''
+        });
       }
       
-      console.log('Built items array:', items.length);
+      console.log('Extracted', items.length, 'items');
+      
+      if (items.length === 0) {
+        return res.status(400).json({ 
+          error: 'invalid', 
+          message: 'Could not find Nike products. Make sure the screenshot shows Style codes.' 
+        });
+      }
       
       // ========================================
-      // STEP 4: Use Claude ONLY to get product names
+      // STEP 4: Use Claude to get product names for each unique SKU
       // ========================================
       
-      const uniqueSkus = [...new Set(items.map(item => item.sku).filter(s => s !== 'UNKNOWN'))];
+      const uniqueSkus = [...new Set(items.map(item => item.sku))];
       console.log('Unique SKUs:', uniqueSkus);
       
       const anthropic = new Anthropic({ apiKey });
@@ -174,20 +146,20 @@ export default async function handler(req, res) {
         messages: [
           {
             role: 'user',
-            content: `Given this Nike receipt text, tell me the product name for each Style code.
+            content: `Given this Nike receipt text, tell me the EXACT product name for each Style code.
 
 Receipt text:
-${itemsText.substring(0, 3000)}
+${itemsText.substring(0, 4000)}
 
 Style codes to identify: ${uniqueSkus.join(', ')}
 
-Return ONLY a JSON object mapping style code to product name:
+Return ONLY a JSON object mapping style code to the exact product name from the receipt:
 {
-  "DC0774-101": "Air Jordan 1 Low",
-  "AH8050-005": "Nike Air Max 270"
+  "CW2289-001": "Nike Air Force 1 Mid '07",
+  "924453-004": "Nike Air VaporMax Plus"
 }
 
-Just the mapping, nothing else.`
+Use the exact product name as shown in the receipt. Just the mapping, nothing else.`
           }
         ],
       });
@@ -204,8 +176,10 @@ Just the mapping, nothing else.`
         console.log('Could not parse SKU names, using defaults');
       }
       
+      console.log('SKU to Name mapping:', skuToName);
+      
       // ========================================
-      // STEP 5: Build final items with names
+      // STEP 5: Build final items with correct names
       // ========================================
       
       const finalItems = items.map(item => ({
@@ -240,10 +214,10 @@ Just the mapping, nothing else.`
       const subtotal = finalItems.reduce((sum, item) => sum + item.price, 0);
       let total = subtotal + tax;
       
-      const totalPattern = /Total\s*:?\s*\$([0-9]+\.[0-9]{2})/i;
+      const totalPattern = /Total\s*:?\s*\$([0-9,]+\.[0-9]{2})/i;
       const totalMatch = summaryText.match(totalPattern) || text.match(totalPattern);
       if (totalMatch) {
-        total = parseFloat(totalMatch[1]);
+        total = parseFloat(totalMatch[1].replace(/,/g, ''));
         if (tax === 0 && total > subtotal) {
           tax = Math.round((total - subtotal) * 100) / 100;
           console.log('Calculated tax:', tax);
@@ -258,16 +232,7 @@ Just the mapping, nothing else.`
         items: finalItems,
         subtotal: Math.round(subtotal * 100) / 100,
         tax: tax,
-        total: Math.round(total * 100) / 100,
-        _debug: {
-          methods: {
-            styleCodes: styleMatches.length,
-            sizes: sizeMatches.length,
-            pricePairs: pricePairMatches.length,
-            productNames: productNameCount
-          },
-          targetCount: targetCount
-        }
+        total: Math.round(total * 100) / 100
       });
       
     } else {
