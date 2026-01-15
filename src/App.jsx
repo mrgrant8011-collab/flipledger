@@ -3509,7 +3509,7 @@ function App() {
               <option value="sold">Sold ({purchases.filter(p => p.sold).length})</option>
             </select>
             <button onClick={() => setShowInvCsvImport(true)} style={{ padding: '14px 20px', background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 12, color: c.gold, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>📥 IMPORT CSV</button>
-            <button onClick={() => { setFormData(prev => ({ ...prev, bulkRows: [{ qty: 1, size: '', cost: '' }], bulkSameCost: false, bulkUniformCost: '' })); setModal('bulkAdd'); }} style={{ padding: '14px 24px', ...btnPrimary, fontSize: 13 }}>+ BULK ADD</button>
+            <button onClick={() => { setFormData(prev => ({ ...prev, bulkRows: [{ qty: '', size: '', cost: '' }], bulkSameCost: false, bulkUniformCost: '', bulkDate: '' })); setModal('bulkAdd'); }} style={{ padding: '14px 24px', ...btnPrimary, fontSize: 13 }}>+ BULK ADD</button>
             <button onClick={() => { setFormData({}); setModal('purchase'); }} style={{ padding: '14px 20px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>+ SINGLE</button>
           </div>
 
@@ -5524,7 +5524,7 @@ Let me know if you need anything else.`;
             {modal === 'bulkAdd' && <>
               <input value={formData.bulkName || ''} onChange={e => setFormData({ ...formData, bulkName: e.target.value })} placeholder="Product name *" style={{ ...inputStyle, marginBottom: 12 }} />
               <input value={formData.bulkSku || ''} onChange={e => setFormData({ ...formData, bulkSku: e.target.value })} placeholder="Style Code (e.g., DH6927-111)" style={{ ...inputStyle, marginBottom: 12 }} />
-              <input type="date" value={formData.bulkDate || new Date().toISOString().split('T')[0]} onChange={e => setFormData({ ...formData, bulkDate: e.target.value })} style={{ ...inputStyle, marginBottom: 16 }} />
+              <input type="date" value={formData.bulkDate || ''} onChange={e => setFormData({ ...formData, bulkDate: e.target.value })} placeholder="Date (optional)" style={{ ...inputStyle, marginBottom: 16 }} />
               
               {/* Same cost for all toggle */}
               <div style={{ marginBottom: 16, padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -5544,7 +5544,7 @@ Let me know if you need anything else.`;
                     value={formData.bulkUniformCost || ''} 
                     onChange={e => setFormData({ ...formData, bulkUniformCost: e.target.value })}
                     placeholder="Cost" 
-                    style={{ ...inputStyle, width: 100, padding: 8, textAlign: 'center' }} 
+                    style={{ ...inputStyle, width: 100, padding: 8, textAlign: 'center', MozAppearance: 'textfield', WebkitAppearance: 'none' }} 
                   />
                 )}
               </div>
@@ -5556,23 +5556,24 @@ Let me know if you need anything else.`;
                   {!formData.bulkSameCost && <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: c.textMuted }}>COST</span>}
                   <span style={{ width: 32 }}></span>
                 </div>
-                {(formData.bulkRows || [{ qty: 1, size: '', cost: '' }]).map((row, i) => (
+                {(formData.bulkRows || [{ qty: '', size: '', cost: '' }]).map((row, i) => (
                   <div key={i} style={{ display: 'flex', gap: 12, marginBottom: 8 }}>
                     <input 
-                      type="number"
-                      min="1"
-                      value={row.qty || 1} 
+                      type="text"
+                      inputMode="numeric"
+                      value={row.qty || ''} 
                       onChange={e => {
-                        const newRows = [...(formData.bulkRows || [{ qty: 1, size: '', cost: '' }])];
-                        newRows[i].qty = parseInt(e.target.value) || 1;
+                        const newRows = [...(formData.bulkRows || [{ qty: '', size: '', cost: '' }])];
+                        newRows[i].qty = e.target.value.replace(/[^0-9]/g, '');
                         setFormData({ ...formData, bulkRows: newRows });
                       }}
+                      placeholder="1"
                       style={{ ...inputStyle, width: 60, padding: 10, textAlign: 'center' }} 
                     />
                     <input 
                       value={row.size} 
                       onChange={e => {
-                        const newRows = [...(formData.bulkRows || [{ qty: 1, size: '', cost: '' }])];
+                        const newRows = [...(formData.bulkRows || [{ qty: '', size: '', cost: '' }])];
                         newRows[i].size = e.target.value;
                         setFormData({ ...formData, bulkRows: newRows });
                       }}
@@ -5581,10 +5582,11 @@ Let me know if you need anything else.`;
                     />
                     {!formData.bulkSameCost && (
                       <input 
-                        type="number"
+                        type="text"
+                        inputMode="decimal"
                         value={row.cost} 
                         onChange={e => {
-                          const newRows = [...(formData.bulkRows || [{ qty: 1, size: '', cost: '' }])];
+                          const newRows = [...(formData.bulkRows || [{ qty: '', size: '', cost: '' }])];
                           newRows[i].cost = e.target.value;
                           setFormData({ ...formData, bulkRows: newRows });
                         }}
@@ -5595,7 +5597,7 @@ Let me know if you need anything else.`;
                     <button 
                       onClick={() => {
                         const newRows = (formData.bulkRows || []).filter((_, idx) => idx !== i);
-                        setFormData({ ...formData, bulkRows: newRows.length ? newRows : [{ qty: 1, size: '', cost: '' }] });
+                        setFormData({ ...formData, bulkRows: newRows.length ? newRows : [{ qty: '', size: '', cost: '' }] });
                       }}
                       style={{ width: 32, background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 8, color: c.red, cursor: 'pointer', fontSize: 16 }}
                     >×</button>
@@ -5603,7 +5605,7 @@ Let me know if you need anything else.`;
                 ))}
                 <button 
                   onClick={() => {
-                    const newRows = [...(formData.bulkRows || [{ qty: 1, size: '', cost: '' }]), { qty: 1, size: '', cost: '' }];
+                    const newRows = [...(formData.bulkRows || [{ qty: '', size: '', cost: '' }]), { qty: '', size: '', cost: '' }];
                     setFormData({ ...formData, bulkRows: newRows });
                   }}
                   style={{ width: '100%', padding: 10, background: 'rgba(16,185,129,0.1)', border: `1px dashed rgba(16,185,129,0.3)`, borderRadius: 8, color: c.green, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
@@ -5612,13 +5614,13 @@ Let me know if you need anything else.`;
               
               {/* Running total */}
               {(() => {
-                const rows = formData.bulkRows || [{ qty: 1, size: '', cost: '' }];
+                const rows = formData.bulkRows || [{ qty: '', size: '', cost: '' }];
                 const uniformCost = parseFloat(formData.bulkUniformCost) || 0;
                 const useSameCost = formData.bulkSameCost;
                 let totalItems = 0;
                 let totalCost = 0;
                 rows.forEach(r => {
-                  if (r.size) {
+                  if (r.size && (useSameCost ? uniformCost > 0 : parseFloat(r.cost) > 0)) {
                     const qty = parseInt(r.qty) || 1;
                     const cost = useSameCost ? uniformCost : (parseFloat(r.cost) || 0);
                     totalItems += qty;
@@ -5884,7 +5886,18 @@ Let me know if you need anything else.`;
               else if (modal === 'storage') addStorage(); 
               else if (modal === 'mileage') addMileage(); 
             }} style={{ flex: 1, padding: 14, ...btnPrimary, fontSize: 13 }}>
-              {modal === 'purchase' ? 'ADD ITEM' : modal === 'bulkAdd' ? `ADD ${(formData.bulkRows || []).filter(r => r.size && r.cost).length} ITEMS` : modal === 'sale' ? 'RECORD 💰' : modal === 'editSale' ? 'SAVE CHANGES' : modal === 'editInventory' ? 'SAVE CHANGES' : modal === 'editExpense' ? 'SAVE CHANGES' : modal === 'mileage' ? 'LOG TRIP' : 'ADD'}
+              {modal === 'purchase' ? 'ADD ITEM' : modal === 'bulkAdd' ? (() => {
+                const rows = formData.bulkRows || [];
+                const useSameCost = formData.bulkSameCost;
+                const uniformCost = parseFloat(formData.bulkUniformCost) || 0;
+                let count = 0;
+                rows.forEach(r => {
+                  if (r.size && (useSameCost ? uniformCost > 0 : parseFloat(r.cost) > 0)) {
+                    count += parseInt(r.qty) || 1;
+                  }
+                });
+                return `ADD ${count} ITEM${count !== 1 ? 'S' : ''}`;
+              })() : modal === 'sale' ? 'RECORD 💰' : modal === 'editSale' ? 'SAVE CHANGES' : modal === 'editInventory' ? 'SAVE CHANGES' : modal === 'editExpense' ? 'SAVE CHANGES' : modal === 'mileage' ? 'LOG TRIP' : 'ADD'}
             </button>
           </div>
         </div>
