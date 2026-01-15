@@ -1752,32 +1752,35 @@ function App() {
           const img = new Image();
           img.onload = () => {
             // Check if resizing needed (max 7000px to be safe)
-            const maxDim = 7000;
+            const maxDim = 7500;
             if (img.width <= maxDim && img.height <= maxDim) {
               resolve(e.target.result);
               return;
             }
             
-            // Resize the image
+            // Resize the image - keep it as large as possible for readability
             const canvas = document.createElement('canvas');
             let width = img.width;
             let height = img.height;
             
-            if (width > height && width > maxDim) {
-              height = Math.round((height * maxDim) / width);
-              width = maxDim;
-            } else if (height > maxDim) {
-              width = Math.round((width * maxDim) / height);
-              height = maxDim;
-            }
+            // Scale down proportionally
+            const scale = maxDim / Math.max(width, height);
+            width = Math.round(width * scale);
+            height = Math.round(height * scale);
             
             canvas.width = width;
             canvas.height = height;
             const ctx = canvas.getContext('2d');
+            
+            // Use high quality rendering
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, 0, 0, width, height);
             
             console.log('Resized image from', img.width, 'x', img.height, 'to', width, 'x', height);
-            resolve(canvas.toDataURL('image/jpeg', 0.9));
+            // Use PNG for better text clarity, or high quality JPEG
+            const mimeType = imageFile.type === 'image/png' ? 'image/png' : 'image/jpeg';
+            resolve(canvas.toDataURL(mimeType, 0.95));
           };
           img.onerror = () => reject(new Error('Failed to load image'));
           img.src = e.target.result;

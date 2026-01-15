@@ -58,42 +58,34 @@ export default async function handler(req, res) {
             },
             {
               type: 'text',
-              text: `Extract all Nike products from this order screenshot.
+              text: `This is a Nike order screenshot. Extract ALL products you can see.
 
-Look for:
-- Product names (Air Jordan, Nike Air Max, Dunk, Air Force, etc.)
-- Style Codes (format like DC0774-101, AH8050-005, FJ4207-100)
-- Sizes (numbers like 6, 10.5, 11, etc.)
-- Prices (the sale/paid price, not crossed-out original price)
+For each item, find:
+- Product name (e.g., Air Jordan 1 Low, Nike Air Max 270, Dunk Low)
+- Style Code (e.g., DC0774-101, AH8050-005) - usually starts with letters, has numbers, dash, then 3 digits
+- Size (e.g., 6, 10.5, 11, M, W)
+- Price (use the lower/sale price if two prices shown)
 
-Return ONLY this JSON format with ALL items found:
+Return JSON format:
 {
   "items": [
-    {
-      "name": "Product Name",
-      "sku": "XX0000-000",
-      "size": "10",
-      "price": 99.99
-    }
+    {"name": "Product Name", "sku": "XX0000-000", "size": "10", "price": 99.99}
   ],
-  "orderDate": "2026-01-14",
-  "orderNumber": "C12345678",
-  "subtotal": 199.98,
-  "tax": 16.00,
-  "total": 215.98
+  "orderDate": "",
+  "orderNumber": "",
+  "tax": 0,
+  "total": 0
 }
 
-RULES:
-1. Extract EVERY item - there may be 10, 20, or more items
-2. Use the SALE price (lower price), not original/crossed-out price
-3. If size not visible for an item, use ""
-4. SKU format: letters + numbers + dash + 3 digits (e.g., DC0774-101)
-5. If tax shown separately, include it in "tax" field, NOT in item prices
-6. If orderDate or orderNumber not visible, use ""
-7. Return ONLY valid JSON, no other text
+IMPORTANT:
+- Extract EVERY visible item, even if some details are hard to read
+- If you can see a product image and price but style code is blurry, still include it with your best guess at the SKU
+- Size is often shown as "Size 10" or just a number near the product
+- There may be 10, 20, or 30+ items - get them ALL
+- Do your best even if image quality is not perfect
 
-If you cannot find ANY Nike products with style codes, return:
-{"error": "invalid", "message": "Could not find Nike products with style codes. Please use a Nike App or Nike.com order screenshot."}`
+Only return the error JSON if you truly cannot see ANY products at all:
+{"error": "invalid", "message": "Could not find Nike products. Please use a Nike App or Nike.com order screenshot."}`
             }
           ],
         }
