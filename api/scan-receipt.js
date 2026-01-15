@@ -194,35 +194,41 @@ Use the exact product name as shown in the receipt. Just the mapping, nothing el
       // STEP 6: Extract tax from summary section
       // ========================================
       
+      // Search in multiple places - summary section, full text, and last portion of text
       const summaryText = summaryIndex > 0 ? text.substring(summaryIndex) : text;
+      const lastPortion = text.slice(-800); // Last 800 chars likely has summary
+      
       console.log('Summary section length:', summaryText.length);
+      console.log('Last portion preview:', lastPortion.substring(0, 200));
       
       let tax = 0;
       
       // More comprehensive tax patterns
       const taxPatterns = [
+        /Tax\s*\$([0-9]+\.[0-9]{2})/i,
         /(?:Estimated\s+)?Tax\s*:?\s*\$([0-9]+\.[0-9]{2})/i,
-        /Tax\s+\$([0-9]+\.[0-9]{2})/i,
         /Sales\s+Tax\s*:?\s*\$([0-9]+\.[0-9]{2})/i,
-        /Tax\s*\n?\s*\$([0-9]+\.[0-9]{2})/i,
+        /Tax\s*\n\s*\$([0-9]+\.[0-9]{2})/i,
         /\bTax\b[^\$]*\$([0-9]+\.[0-9]{2})/i
       ];
       
-      // Search in summary first, then full text
-      for (const pattern of taxPatterns) {
-        let taxMatch = summaryText.match(pattern);
-        if (!taxMatch) {
-          taxMatch = text.match(pattern);
-        }
-        if (taxMatch) {
-          tax = parseFloat(taxMatch[1]);
-          console.log('Found tax:', tax, 'using pattern:', pattern.toString());
-          break;
+      // Search in: 1) last portion, 2) summary section, 3) full text
+      const searchTargets = [lastPortion, summaryText, text];
+      
+      for (const target of searchTargets) {
+        if (tax > 0) break;
+        for (const pattern of taxPatterns) {
+          const taxMatch = target.match(pattern);
+          if (taxMatch) {
+            tax = parseFloat(taxMatch[1]);
+            console.log('Found tax:', tax, 'in target length:', target.length);
+            break;
+          }
         }
       }
       
       if (tax === 0) {
-        console.log('No tax found in text');
+        console.log('No tax found in any section');
       }
       
       const subtotal = finalItems.reduce((sum, item) => sum + item.price, 0);
