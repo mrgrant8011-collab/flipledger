@@ -58,25 +58,15 @@ export default async function handler(req, res) {
             },
             {
               type: 'text',
-              text: `You are analyzing a receipt/order screenshot. Your job is to extract product information.
+              text: `Extract all Nike products from this order screenshot.
 
-FIRST, determine if this is a valid Nike order screenshot:
-- Must be from Nike App OR Nike.com order history
-- Must show Nike products with Style Codes (format: XX####-### like DC0774-101 or AH8050-005)
-- Must show Size and Price for each item
-- Paper receipts from Nike Factory/Outlet stores are NOT valid (they don't have style codes)
-- Receipts from other stores (Foot Locker, Champs, Dick's, Finish Line, etc.) are NOT valid
+Look for:
+- Product names (Air Jordan, Nike Air Max, Dunk, Air Force, etc.)
+- Style Codes (format like DC0774-101, AH8050-005, FJ4207-100)
+- Sizes (numbers like 6, 10.5, 11, etc.)
+- Prices (the sale/paid price, not crossed-out original price)
 
-If this is NOT a valid Nike digital order, respond with ONLY this JSON:
-{"error": "invalid", "message": "REASON_HERE"}
-
-Use these specific messages:
-- Other store: "This appears to be from another store. Only Nike App or Nike.com orders are supported."
-- Paper receipt: "This looks like a paper receipt. Paper receipts don't include Style Codes. Please use Nike App or Nike.com order history."
-- Not Nike: "This doesn't appear to be a Nike order. Please screenshot your order from the Nike App or Nike.com."
-- Missing info: "Could not find Style Codes, Sizes, or Prices. Please make sure the full order details are visible."
-
-If this IS a valid Nike digital order, extract ALL items and respond with ONLY this JSON format:
+Return ONLY this JSON format with ALL items found:
 {
   "items": [
     {
@@ -93,15 +83,17 @@ If this IS a valid Nike digital order, extract ALL items and respond with ONLY t
   "total": 215.98
 }
 
-IMPORTANT RULES:
-1. Extract EVERY item visible - scroll screenshots may have 10+ items
-2. Price should be the SALE price (what customer paid), not original/crossed-out price
-3. Size must be included - if you can't find size for an item, use empty string ""
-4. SKU/Style Code is REQUIRED - format is letters + numbers + dash + 3 numbers (e.g., DC0774-101)
-5. If tax is shown, DO NOT add it to individual prices - return it separately
-6. Return ONLY valid JSON, no other text
-7. orderDate format: YYYY-MM-DD
-8. If orderDate or orderNumber not visible, use empty string`
+RULES:
+1. Extract EVERY item - there may be 10, 20, or more items
+2. Use the SALE price (lower price), not original/crossed-out price
+3. If size not visible for an item, use ""
+4. SKU format: letters + numbers + dash + 3 digits (e.g., DC0774-101)
+5. If tax shown separately, include it in "tax" field, NOT in item prices
+6. If orderDate or orderNumber not visible, use ""
+7. Return ONLY valid JSON, no other text
+
+If you cannot find ANY Nike products with style codes, return:
+{"error": "invalid", "message": "Could not find Nike products with style codes. Please use a Nike App or Nike.com order screenshot."}`
             }
           ],
         }
