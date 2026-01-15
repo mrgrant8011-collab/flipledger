@@ -58,33 +58,40 @@ export default async function handler(req, res) {
             },
             {
               type: 'text',
-              text: `This is a Nike order screenshot. Extract ALL products you can see.
+              text: `This is a Nike order screenshot. Extract ALL products carefully and accurately.
 
-For each item, find:
+For each UNIQUE item, find:
 - Product name (e.g., Air Jordan 1 Low, Nike Air Max 270, Dunk Low)
-- Style Code (e.g., DC0774-101, AH8050-005) - usually starts with letters, has numbers, dash, then 3 digits
-- Size (e.g., 6, 10.5, 11, M, W)
-- Price (use the lower/sale price if two prices shown)
+- Style Code (e.g., DC0774-101, AH8050-005) - format: letters + numbers + dash + 3 digits
+- Size (e.g., 6, 10.5, 11)
+- Price - IMPORTANT: Use the SALE price (the lower price, usually in bold or the price they actually paid). Ignore crossed-out/strikethrough original prices.
+
+CRITICAL ACCURACY RULES:
+1. Count each item ONCE only - do not duplicate
+2. If you see a price like "$48.99 $120.00" - use $48.99 (the sale price)
+3. If you see a price like "$83.99 $170.00" - use $83.99 (the sale price)
+4. The TOTAL at the bottom of the receipt should roughly match your item prices added up
+5. Look at the Subtotal/Total shown - use it to verify your count is correct
+6. Each row with a shoe image = ONE item
 
 Return JSON format:
 {
   "items": [
-    {"name": "Product Name", "sku": "XX0000-000", "size": "10", "price": 99.99}
+    {"name": "Product Name", "sku": "XX0000-000", "size": "10", "price": 48.99}
   ],
   "orderDate": "",
   "orderNumber": "",
+  "subtotal": 0,
   "tax": 0,
   "total": 0
 }
 
-IMPORTANT:
-- Extract EVERY visible item, even if some details are hard to read
-- If you can see a product image and price but style code is blurry, still include it with your best guess at the SKU
-- Size is often shown as "Size 10" or just a number near the product
-- There may be 10, 20, or 30+ items - get them ALL
-- Do your best even if image quality is not perfect
+VERIFY YOUR WORK:
+- Add up all your item prices - does it match or come close to the subtotal shown?
+- Count your items - does it seem right for what you see in the image?
+- Double-check you used SALE prices, not original prices
 
-Only return the error JSON if you truly cannot see ANY products at all:
+Only return error if you truly cannot see ANY products:
 {"error": "invalid", "message": "Could not find Nike products. Please use a Nike App or Nike.com order screenshot."}`
             }
           ],
