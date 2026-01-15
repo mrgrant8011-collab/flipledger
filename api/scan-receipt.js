@@ -29,94 +29,142 @@ export default async function handler(req, res) {
 
     if (mode === 'text' && text) {
       // ========================================
-      // STEP 1: Extract items directly from OCR text using regex
-      // This is the SOURCE OF TRUTH for item count
+      // STEP 1: Clean up OCR text - remove summary section
       // ========================================
       
-      // Remove the summary/footer section (after "Return to" or "Subtotal" or "Summary")
       const summaryMarkers = /(Return to a Nike|Subtotal|Summary|Payment|Store Address|Need Help|Quick Help)/i;
       const summaryIndex = text.search(summaryMarkers);
       const itemsText = summaryIndex > 0 ? text.substring(0, summaryIndex) : text;
       
-      console.log('Items text length:', itemsText.length, '(removed summary section)');
+      console.log('Items text length:', itemsText.length);
       
-      // Find all items by looking for Style codes
-      // Nike style codes look like: DC0774-101, AH8050-005, BQ6472-001, etc.
-      const items = [];
+      // ========================================
+      // STEP 2: Multi-pattern item extraction
+      // Use multiple methods and cross-validate
+      // ========================================
       
-      // Split by style code pattern to get each item block
-      // Pattern: Style followed by code like XX0000-000 or XXXXXX-000
-      const stylePattern = /Style\s*:?\s*([A-Z]{1,2}[A-Z0-9]{3,6}-[0-9]{3})/gi;
-      const sizePattern = /Size\s*:?\s*([0-9]+\.?5?)/gi;
-      const pricePattern = /\$([0-9]+\.?[0-9]{0,2})\s*\$?[0-9]*/g; // Gets first price (sale price)
-      
-      // Find all style codes and their positions
+      // METHOD 1: Find all Style codes
+      const stylePattern = /Style\s*:?\s*([A-Z]{1,3}[A-Z0-9]{2,7}[\s-]*[0-9]{3})/gi;
       const styleMatches = [];
       let match;
       while ((match = stylePattern.exec(itemsText)) !== null) {
+        let sku = match[1].toUpperCase().replace(/\s+/g, '');
+        // Ensure proper dash format
+        if (!sku.includes('-')) {
+          sku = sku.slice(0, -3) + '-' + sku.slice(-3);
+        }
+        sku = sku.replace(/--+/g, '-');
         styleMatches.push({
-          sku: match[1].toUpperCase(),
-          index: match.index
+          sku: sku,
+          index: match.index,
+          fullMatch: match[0]
         });
       }
+      console.log('Method 1 - Style codes found:', styleMatches.length);
       
-      console.log('Found', styleMatches.length, 'style codes in OCR text');
+      // METHOD 2: Count Size patterns (Size 8, Size 11.5, etc)
+      const sizeMatches = itemsText.match(/Size\s+([0-9]+\.?5?)\b/gi) || [];
+      console.log('Method 2 - Size patterns found:', sizeMatches.length);
       
-      // For each style code, find the nearest size and price BEFORE it
-      for (let i = 0; i < styleMatches.length; i++) {
-        const styleMatch = styleMatches[i];
-        const nextStyleIndex = styleMatches[i + 1]?.index || itemsText.length;
-        
-        // Get the text block for this item (from previous style to this style, plus a bit after)
-        const startIndex = i > 0 ? styleMatches[i - 1].index : 0;
-        const blockText = itemsText.substring(startIndex, nextStyleIndex);
-        
-        // Find size in this block
-        const sizeRegex = /Size\s*:?\s*([0-9]+\.?5?)/gi;
-        let sizeMatch;
-        let size = '';
-        while ((sizeMatch = sizeRegex.exec(blockText)) !== null) {
-          size = sizeMatch[1];
-        }
-        
-        // Find price in this block - look for $XX.XX pattern
-        // Nike shows: $48.99 $120.00 (sale price first, original second)
-        const priceRegex = /\$([0-9]+\.[0-9]{2})/g;
-        let priceMatch;
-        let price = 0;
-        const prices = [];
-        while ((priceMatch = priceRegex.exec(blockText)) !== null) {
-          prices.push(parseFloat(priceMatch[1]));
-        }
-        // Use the lowest price (sale price) or first price
-        if (prices.length > 0) {
-          price = Math.min(...prices);
-        }
-        
-        items.push({
-          sku: styleMatch.sku,
-          size: size,
-          price: price,
-          name: '' // Will be filled by Claude
-        });
-      }
+      // METHOD 3: Count sale price patterns ($48.99, $83.99 - typically ends in .99 or .00)
+      // Look for price followed by strikethrough price: $48.99 $120.00
+      const pricePairMatches = itemsText.match(/\$[0-9]+\.[0-9]{2}\s+\$[0-9]+\.[0-9]{2}/g) || [];
+      console.log('Method 3 - Price pairs found:', pricePairMatches.length);
       
-      console.log('Extracted', items.length, 'items from OCR');
+      // METHOD 4: Count product name occurrences
+      const jordanCount = (itemsText.match(/Air Jordan/gi) || []).length;
+      const maxCount = (itemsText.match(/Air Max/gi) || []).length;
+      const dunkCount = (itemsText.match(/Dunk/gi) || []).length;
+      const productNameCount = jordanCount + maxCount + dunkCount;
+      console.log('Method 4 - Product names found:', productNameCount, `(Jordan:${jordanCount}, Max:${maxCount}, Dunk:${dunkCount})`);
       
-      if (items.length === 0) {
+      // Use the MAXIMUM count from all methods as our target
+      const targetCount = Math.max(
+        styleMatches.length,
+        sizeMatches.length,
+        pricePairMatches.length,
+        productNameCount
+      );
+      console.log('Target item count:', targetCount);
+      
+      if (targetCount === 0) {
         return res.status(400).json({ 
           error: 'invalid', 
-          message: 'Could not find Nike products. Make sure the screenshot shows Style codes.' 
+          message: 'Could not find Nike products. Make sure the screenshot shows product details.' 
         });
       }
       
       // ========================================
-      // STEP 2: Use Claude ONLY to get product names for each SKU
-      // Claude does NOT control the count - we already have that
+      // STEP 3: Extract item details using the most reliable method
       // ========================================
       
-      const uniqueSkus = [...new Set(items.map(item => item.sku))];
-      console.log('Unique SKUs to look up:', uniqueSkus);
+      const items = [];
+      
+      // Parse sizes from OCR
+      const sizeRegex = /Size\s+([0-9]+\.?5?)\b/gi;
+      const sizes = [];
+      let sizeMatch;
+      while ((sizeMatch = sizeRegex.exec(itemsText)) !== null) {
+        sizes.push(sizeMatch[1]);
+      }
+      
+      // Parse prices (sale prices - the lower ones)
+      const priceRegex = /\$([0-9]+\.[0-9]{2})\s+\$([0-9]+\.[0-9]{2})/g;
+      const prices = [];
+      let priceMatch;
+      while ((priceMatch = priceRegex.exec(itemsText)) !== null) {
+        // First price is sale price (lower), second is original (higher)
+        const salePrice = parseFloat(priceMatch[1]);
+        const origPrice = parseFloat(priceMatch[2]);
+        prices.push(Math.min(salePrice, origPrice));
+      }
+      
+      console.log('Parsed sizes:', sizes.length, '| Parsed prices:', prices.length);
+      
+      // Build items array - use style matches as primary, fill in sizes/prices
+      if (styleMatches.length >= targetCount - 1) {
+        // Style codes are reliable, use them
+        for (let i = 0; i < styleMatches.length; i++) {
+          items.push({
+            sku: styleMatches[i].sku,
+            size: sizes[i] || '',
+            price: prices[i] || 0,
+            name: ''
+          });
+        }
+        
+        // If we're short by 1-2 items, add them from sizes/prices
+        while (items.length < targetCount && items.length < sizes.length) {
+          const lastSku = items.length > 0 ? items[items.length - 1].sku : 'UNKNOWN';
+          items.push({
+            sku: lastSku, // Use last known SKU as best guess
+            size: sizes[items.length] || '',
+            price: prices[items.length] || 0,
+            name: ''
+          });
+        }
+      } else {
+        // Style codes unreliable, use sizes as primary count
+        for (let i = 0; i < sizes.length; i++) {
+          // Try to match size to nearest style code
+          const sku = styleMatches[i]?.sku || styleMatches[styleMatches.length - 1]?.sku || 'UNKNOWN';
+          items.push({
+            sku: sku,
+            size: sizes[i],
+            price: prices[i] || 0,
+            name: ''
+          });
+        }
+      }
+      
+      console.log('Built items array:', items.length);
+      
+      // ========================================
+      // STEP 4: Use Claude ONLY to get product names
+      // ========================================
+      
+      const uniqueSkus = [...new Set(items.map(item => item.sku).filter(s => s !== 'UNKNOWN'))];
+      console.log('Unique SKUs:', uniqueSkus);
       
       const anthropic = new Anthropic({ apiKey });
       
@@ -157,7 +205,7 @@ Just the mapping, nothing else.`
       }
       
       // ========================================
-      // STEP 3: Build final items with names
+      // STEP 5: Build final items with names
       // ========================================
       
       const finalItems = items.map(item => ({
@@ -167,16 +215,13 @@ Just the mapping, nothing else.`
         price: item.price
       }));
       
-      // Calculate totals
-      const subtotal = finalItems.reduce((sum, item) => sum + item.price, 0);
+      // ========================================
+      // STEP 6: Extract tax from summary section
+      // ========================================
       
-      // ========================================
-      // STEP 4: Extract tax from summary section
-      // ========================================
       const summaryText = summaryIndex > 0 ? text.substring(summaryIndex) : '';
       let tax = 0;
       
-      // Look for tax patterns: "Tax $XX.XX" or "Tax: $XX.XX" or "Estimated Tax $XX.XX"
       const taxPatterns = [
         /(?:Estimated\s+)?Tax\s*:?\s*\$([0-9]+\.[0-9]{2})/i,
         /Tax\s+\$([0-9]+\.[0-9]{2})/i,
@@ -192,23 +237,22 @@ Just the mapping, nothing else.`
         }
       }
       
-      // Also try to find total to validate
+      const subtotal = finalItems.reduce((sum, item) => sum + item.price, 0);
       let total = subtotal + tax;
+      
       const totalPattern = /Total\s*:?\s*\$([0-9]+\.[0-9]{2})/i;
       const totalMatch = summaryText.match(totalPattern) || text.match(totalPattern);
       if (totalMatch) {
         total = parseFloat(totalMatch[1]);
-        console.log('Found total from receipt:', total);
-        
-        // If we have total but no tax, calculate tax
         if (tax === 0 && total > subtotal) {
           tax = Math.round((total - subtotal) * 100) / 100;
-          console.log('Calculated tax from total - subtotal:', tax);
+          console.log('Calculated tax:', tax);
         }
       }
       
-      console.log('Final item count:', finalItems.length);
-      console.log('Subtotal:', subtotal, 'Tax:', tax, 'Total:', total);
+      console.log('=== FINAL RESULT ===');
+      console.log('Items:', finalItems.length);
+      console.log('Subtotal:', subtotal, '| Tax:', tax, '| Total:', total);
       
       return res.status(200).json({
         items: finalItems,
@@ -216,16 +260,20 @@ Just the mapping, nothing else.`
         tax: tax,
         total: Math.round(total * 100) / 100,
         _debug: {
-          styleCodesFound: styleMatches.length,
-          uniqueSkus: uniqueSkus.length
+          methods: {
+            styleCodes: styleMatches.length,
+            sizes: sizeMatches.length,
+            pricePairs: pricePairMatches.length,
+            productNames: productNameCount
+          },
+          targetCount: targetCount
         }
       });
       
     } else {
-      // IMAGE MODE: Fallback for direct image upload (not recommended)
       return res.status(400).json({ 
         error: 'invalid', 
-        message: 'Please use Google Vision OCR first. Direct image mode is deprecated.' 
+        message: 'Please use Google Vision OCR first.' 
       });
     }
 
