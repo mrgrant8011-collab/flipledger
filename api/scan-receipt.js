@@ -62,8 +62,8 @@ export default async function handler(req, res) {
       }
       console.log('Method 1 - Style codes found:', styleMatches.length);
       
-      // METHOD 2: Count Size patterns (Size 8, Size 11.5, etc)
-      const sizeMatches = itemsText.match(/Size\s+([0-9]+\.?5?)\b/gi) || [];
+      // METHOD 2: Count Size patterns (Size 8, Size 11.5, Size 6Y, Size 4.5Y, Size 5.5Y, etc)
+      const sizeMatches = itemsText.match(/Size\s+([0-9]+\.?[0-9]*Y?)\b/gi) || [];
       console.log('Method 2 - Size patterns found:', sizeMatches.length);
       
       // METHOD 3: Count sale price patterns ($48.99, $83.99 - typically ends in .99 or .00)
@@ -100,8 +100,8 @@ export default async function handler(req, res) {
       
       const items = [];
       
-      // Parse sizes from OCR
-      const sizeRegex = /Size\s+([0-9]+\.?5?)\b/gi;
+      // Parse sizes from OCR (including youth sizes like 4.5Y, 5.5Y, 6Y, 6.5Y, etc)
+      const sizeRegex = /Size\s+([0-9]+\.?[0-9]*Y?)\b/gi;
       const sizes = [];
       let sizeMatch;
       while ((sizeMatch = sizeRegex.exec(itemsText)) !== null) {
