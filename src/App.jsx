@@ -2,6 +2,7 @@ import { useState, useEffect, Component } from 'react';
 import * as XLSX from 'xlsx';
 import Tesseract from 'tesseract.js';
 import { supabase } from './supabase';
+import { NIKE_DESKTOP_EXAMPLE, NIKE_MOBILE_EXAMPLE } from './nike-examples';
 
 // Auth Component - Login/Signup Page
 function AuthPage({ onLogin }) {
@@ -788,6 +789,7 @@ function App() {
   const [showInvCsvImport, setShowInvCsvImport] = useState(false);
   const [selectedInvLookup, setSelectedInvLookup] = useState(new Set());
   const [nikeReceipt, setNikeReceipt] = useState({ scanning: false, items: [], image: null, date: '', orderNum: '' });
+  const [showNikeExample, setShowNikeExample] = useState(false);
 
   const ITEMS_PER_PAGE = 50;
 
@@ -1740,10 +1742,10 @@ function App() {
     setNikeReceipt(prev => ({ ...prev, scanning: true, items: [], image: null, error: null }));
     
     try {
-      console.log('=== NIKE RECEIPT SCANNER ===');
+      console.log('=== NIKE RECEIPT SCANNER (Claude AI) ===');
       console.log('Input:', imageFile.name, '|', imageFile.type, '|', (imageFile.size / 1024).toFixed(1), 'KB');
       
-      // Step 1: Load image and get original dimensions
+      // Convert image to base64
       const imageBase64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target.result);
@@ -1751,395 +1753,52 @@ function App() {
         reader.readAsDataURL(imageFile);
       });
       
-      // Step 2: Process image for optimal OCR - MOBILE OPTIMIZED
-      const processedImage = await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          
-          // For mobile screenshots, we need AGGRESSIVE scaling
-          // Target: text should be at least 30-40px tall for good OCR
-          // Most phone screenshots are 300-400px wide, text is ~15px
-          // So we need 3-4x scaling minimum
-          
-          let scale = 1;
-          if (img.width < 400) scale = 4;
-          else if (img.width < 600) scale = 3.5;
-          else if (img.width < 800) scale = 3;
-          else if (img.width < 1000) scale = 2.5;
-          else if (img.width < 1200) scale = 2;
-          else if (img.width < 1600) scale = 1.5;
-          
-          let targetWidth = Math.round(img.width * scale);
-          let targetHeight = Math.round(img.height * scale);
-          
-          // Cap dimensions to avoid memory issues on mobile
-          const maxWidth = 3000;
-          const maxHeight = 15000;
-          
-          if (targetWidth > maxWidth) {
-            const ratio = maxWidth / targetWidth;
-            targetWidth = maxWidth;
-            targetHeight = Math.round(targetHeight * ratio);
-          }
-          if (targetHeight > maxHeight) {
-            const ratio = maxHeight / targetHeight;
-            targetHeight = maxHeight;
-            targetWidth = Math.round(targetWidth * ratio);
-          }
-          
-          canvas.width = targetWidth;
-          canvas.height = targetHeight;
-          
-          // White background
-          ctx.fillStyle = '#FFFFFF';
-          ctx.fillRect(0, 0, targetWidth, targetHeight);
-          
-          // High quality scaling
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
-          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-          
-          // Apply contrast enhancement + slight sharpening
-          const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
-          const data = imageData.data;
-          
-          // Higher contrast for mobile (gray text issue)
-          const contrast = 1.4; // 40% more contrast
-          const factor = (259 * (contrast * 255 + 255)) / (255 * (259 - contrast * 255));
-          
-          for (let i = 0; i < data.length; i += 4) {
-            // Apply contrast
-            let r = factor * (data[i] - 128) + 128;
-            let g = factor * (data[i+1] - 128) + 128;
-            let b = factor * (data[i+2] - 128) + 128;
-            
-            // Threshold to make text more black/white (helps OCR)
-            const brightness = (r + g + b) / 3;
-            if (brightness < 180) {
-              // Darken dark pixels (text)
-              r = Math.max(0, r - 30);
-              g = Math.max(0, g - 30);
-              b = Math.max(0, b - 30);
-            } else if (brightness > 220) {
-              // Lighten light pixels (background)
-              r = Math.min(255, r + 20);
-              g = Math.min(255, g + 20);
-              b = Math.min(255, b + 20);
-            }
-            
-            data[i] = Math.min(255, Math.max(0, r));
-            data[i+1] = Math.min(255, Math.max(0, g));
-            data[i+2] = Math.min(255, Math.max(0, b));
-          }
-          
-          ctx.putImageData(imageData, 0, 0);
-          
-          console.log('Processed:', img.width, 'x', img.height, '→', targetWidth, 'x', targetHeight, '(scale:', scale + 'x)');
-          
-          canvas.toBlob(blob => {
-            if (blob) resolve(blob);
-            else reject(new Error('Failed to process image'));
-          }, 'image/png', 1.0);
-        };
-        img.onerror = () => reject(new Error('Failed to load image'));
-        img.src = imageBase64;
+      console.log('Sending to Claude AI for analysis...');
+      
+      // Call Claude API endpoint
+      const response = await fetch('/api/scan-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageBase64 })
       });
       
-      // Step 3: Run Tesseract OCR
-      console.log('Running OCR...');
-      const { data: { text } } = await Tesseract.recognize(processedImage, 'eng', {
-        logger: m => {
-          if (m.status === 'recognizing text' && m.progress) {
-            const pct = Math.round(m.progress * 100);
-            if (pct % 25 === 0) console.log('OCR Progress:', pct + '%');
-          }
-        }
-      });
+      const result = await response.json();
       
-      console.log('OCR Complete. Text length:', text.length);
-      console.log('--- RAW TEXT ---');
-      console.log(text);
-      console.log('--- END TEXT ---');
-      
-      if (!text || text.trim().length < 30) {
-        throw new Error('Could not read text from image. The image may be too blurry or small.');
+      // Check for errors
+      if (result.error) {
+        throw new Error(result.message || result.error);
       }
       
-      // Parse the text
-      const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+      // Extract items
+      const items = (result.items || []).map(item => ({
+        name: item.name || 'Nike Product',
+        sku: item.sku || '',
+        size: item.size || '',
+        price: parseFloat(item.price) || 0
+      }));
       
-      // Extract date and order number
-      let orderDate = '';
-      let orderNum = '';
+      console.log('Claude found', items.length, 'items');
       
-      for (const line of lines) {
-        const dateMatch = line.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}/i);
-        if (dateMatch) {
-          const parsed = new Date(dateMatch[0]);
-          if (!isNaN(parsed)) {
-            orderDate = parsed.toISOString().split('T')[0];
-          }
-        }
-        const orderMatch = line.match(/T[A-Z0-9]{10,}/i);
-        if (orderMatch) {
-          orderNum = orderMatch[0];
-        }
-      }
-      
-      // SKU-ANCHORED PARSING - Find SKUs first, then look backwards for details
-      const items = [];
-      
-      // More flexible SKU patterns - Nike uses formats like DC0774-101, AH8050-005
-      const allSkus = [];
-      
-      // Pattern 1: "Style DC0774-101" or "Style: DC0774-101"
-      const styleRegex = /Style[:\s]+([A-Z]{2,4}\d{4,5}-\d{3})/gi;
-      let m;
-      while ((m = styleRegex.exec(text)) !== null) {
-        allSkus.push({ sku: m[1], index: m.index });
-      }
-      
-      // Pattern 2: Standalone SKUs like DC0774-101 (letters, digits, dash, 3 digits)
-      if (allSkus.length === 0) {
-        const standaloneRegex = /\b([A-Z]{2,4}\d{4,5}-\d{3})\b/gi;
-        while ((m = standaloneRegex.exec(text)) !== null) {
-          allSkus.push({ sku: m[1], index: m.index });
-        }
-      }
-      
-      console.log('=== SKU DETECTION ===');
-      console.log('Raw text sample:', text.substring(0, 500));
-      console.log('Found', allSkus.length, 'SKUs:', allSkus.map(s => s.sku));
-      
-      // For each SKU, look backwards to find name, price, size
-      for (let i = 0; i < allSkus.length; i++) {
-        const { sku, index } = allSkus[i];
-        
-        // Get text BEFORE this SKU (previous SKU position to this one)
-        const startPos = i > 0 ? allSkus[i-1].index + allSkus[i-1].sku.length : 0;
-        const blockText = text.substring(startPos, index + sku.length + 10);
-        
-        console.log(`\n=== ITEM ${i+1}: ${sku} ===`);
-        console.log('Block:', blockText.substring(0, 200));
-        
-        // Find product name
-        let name = 'Nike Product';
-        const namePatterns = [
-          /Air\s+Jordan\s+\d*\s*[A-Za-z\s\-]*/i,
-          /Nike\s+Air\s+Max\s+\d*[A-Za-z\s\-]*/i,
-          /Air\s+Max\s+\d+[A-Za-z\s\-]*/i,
-          /Nike\s+Dunk\s+[A-Za-z\s\-]*/i,
-          /Dunk\s+(Low|High|Mid)[A-Za-z\s\-]*/i,
-          /Air\s+Force\s+\d*[A-Za-z\s\-]*/i,
-          /Nike\s+[A-Za-z\s\-]+/i
-        ];
-        
-        for (const pattern of namePatterns) {
-          const match = blockText.match(pattern);
-          if (match) {
-            name = match[0].trim().replace(/\s+/g, ' ').substring(0, 50);
-            break;
-          }
-        }
-        console.log('Name:', name);
-        
-        // Find size - "Size 6.5", "Size 11", etc
-        const sizeMatch = blockText.match(/Size\s+(\d+\.?\d*)/i);
-        const size = sizeMatch ? sizeMatch[1] : '';
-        console.log('Size:', size || 'NOT FOUND');
-        
-        // Find prices - get ALL dollar amounts, use the LOWEST (sale price)
-        const priceRegex = /\$(\d+(?:\.\d{2})?)/g;
-        const prices = [];
-        let priceMatch;
-        while ((priceMatch = priceRegex.exec(blockText)) !== null) {
-          prices.push(parseFloat(priceMatch[1]));
-        }
-        const price = prices.length > 0 ? Math.min(...prices) : 0;
-        console.log('Prices found:', prices, '→ Using:', price);
-        
-        if (sku && price > 0) {
-          items.push({ name, sku, size, price });
-          console.log('✓ ADDED TO ITEMS');
-        } else {
-          console.log('✗ SKIPPED - no price found');
-        }
-      }
-      
-      // FALLBACK: If SKU method found nothing, try original line-by-line
-      if (items.length === 0) {
-        console.log('SKU method found nothing, trying line-by-line...');
-        let currentItem = null;
-        
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i];
-          const styleMatch = line.match(/Style\s+([A-Z]{2,4}\d{3,5}-\d{3})/i) || line.match(/([A-Z]{2,4}\d{3,5}-\d{3})/);
-          const priceMatch = line.match(/\$(\d+\.\d{2})/);
-          const sizeMatch = line.match(/Size\s+(\d+\.?\d*|[XSMLX]{1,3})/i);
-          
-          const namePatterns = [/Nike\s+[\w\s\-"']+/i, /Air\s+Jordan\s+[\w\s\-"']+/i, /Jordan\s+\d+[\w\s\-"']+/i, /Air\s+Max\s+[\w\s\-"']+/i, /Air\s+Force\s+[\w\s\-"']+/i, /Dunk\s+[\w\s\-"']+/i];
-          let nameMatch = null;
-          for (const pattern of namePatterns) {
-            const match = line.match(pattern);
-            if (match) { nameMatch = match[0].trim(); break; }
-          }
-          
-          if (nameMatch && !currentItem) {
-            currentItem = { name: nameMatch, sku: '', size: '', price: 0 };
-          }
-          
-          if (currentItem) {
-            if (styleMatch && !currentItem.sku) currentItem.sku = styleMatch[1] || styleMatch[0];
-            if (sizeMatch && !currentItem.size) currentItem.size = sizeMatch[1];
-            if (priceMatch && !currentItem.price) currentItem.price = parseFloat(priceMatch[1]);
-            
-            if (currentItem.sku && currentItem.size && currentItem.price > 0) {
-              items.push({ ...currentItem });
-              currentItem = null;
-            }
-          }
-        }
-        if (currentItem && currentItem.sku && currentItem.price > 0) items.push(currentItem);
-      }
-      
-      // FALLBACK 2: If still nothing, parse by NAME + PRICE pairs (OCR often misses SKU/Size)
-      if (items.length === 0) {
-        console.log('Line-by-line found nothing, trying NAME+PRICE pairing...');
-        
-        // Find all product names and prices in order
-        // More flexible patterns to catch OCR typos (Alr vs Air, etc)
-        const nameRegex = /(A[il]r Jordan \d* ?[A-Za-z]*|Nike A[il]r Max \d*|A[il]r Max \d+|Nike Dunk [A-Za-z]*|Dunk (?:Low|High|Mid)|A[il]r Force \d*|Nike [A-Za-z]+)/gi;
-        const priceRegex = /\$(\d+\.\d{2})/g;
-        
-        const names = [];
-        const prices = [];
-        
-        let match;
-        while ((match = nameRegex.exec(text)) !== null) {
-          names.push({ name: match[1].trim(), index: match.index });
-        }
-        while ((match = priceRegex.exec(text)) !== null) {
-          const price = parseFloat(match[1]);
-          if (price > 10 && price < 500) { // Filter reasonable shoe prices
-            prices.push({ price, index: match.index });
-          }
-        }
-        
-        console.log('Found', names.length, 'names and', prices.length, 'prices');
-        
-        // Match each name with the price that comes after it
-        for (let i = 0; i < names.length; i++) {
-          const { name, index: nameIndex } = names[i];
-          
-          // Find the first price after this name (but before next name)
-          const nextNameIndex = i < names.length - 1 ? names[i + 1].index : text.length;
-          const priceAfter = prices.find(p => p.index > nameIndex && p.index < nextNameIndex);
-          
-          if (priceAfter) {
-            // Try to find size between name and price
-            const blockText = text.substring(nameIndex, priceAfter.index + 20);
-            const sizeMatch = blockText.match(/Size\s+(\d+\.?\d*)/i);
-            const size = sizeMatch ? sizeMatch[1] : '';
-            
-            // Clean up name (fix OCR typos)
-            let cleanName = name.replace(/Alr/g, 'Air').replace(/alr/g, 'air');
-            
-            // Generate a placeholder SKU based on name
-            let sku = '';
-            if (cleanName.toLowerCase().includes('jordan')) sku = 'AJ-TBD';
-            else if (cleanName.toLowerCase().includes('max')) sku = 'AM-TBD';
-            else if (cleanName.toLowerCase().includes('dunk')) sku = 'NK-TBD';
-            else sku = 'NK-TBD';
-            
-            items.push({
-              name: cleanName,
-              sku: sku,
-              size: size,
-              price: priceAfter.price
-            });
-            
-            console.log(`Paired: "${cleanName}" + $${priceAfter.price} (size: ${size || 'unknown'})`);
-          }
-        }
-      }
-      
-      // FALLBACK 3: If still low count, try counting prices and matching to expected items
-      // Nike receipts typically show sale price then original price, so count unique low prices
-      if (items.length < 5) {
-        console.log('Still low count, trying price-based detection...');
-        
-        const allPrices = [];
-        const priceRegex2 = /\$(\d+\.\d{2})/g;
-        let m;
-        while ((m = priceRegex2.exec(text)) !== null) {
-          const p = parseFloat(m[1]);
-          if (p > 10 && p < 300) allPrices.push(p);
-        }
-        
-        // Count occurrences of each price
-        const priceCounts = {};
-        allPrices.forEach(p => {
-          priceCounts[p] = (priceCounts[p] || 0) + 1;
+      // If tax is separate, distribute it across items
+      if (result.tax && result.tax > 0 && items.length > 0) {
+        const totalBeforeTax = items.reduce((sum, item) => sum + item.price, 0);
+        items.forEach(item => {
+          const taxShare = (item.price / totalBeforeTax) * result.tax;
+          item.price = Math.round((item.price + taxShare) * 100) / 100;
         });
-        
-        console.log('Price occurrences:', priceCounts);
-        
-        // If we have clear price patterns, use them
-        // Example: $48.99 appears 6 times = 6 Air Jordans at that price
-        const existingPrices = items.map(i => i.price);
-        
-        Object.entries(priceCounts).forEach(([price, count]) => {
-          const p = parseFloat(price);
-          const existingCount = existingPrices.filter(ep => Math.abs(ep - p) < 1).length;
-          const missing = count - existingCount;
-          
-          if (missing > 0 && count >= 2) {
-            console.log(`Price $${p} appears ${count}x but only ${existingCount} items found, adding ${missing} more`);
-            for (let i = 0; i < missing; i++) {
-              items.push({
-                name: p < 60 ? 'Air Jordan 1 Low' : 'Nike Air Max 270',
-                sku: p < 60 ? 'AJ-TBD' : 'AM-TBD',
-                size: '',
-                price: p
-              });
-            }
-          }
-        });
-      }
-      
-      console.log('Final items:', items.length);
-      
-      // Tax distribution
-      const subtotalMatch = text.match(/Subtotal[:\s]*\$?(\d+\.\d{2})/i);
-      const totalMatch = text.match(/(?:Order\s+)?Total[:\s]*\$?(\d+\.\d{2})/i);
-      
-      if (subtotalMatch && totalMatch && items.length > 0) {
-        const subtotal = parseFloat(subtotalMatch[1]);
-        const total = parseFloat(totalMatch[1]);
-        const tax = total - subtotal;
-        
-        if (tax > 0 && subtotal > 0) {
-          const itemsTotal = items.reduce((sum, item) => sum + item.price, 0);
-          items.forEach(item => {
-            const taxShare = (item.price / itemsTotal) * tax;
-            item.price = Math.round((item.price + taxShare) * 100) / 100;
-          });
-        }
+        console.log('Distributed $' + result.tax + ' tax across items');
       }
       
       setNikeReceipt({ 
         scanning: false, 
         items, 
         image: imageBase64, 
-        date: orderDate, 
-        orderNum,
-        error: items.length === 0 ? 'No items found. Check browser console (F12) for debug info.' : null
+        date: result.orderDate || '', 
+        orderNum: result.orderNumber || '',
+        error: items.length === 0 ? 'No items found in this image. Make sure it\'s a Nike order screenshot showing Style Codes, Sizes, and Prices.' : null
       });
       
       console.log('=== SCAN COMPLETE ===');
-      console.log('Found', items.length, 'items');
       
     } catch (error) {
       console.error('=== SCAN ERROR ===', error);
@@ -2149,10 +1808,11 @@ function App() {
         image: null, 
         date: '', 
         orderNum: '', 
-        error: error.message || 'Failed to scan receipt. Try a clearer image.' 
+        error: error.message || 'Failed to scan receipt. Please try again.' 
       });
     }
   };
+  
   
   // Add scanned items to inventory
   const addNikeItemsToInventory = async () => {
@@ -3357,46 +3017,71 @@ function App() {
           <div style={{ marginBottom: 20 }}>
             {/* Drop Zone */}
             {!nikeReceipt.scanning && nikeReceipt.items.length === 0 && (
-              <div
-                onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#F97316'; e.currentTarget.style.background = 'rgba(249,115,22,0.1)'; }}
-                onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = c.border; e.currentTarget.style.background = 'rgba(249,115,22,0.05)'; }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  e.currentTarget.style.borderColor = c.border;
-                  e.currentTarget.style.background = 'rgba(249,115,22,0.05)';
-                  const file = e.dataTransfer.files[0];
-                  if (file && file.type.startsWith('image/')) {
-                    parseNikeReceipt(file);
-                  } else {
-                    alert('Please drop an image file');
-                  }
-                }}
-                style={{
-                  padding: '28px 20px',
-                  background: 'rgba(249,115,22,0.05)',
-                  border: `2px dashed ${c.border}`,
-                  borderRadius: 16,
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-                onClick={() => document.getElementById('nikeReceiptInput').click()}
-              >
-                <input
-                  id="nikeReceiptInput"
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => e.target.files[0] && parseNikeReceipt(e.target.files[0])}
-                  style={{ display: 'none' }}
-                />
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
-                  <div style={{ width: 50, height: 50, background: 'linear-gradient(135deg, #F97316, #EA580C)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>📸</div>
-                  <div style={{ textAlign: 'left' }}>
-                    <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 800, color: '#fff' }}>Scan Nike Receipt</h3>
-                    <p style={{ margin: 0, fontSize: 13, color: c.textMuted }}>Drop screenshot from Nike App → Items auto-added</p>
+              <div style={{ background: 'rgba(249,115,22,0.05)', border: `1px solid rgba(249,115,22,0.2)`, borderRadius: 16, overflow: 'hidden' }}>
+                {/* Header */}
+                <div style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: `1px solid rgba(249,115,22,0.1)` }}>
+                  <div style={{ width: 44, height: 44, background: 'linear-gradient(135deg, #F97316, #EA580C)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>📸</div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#fff' }}>Scan Nike Receipt</h3>
+                    <p style={{ margin: 0, fontSize: 12, color: c.textMuted }}>Auto-extract items from Nike App or Nike.com</p>
                   </div>
                 </div>
-                <p style={{ margin: '16px 0 0', fontSize: 11, color: c.textDim }}>Supports scroll screenshots with multiple items</p>
+                
+                {/* Warning Box */}
+                <div style={{ margin: '16px', padding: 12, background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: c.gold, marginBottom: 8 }}>⚠️ REQUIREMENTS</div>
+                  <div style={{ fontSize: 12, color: '#ccc', lineHeight: 1.6 }}>
+                    <span style={{ color: c.green }}>✓</span> Nike App or Nike.com orders only<br/>
+                    <span style={{ color: c.green }}>✓</span> Must show Style Code, Size & Price<br/>
+                    <span style={{ color: c.red }}>✗</span> Paper receipts will NOT work
+                  </div>
+                </div>
+                
+                {/* See Example Button */}
+                <div style={{ margin: '0 16px 16px' }}>
+                  <button 
+                    onClick={() => setShowNikeExample(true)}
+                    style={{ width: '100%', padding: 10, background: 'rgba(255,255,255,0.05)', border: '1px dashed #444', borderRadius: 8, color: c.gold, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                  >👁️ See Example of Valid Screenshot</button>
+                </div>
+                
+                {/* Drop Zone */}
+                <div
+                  onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = '#F97316'; e.currentTarget.style.background = 'rgba(249,115,22,0.15)'; }}
+                  onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'rgba(0,0,0,0.2)'; }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.style.borderColor = 'transparent';
+                    e.currentTarget.style.background = 'rgba(0,0,0,0.2)';
+                    const file = e.dataTransfer.files[0];
+                    if (file && file.type.startsWith('image/')) {
+                      parseNikeReceipt(file);
+                    } else {
+                      alert('Please drop an image file');
+                    }
+                  }}
+                  style={{
+                    margin: '0 16px 16px',
+                    padding: '30px 20px',
+                    background: 'rgba(0,0,0,0.2)',
+                    border: `2px dashed transparent`,
+                    borderRadius: 12,
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                  onClick={() => document.getElementById('nikeReceiptInput').click()}
+                >
+                  <input
+                    id="nikeReceiptInput"
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => e.target.files[0] && parseNikeReceipt(e.target.files[0])}
+                    style={{ display: 'none' }}
+                  />
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>📱</div>
+                  <p style={{ margin: 0, fontSize: 13, color: c.textMuted }}>Drop Nike screenshot here or tap to upload</p>
+                </div>
               </div>
             )}
             
@@ -6265,6 +5950,71 @@ Let me know if you need anything else.`;
           }
         }
       `}</style>
+      
+      {/* NIKE EXAMPLE MODAL */}
+      {showNikeExample && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }}>
+          <div style={{ background: '#111', border: `1px solid ${c.border}`, borderRadius: 20, width: '100%', maxWidth: 500, maxHeight: '90vh', overflow: 'auto' }}>
+            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#111', zIndex: 1 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800 }}>📸 Valid Screenshot Examples</h3>
+              <button onClick={() => setShowNikeExample(false)} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, width: 32, height: 32, color: '#fff', fontSize: 18, cursor: 'pointer' }}>×</button>
+            </div>
+            <div style={{ padding: 20 }}>
+              {/* Desktop Example */}
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, color: c.green, fontSize: 13, fontWeight: 700 }}>
+                  <span>✅</span> Nike.com (Desktop)
+                </div>
+                <div style={{ background: '#fff', borderRadius: 12, overflow: 'hidden', padding: 8 }}>
+                  <img 
+                    src={NIKE_DESKTOP_EXAMPLE} 
+                    alt="Nike.com desktop example" 
+                    style={{ width: '100%', height: 'auto', borderRadius: 8 }}
+                  />
+                </div>
+                <div style={{ marginTop: 8, fontSize: 11, color: c.green }}>↑ Shows Style Code, Size, and Price ✓</div>
+              </div>
+              
+              {/* Mobile Example */}
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, color: c.green, fontSize: 13, fontWeight: 700 }}>
+                  <span>✅</span> Nike App (Mobile)
+                </div>
+                <div style={{ background: '#fff', borderRadius: 12, overflow: 'hidden', padding: 8 }}>
+                  <img 
+                    src={NIKE_MOBILE_EXAMPLE} 
+                    alt="Nike app mobile example" 
+                    style={{ width: '100%', height: 'auto', maxHeight: 400, objectFit: 'contain', borderRadius: 8 }}
+                  />
+                </div>
+                <div style={{ marginTop: 8, fontSize: 11, color: c.green }}>↑ Nike App order with Style Code, Size, Price ✓</div>
+              </div>
+              
+              {/* Bad Example */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, color: c.red, fontSize: 13, fontWeight: 700 }}>
+                  <span>❌</span> Paper Receipts WON'T Work
+                </div>
+                <div style={{ background: '#f5f5dc', borderRadius: 8, padding: 14, fontFamily: 'Courier New, monospace', fontSize: 11, color: '#333', lineHeight: 1.6 }}>
+                  <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: 8 }}>NIKE FACTORY STORE</div>
+                  <div style={{ borderTop: '1px dashed #999', margin: '8px 0' }}></div>
+                  AIR JORDAN 4.............$189.99<br/>
+                  <span style={{ color: '#ef4444', fontSize: 10 }}>← No Style Code!</span><br/>
+                  <span style={{ color: '#ef4444', fontSize: 10 }}>← No Size!</span><br/>
+                  <div style={{ borderTop: '1px dashed #999', margin: '8px 0' }}></div>
+                  TOTAL: $205.19
+                </div>
+                <div style={{ marginTop: 8, fontSize: 11, color: c.red }}>↑ Missing Style Code & Size = ✗ Invalid</div>
+              </div>
+              
+              {/* Tip */}
+              <div style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: 10, padding: 12, fontSize: 11, color: '#93c5fd', lineHeight: 1.5 }}>
+                💡 <strong>Tip:</strong> Open the Nike App → Orders → Screenshot your order details. Or log into Nike.com and screenshot your order history.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
