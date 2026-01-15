@@ -16,10 +16,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { image } = req.body;
+    const { image, text, mode } = req.body;
     
-    if (!image) {
-      return res.status(400).json({ error: 'No image provided' });
+    if (!image && !text) {
+      return res.status(400).json({ error: 'No image or text provided' });
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -29,75 +29,103 @@ export default async function handler(req, res) {
 
     const anthropic = new Anthropic({ apiKey });
 
-    // Extract base64 data and media type
-    let base64Data = image;
-    let mediaType = 'image/jpeg';
-    
-    if (image.startsWith('data:')) {
-      const matches = image.match(/^data:(.+);base64,(.+)$/);
-      if (matches) {
-        mediaType = matches[1];
-        base64Data = matches[2];
-      }
-    }
+    let response;
 
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 4096,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: mediaType,
-                data: base64Data,
-              },
-            },
-            {
-              type: 'text',
-              text: `This is a Nike order screenshot. Extract ALL products carefully and accurately.
+    if (mode === 'text' && text) {
+      // TEXT MODE: OCR text already extracted, just structure it
+      response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        messages: [
+          {
+            role: 'user',
+            content: `You are parsing OCR text from a Nike order screenshot. Extract all products.
 
-For each UNIQUE item, find:
-- Product name (e.g., Air Jordan 1 Low, Nike Air Max 270, Dunk Low)
-- Style Code (e.g., DC0774-101, AH8050-005) - format: letters + numbers + dash + 3 digits
-- Size (e.g., 6, 10.5, 11)
-- Price - IMPORTANT: Use the SALE price (the lower price, usually in bold or the price they actually paid). Ignore crossed-out/strikethrough original prices.
+The text may have OCR errors, duplicate sections (from overlapping image chunks), and messy formatting. Do your best to extract accurate data.
 
-CRITICAL ACCURACY RULES:
-1. Count each item ONCE only - do not duplicate
-2. If you see a price like "$48.99 $120.00" - use $48.99 (the sale price)
-3. If you see a price like "$83.99 $170.00" - use $83.99 (the sale price)
-4. The TOTAL at the bottom of the receipt should roughly match your item prices added up
-5. Look at the Subtotal/Total shown - use it to verify your count is correct
-6. Each row with a shoe image = ONE item
+For each item, find:
+- Product name (e.g., "Nike Air Pegasus Wave", "Air Jordan 1 Low")
+- Style Code/SKU (format: letters + numbers + dash + 3 digits, like BQ9646-002, 553558-611)
+- Size (number like 10, 10.5, 11)
+- Price - Use the SALE/FINAL price (the lower one they actually paid), NOT the original price
 
-Return JSON format:
+CRITICAL RULES:
+1. Each unique SKU + Size combination = ONE item (even if text repeats due to chunk overlap)
+2. If you see "$48.99" and "$110.00" near each other, use $48.99 (the sale price)
+3. Look for "Final Price" amounts - those are the correct prices
+4. Style codes look like: BQ9646-002, DV3853-001, 553558-161, CU4150-002, FN7344-100
+5. Remove duplicates - same SKU + same size + same price = count once
+
+Here is the OCR text:
+---
+${text}
+---
+
+Return ONLY valid JSON:
 {
   "items": [
-    {"name": "Product Name", "sku": "XX0000-000", "size": "10", "price": 48.99}
+    {"name": "Nike Air Pegasus Wave", "sku": "BQ9646-002", "size": "10", "price": 48.99}
   ],
-  "orderDate": "",
-  "orderNumber": "",
   "subtotal": 0,
   "tax": 0,
   "total": 0
 }
 
-VERIFY YOUR WORK:
-- Add up all your item prices - does it match or come close to the subtotal shown?
-- Count your items - does it seem right for what you see in the image?
-- Double-check you used SALE prices, not original prices
-
-Only return error if you truly cannot see ANY products:
-{"error": "invalid", "message": "Could not find Nike products. Please use a Nike App or Nike.com order screenshot."}`
-            }
-          ],
+If you cannot find any Nike products, return:
+{"error": "invalid", "message": "Could not find Nike products in the text."}`
+          }
+        ],
+      });
+    } else {
+      // IMAGE MODE: Original image-based scanning
+      let base64Data = image;
+      let mediaType = 'image/jpeg';
+      
+      if (image.startsWith('data:')) {
+        const matches = image.match(/^data:(.+);base64,(.+)$/);
+        if (matches) {
+          mediaType = matches[1];
+          base64Data = matches[2];
         }
-      ],
-    });
+      }
+
+      response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: mediaType,
+                  data: base64Data,
+                },
+              },
+              {
+                type: 'text',
+                text: `Extract all items from this Nike order screenshot.
+
+For each item find: name, style code (SKU), size, and SALE price (lower price, not crossed out).
+
+Return JSON:
+{
+  "items": [{"name": "Product Name", "sku": "XX0000-000", "size": "10", "price": 48.99}],
+  "subtotal": 0,
+  "tax": 0,
+  "total": 0
+}
+
+If no Nike products found:
+{"error": "invalid", "message": "Could not find Nike products."}`
+              }
+            ],
+          }
+        ],
+      });
+    }
 
     // Parse Claude's response
     const content = response.content[0].text;
@@ -105,7 +133,6 @@ Only return error if you truly cannot see ANY products:
     // Try to extract JSON from response
     let result;
     try {
-      // Find JSON in response (in case Claude added extra text)
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         result = JSON.parse(jsonMatch[0]);
@@ -116,16 +143,14 @@ Only return error if you truly cannot see ANY products:
       console.error('Failed to parse Claude response:', content);
       return res.status(500).json({ 
         error: 'Failed to parse receipt', 
-        message: 'Could not extract items from image. Please try a clearer screenshot.' 
+        message: 'Could not extract items. Please try a clearer screenshot.' 
       });
     }
 
-    // Check if Claude returned an error
     if (result.error) {
       return res.status(400).json(result);
     }
 
-    // Return extracted items
     return res.status(200).json(result);
 
   } catch (error) {

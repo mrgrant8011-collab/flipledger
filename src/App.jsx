@@ -1742,46 +1742,15 @@ function App() {
     setNikeReceipt(prev => ({ ...prev, scanning: true, items: [], image: null, error: null }));
     
     try {
-      console.log('=== NIKE RECEIPT SCANNER (Claude AI) ===');
+      console.log('=== NIKE RECEIPT SCANNER (Chunked OCR + Claude) ===');
       console.log('Input:', imageFile.name, '|', imageFile.type, '|', (imageFile.size / 1024).toFixed(1), 'KB');
       
-      // Convert image to base64 and resize if needed (Claude max is 8000px)
-      const imageBase64 = await new Promise((resolve, reject) => {
+      // Load image and get dimensions
+      const imageData = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
           const img = new Image();
-          img.onload = () => {
-            // Check if resizing needed (max 7000px to be safe)
-            const maxDim = 7500;
-            if (img.width <= maxDim && img.height <= maxDim) {
-              resolve(e.target.result);
-              return;
-            }
-            
-            // Resize the image - keep it as large as possible for readability
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-            
-            // Scale down proportionally
-            const scale = maxDim / Math.max(width, height);
-            width = Math.round(width * scale);
-            height = Math.round(height * scale);
-            
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            
-            // Use high quality rendering
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            console.log('Resized image from', img.width, 'x', img.height, 'to', width, 'x', height);
-            // Use PNG for better text clarity, or high quality JPEG
-            const mimeType = imageFile.type === 'image/png' ? 'image/png' : 'image/jpeg';
-            resolve(canvas.toDataURL(mimeType, 0.95));
-          };
+          img.onload = () => resolve({ img, dataUrl: e.target.result });
           img.onerror = () => reject(new Error('Failed to load image'));
           img.src = e.target.result;
         };
@@ -1789,13 +1758,62 @@ function App() {
         reader.readAsDataURL(imageFile);
       });
       
-      console.log('Sending to Claude AI for analysis...');
+      const { img, dataUrl } = imageData;
+      console.log('Image dimensions:', img.width, 'x', img.height);
       
-      // Call Claude API endpoint
+      // STEP 1: Split into overlapping chunks
+      const chunkHeight = 1500;
+      const overlap = 300;
+      const chunks = [];
+      
+      let y = 0;
+      while (y < img.height) {
+        const height = Math.min(chunkHeight, img.height - y);
+        
+        // Create canvas for this chunk
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        
+        // Draw portion of image
+        ctx.drawImage(img, 0, y, img.width, height, 0, 0, img.width, height);
+        
+        chunks.push(canvas.toDataURL('image/png'));
+        
+        // Move to next chunk with overlap
+        y += chunkHeight - overlap;
+        
+        // Prevent infinite loop on small images
+        if (height < chunkHeight) break;
+      }
+      
+      console.log('Split into', chunks.length, 'chunks');
+      
+      // STEP 2: OCR each chunk with Tesseract (FREE)
+      console.log('Running OCR on chunks...');
+      let allText = '';
+      
+      for (let i = 0; i < chunks.length; i++) {
+        console.log(`OCR chunk ${i + 1}/${chunks.length}...`);
+        const { data: { text } } = await Tesseract.recognize(chunks[i], 'eng', {
+          logger: () => {} // Silent
+        });
+        allText += text + '\n\n--- CHUNK BREAK ---\n\n';
+      }
+      
+      console.log('OCR complete. Total text length:', allText.length);
+      console.log('--- RAW OCR TEXT ---');
+      console.log(allText.substring(0, 2000) + '...');
+      console.log('--- END TEXT ---');
+      
+      // STEP 3: Send TEXT (not image) to Claude for structuring
+      console.log('Sending text to Claude for structuring...');
+      
       const response = await fetch('/api/scan-receipt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: imageBase64 })
+        body: JSON.stringify({ text: allText, mode: 'text' })
       });
       
       const result = await response.json();
@@ -1805,17 +1823,23 @@ function App() {
         throw new Error(result.message || result.error);
       }
       
-      // Extract items
-      const items = (result.items || []).map(item => ({
+      // Extract items and remove duplicates
+      const seenItems = new Set();
+      const items = (result.items || []).filter(item => {
+        const key = `${item.sku}-${item.size}-${item.price}`;
+        if (seenItems.has(key)) return false;
+        seenItems.add(key);
+        return true;
+      }).map(item => ({
         name: item.name || 'Nike Product',
         sku: item.sku || '',
         size: item.size || '',
         price: parseFloat(item.price) || 0
       }));
       
-      console.log('Claude found', items.length, 'items');
+      console.log('Claude found', items.length, 'unique items');
       
-      // If tax is separate, distribute it across items
+      // Distribute tax if present
       if (result.tax && result.tax > 0 && items.length > 0) {
         const totalBeforeTax = items.reduce((sum, item) => sum + item.price, 0);
         items.forEach(item => {
@@ -1828,10 +1852,10 @@ function App() {
       setNikeReceipt({ 
         scanning: false, 
         items, 
-        image: imageBase64, 
+        image: dataUrl, 
         date: result.orderDate || '', 
         orderNum: result.orderNumber || '',
-        error: items.length === 0 ? 'No items found in this image. Make sure it\'s a Nike order screenshot showing Style Codes, Sizes, and Prices.' : null
+        error: items.length === 0 ? 'No items found. Please make sure this is a Nike order screenshot.' : null
       });
       
       console.log('=== SCAN COMPLETE ===');
