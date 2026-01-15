@@ -1745,10 +1745,43 @@ function App() {
       console.log('=== NIKE RECEIPT SCANNER (Claude AI) ===');
       console.log('Input:', imageFile.name, '|', imageFile.type, '|', (imageFile.size / 1024).toFixed(1), 'KB');
       
-      // Convert image to base64
+      // Convert image to base64 and resize if needed (Claude max is 8000px)
       const imageBase64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target.result);
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            // Check if resizing needed (max 7000px to be safe)
+            const maxDim = 7000;
+            if (img.width <= maxDim && img.height <= maxDim) {
+              resolve(e.target.result);
+              return;
+            }
+            
+            // Resize the image
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            
+            if (width > height && width > maxDim) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else if (height > maxDim) {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            console.log('Resized image from', img.width, 'x', img.height, 'to', width, 'x', height);
+            resolve(canvas.toDataURL('image/jpeg', 0.9));
+          };
+          img.onerror = () => reject(new Error('Failed to load image'));
+          img.src = e.target.result;
+        };
         reader.onerror = () => reject(new Error('Failed to read file'));
         reader.readAsDataURL(imageFile);
       });
