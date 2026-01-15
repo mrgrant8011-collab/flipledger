@@ -1791,7 +1791,7 @@ function App() {
         throw new Error(result.message || result.error);
       }
       
-      // Extract ALL items - NO deduplication (multiple identical items = multiple purchases)
+      // Items are already correctly counted from OCR regex - no deduplication needed
       const items = (result.items || []).map(item => ({
         name: item.name || 'Nike Product',
         sku: item.sku || '',
@@ -1799,7 +1799,7 @@ function App() {
         price: parseFloat(item.price) || 0
       }));
       
-      console.log('Found', items.length, 'items (no deduplication)');
+      console.log('Found', items.length, 'items (counted from OCR)');
       
       // Distribute tax if present
       if (result.tax && result.tax > 0 && items.length > 0) {
