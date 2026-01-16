@@ -250,12 +250,12 @@ Use the exact product name as shown in the receipt. Just the mapping, nothing el
       
       // ========================================
       // STEP 7: Extract Transaction ID (T number)
-      // Format: T + date + store code + transaction number
-      // Example: T20250115... at top or #T20250115... at bottom
+      // Format: T + alphanumeric code (e.g., T1110D0008D0K9YF)
+      // Found at top or bottom with # prefix
       // ========================================
       
       let transactionId = '';
-      const transactionPattern = /#?(T20\d{6,}[A-Za-z0-9]*)/i;
+      const transactionPattern = /#?(T[0-9A-Z]{10,})/i;
       const transactionMatch = text.match(transactionPattern);
       if (transactionMatch) {
         transactionId = transactionMatch[1].toUpperCase();
