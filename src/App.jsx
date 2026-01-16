@@ -1825,9 +1825,15 @@ function App() {
       
       // Check for duplicate receipt EARLY (before showing review)
       const transactionId = result.transactionId || result.orderNumber || '';
+      console.log('=== DUPLICATE CHECK ===');
+      console.log('Transaction ID:', transactionId);
+      console.log('Saved receipts:', savedReceipts);
+      console.log('Looking for match...');
+      
       let isDuplicate = false;
       if (transactionId) {
         const existingReceipt = savedReceipts.find(r => r.id === transactionId);
+        console.log('Found existing receipt:', existingReceipt);
         if (existingReceipt) {
           isDuplicate = true;
           const continueAnyway = confirm(
@@ -1896,17 +1902,15 @@ function App() {
       };
     });
     
-    // Save receipt
-    if (nikeReceipt.image) {
-      setSavedReceipts(prev => [...prev, {
-        id: nikeReceipt.orderNum || Date.now().toString(),
-        image: nikeReceipt.image,
-        date: nikeReceipt.date,
-        items: nikeReceipt.items.length,
-        total: subtotal + manualTax,
-        createdAt: new Date().toISOString()
-      }]);
-    }
+    // Save receipt (always save to track duplicates)
+    setSavedReceipts(prev => [...prev, {
+      id: nikeReceipt.orderNum || Date.now().toString(),
+      image: nikeReceipt.image,
+      date: nikeReceipt.date,
+      items: nikeReceipt.items.length,
+      total: subtotal + manualTax,
+      createdAt: new Date().toISOString()
+    }]);
     
     // Save to Supabase
     const savedItems = await bulkSaveInventoryToSupabase(itemsToSave);
