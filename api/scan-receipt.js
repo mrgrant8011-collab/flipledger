@@ -81,8 +81,8 @@ export default async function handler(req, res) {
         const blockText = itemsText.substring(blockStart, blockEnd);
         
         // Find size in this block (get the LAST size mentioned before Style)
-        // Handles: Size 10, Size 7Y, Size M, Size XL, Size Large, ONE SIZE
-        const sizeRegex = /Size\s+((?:[0-9]+\.?[0-9]*Y?)|(?:X{0,2}S|X{0,3}L|M)|(?:ONE\s*SIZE))/gi;
+        // Handles: Size 10, Size 7Y, Size 8C, Size 13C, Size 2 (TD), Size 13 (PS), Size M, Size XL, ONE SIZE
+        const sizeRegex = /Size\s+((?:[0-9]+\.?[0-9]*[CYW]?(?:\s*\(?(?:TD|PS|GS)\)?)?)|(?:X{0,2}S|X{0,3}L|M)|(?:ONE\s*SIZE))/gi;
         let sizeMatch;
         let size = '';
         while ((sizeMatch = sizeRegex.exec(blockText)) !== null) {
