@@ -2987,7 +2987,8 @@ function App() {
             if (search) {
               matchesSearch = p.name?.toLowerCase().includes(search) || 
                              p.sku?.toLowerCase().includes(search) || 
-                             p.size?.toString().toLowerCase().includes(search);
+                             p.size?.toString().toLowerCase().includes(search) ||
+                             p.date?.includes(search);
             }
             
             const matchesFilter = filter === 'all' || (filter === 'instock' && !p.sold) || (filter === 'sold' && p.sold);
@@ -3155,13 +3156,13 @@ function App() {
                 {/* TAX INPUT - REQUIRED - AT TOP */}
                 <div style={{ padding: '20px', background: nikeReceipt.tax > 0 ? 'rgba(34,197,94,0.1)' : 'rgba(251,191,36,0.15)', borderBottom: `2px solid ${nikeReceipt.tax > 0 ? 'rgba(34,197,94,0.3)' : 'rgba(251,191,36,0.4)'}` }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12 }}>
-                    <span style={{ fontSize: 20 }}>{nikeReceipt.tax > 0 ? '✅' : '💰'}</span>
+                    <span style={{ fontSize: 20 }}>{nikeReceipt.tax > 0 || nikeReceipt.manualTax === '0' ? '✅' : '💰'}</span>
                     <div style={{ flex: 1 }}>
-                      <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: nikeReceipt.tax > 0 ? c.green : c.gold }}>
-                        {nikeReceipt.tax > 0 ? `Tax Detected: ${fmt(nikeReceipt.tax)}` : 'Enter Sales Tax'}
+                      <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: nikeReceipt.tax > 0 || nikeReceipt.manualTax === '0' ? c.green : c.gold }}>
+                        {nikeReceipt.tax > 0 ? `Tax Detected: ${fmt(nikeReceipt.tax)}` : nikeReceipt.manualTax === '0' ? 'No Tax' : 'Enter Sales Tax'}
                       </h4>
                       <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>
-                        {nikeReceipt.tax > 0 ? 'Tax will be distributed across all items' : 'Enter the tax from your receipt (or $0 if none)'}
+                        {nikeReceipt.tax > 0 ? 'Tax will be distributed across all items' : nikeReceipt.manualTax === '0' ? 'Tax set to $0' : 'Enter the tax from your receipt (or $0 if none)'}
                       </p>
                     </div>
                   </div>
@@ -3179,7 +3180,7 @@ function App() {
                       />
                       <button 
                         onClick={() => setNikeReceipt(prev => ({ ...prev, manualTax: '0' }))}
-                        style={{ padding: '14px 20px', background: 'rgba(255,255,255,0.1)', border: `1px solid ${c.border}`, borderRadius: 10, color: c.textMuted, fontSize: 13, cursor: 'pointer' }}
+                        style={{ padding: '14px 20px', background: nikeReceipt.manualTax === '0' ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.1)', border: `1px solid ${nikeReceipt.manualTax === '0' ? c.green : c.border}`, borderRadius: 10, color: nikeReceipt.manualTax === '0' ? c.green : c.textMuted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
                       >No Tax</button>
                     </div>
                   )}
@@ -3204,6 +3205,23 @@ function App() {
                       >✏️</button>
                     </div>
                   ))}
+                </div>
+                
+                {/* PURCHASE DATE INPUT */}
+                <div style={{ padding: '16px 20px', background: 'rgba(59,130,246,0.1)', borderBottom: `1px solid rgba(59,130,246,0.2)` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 18 }}>📅</span>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: 'block', fontSize: 12, color: c.textMuted, marginBottom: 6, fontWeight: 600 }}>PURCHASE DATE</label>
+                      <input
+                        type="date"
+                        value={nikeReceipt.date || new Date().toISOString().split('T')[0]}
+                        onChange={(e) => setNikeReceipt(prev => ({ ...prev, date: e.target.value }))}
+                        style={{ padding: '10px 14px', background: 'rgba(0,0,0,0.4)', border: `1px solid rgba(59,130,246,0.4)`, borderRadius: 8, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+                      />
+                    </div>
+                    <div style={{ fontSize: 11, color: c.textMuted, maxWidth: 150 }}>Change if different from today</div>
+                  </div>
                 </div>
                 
                 {/* Summary & Add Button */}
@@ -3331,7 +3349,7 @@ function App() {
           <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
             <input 
               type="text" 
-              placeholder="🔍 Search by name, SKU, or size..." 
+              placeholder="🔍 Search by name, SKU, size, or date..." 
               value={formData.inventorySearch || ''} 
               onChange={e => { setFormData(prev => ({ ...prev, inventorySearch: e.target.value })); setInventoryPage(1); }}
               style={{ flex: 1, minWidth: 200, padding: 14, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 14 }} 
@@ -5357,9 +5375,9 @@ Let me know if you need anything else.`;
             {modal === 'bulkAdd' && <>
               <input value={formData.bulkName || ''} onChange={e => setFormData({ ...formData, bulkName: e.target.value })} placeholder="Product name *" style={{ ...inputStyle, marginBottom: 12 }} />
               <input value={formData.bulkSku || ''} onChange={e => setFormData({ ...formData, bulkSku: e.target.value })} placeholder="Style Code (e.g., DH6927-111)" style={{ ...inputStyle, marginBottom: 12 }} />
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: c.textMuted, display: 'block', marginBottom: 6 }}>PURCHASE DATE</label>
-                <input type="date" value={formData.bulkDate || ''} onChange={e => setFormData({ ...formData, bulkDate: e.target.value })} style={inputStyle} />
+              <div style={{ marginBottom: 16, padding: 14, background: 'rgba(59,130,246,0.1)', borderRadius: 10, border: '1px solid rgba(59,130,246,0.2)' }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#93c5fd', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>📅 PURCHASE DATE <span style={{ fontWeight: 400, color: c.textMuted }}>(required)</span></label>
+                <input type="date" value={formData.bulkDate || new Date().toISOString().split('T')[0]} onChange={e => setFormData({ ...formData, bulkDate: e.target.value })} style={{ ...inputStyle, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(59,130,246,0.4)' }} />
               </div>
               
               {/* Same cost for all toggle */}
