@@ -248,11 +248,53 @@ Use the exact product name as shown in the receipt. Just the mapping, nothing el
       console.log('Items:', finalItems.length);
       console.log('Subtotal:', subtotal, '| Tax:', tax, '| Total:', total);
       
+      // ========================================
+      // STEP 7: Extract Transaction ID (T number)
+      // Format: T + date + store code + transaction number
+      // Example: T20250115... at top or #T20250115... at bottom
+      // ========================================
+      
+      let transactionId = '';
+      const transactionPattern = /#?(T20\d{6,}[A-Za-z0-9]*)/i;
+      const transactionMatch = text.match(transactionPattern);
+      if (transactionMatch) {
+        transactionId = transactionMatch[1].toUpperCase();
+        console.log('Found transaction ID:', transactionId);
+      }
+      
+      // Also try to extract date from receipt
+      let receiptDate = '';
+      const datePatterns = [
+        /(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}/i,
+        /\d{1,2}\/\d{1,2}\/\d{2,4}/,
+        /\d{4}-\d{2}-\d{2}/
+      ];
+      
+      for (const pattern of datePatterns) {
+        const dateMatch = text.match(pattern);
+        if (dateMatch) {
+          // Convert to YYYY-MM-DD format
+          const dateStr = dateMatch[0];
+          try {
+            const parsed = new Date(dateStr);
+            if (!isNaN(parsed)) {
+              receiptDate = parsed.toISOString().split('T')[0];
+              console.log('Found receipt date:', receiptDate);
+              break;
+            }
+          } catch (e) {
+            console.log('Could not parse date:', dateStr);
+          }
+        }
+      }
+      
       return res.status(200).json({
         items: finalItems,
         subtotal: Math.round(subtotal * 100) / 100,
         tax: tax,
-        total: Math.round(total * 100) / 100
+        total: Math.round(total * 100) / 100,
+        transactionId: transactionId,
+        receiptDate: receiptDate
       });
       
     } else {

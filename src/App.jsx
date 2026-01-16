@@ -764,7 +764,12 @@ function App() {
   const [formData, setFormData] = useState({});
   const [settings, setSettings] = useState({ stockxLevel: 9, stockxProcessing: 3, stockxQuickShip: false, stockxDirectFee: 5, stockxDirectProcessing: 3, stockxFlexFee: 5, stockxFlexProcessing: 3, stockxFlexFulfillment: 5, goatFee: 9.5, goatProcessing: 2.9, ebayFee: 12.9, mileageRate: 0.67 });
   const [pendingCosts, setPendingCosts] = useState([]);
-  const [savedReceipts, setSavedReceipts] = useState([]);
+  const [savedReceipts, setSavedReceipts] = useState(() => {
+    try {
+      const saved = localStorage.getItem('flipledger_receipts');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   
   // Connection state
   const [stockxConnected, setStockxConnected] = useState(false);
@@ -792,6 +797,13 @@ function App() {
   const [showNikeExample, setShowNikeExample] = useState(false);
 
   const ITEMS_PER_PAGE = 50;
+
+  // Save receipts to localStorage when they change
+  useEffect(() => {
+    if (savedReceipts.length > 0) {
+      localStorage.setItem('flipledger_receipts', JSON.stringify(savedReceipts));
+    }
+  }, [savedReceipts]);
 
   // Check for existing session on load
   useEffect(() => {
@@ -1815,8 +1827,8 @@ function App() {
         scanning: false, 
         items, 
         image: imageBase64, 
-        date: result.orderDate || '', 
-        orderNum: result.orderNumber || '',
+        date: result.receiptDate || result.orderDate || '', 
+        orderNum: result.transactionId || result.orderNumber || '',
         tax: result.tax || 0,
         manualTax: '',
         editingItem: null,
@@ -1841,6 +1853,24 @@ function App() {
   
   // Add scanned items to inventory
   const addNikeItemsToInventory = async () => {
+    // Check for duplicate receipt (using transaction ID)
+    const transactionId = nikeReceipt.orderNum;
+    if (transactionId) {
+      const existingReceipt = savedReceipts.find(r => r.id === transactionId);
+      if (existingReceipt) {
+        const addAnyway = confirm(
+          `⚠️ This receipt was already added!\n\n` +
+          `Receipt ID: ${transactionId}\n` +
+          `Added on: ${existingReceipt.createdAt ? new Date(existingReceipt.createdAt).toLocaleDateString() : 'Unknown'}\n` +
+          `Items: ${existingReceipt.items}\n\n` +
+          `Add these items anyway? (This may create duplicates)`
+        );
+        if (!addAnyway) {
+          return; // User cancelled
+        }
+      }
+    }
+    
     // Get manual tax if entered
     const manualTax = parseFloat(nikeReceipt.manualTax) || 0;
     const subtotal = nikeReceipt.items.reduce((sum, item) => sum + item.price, 0);
@@ -3148,7 +3178,7 @@ function App() {
                 <div style={{ padding: '16px 20px', background: 'rgba(249,115,22,0.1)', borderBottom: `1px solid rgba(249,115,22,0.2)`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#F97316' }}>📸 Found {nikeReceipt.items.length} Items</h3>
-                    {nikeReceipt.date && <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>{nikeReceipt.date} • {nikeReceipt.orderNum || 'Nike Order'}</p>}
+                    {nikeReceipt.date && <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>{nikeReceipt.date} {nikeReceipt.orderNum ? `• ${nikeReceipt.orderNum}` : ''}</p>}
                   </div>
                   <button onClick={() => setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '', tax: 0, manualTax: '', editingItem: null })} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, color: c.textMuted, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
                 </div>
@@ -3430,15 +3460,18 @@ function App() {
             <span style={{ fontSize: 13, color: selectedInventory.size > 0 ? c.green : c.textMuted, fontWeight: selectedInventory.size > 0 ? 700 : 400 }}>{selectedInventory.size > 0 ? `${selectedInventory.size} selected` : 'None selected'}</span>
           </div>
 
-          {/* BULK DELETE BAR */}
+          {/* BULK ACTION BAR */}
           {selectedInventory.size > 0 && (
-            <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(239,68,68,0.15)', border: `1px solid rgba(239,68,68,0.3)`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontWeight: 700, color: c.red, fontSize: 14 }}>
-                🗑️ {selectedInventory.size} item{selectedInventory.size > 1 ? 's' : ''} selected
+            <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(59,130,246,0.15)', border: `1px solid rgba(59,130,246,0.3)`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontWeight: 700, color: '#60a5fa', fontSize: 14 }}>
+                📦 {selectedInventory.size} item{selectedInventory.size > 1 ? 's' : ''} selected
               </span>
               <div style={{ display: 'flex', gap: 12 }}>
                 <button onClick={() => setSelectedInventory(new Set())} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>
                   Clear Selection
+                </button>
+                <button onClick={() => setModal('bulkEdit')} style={{ padding: '8px 20px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: 8, color: '#60a5fa', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                  ✏️ Bulk Edit
                 </button>
                 <button onClick={async () => {
                   if (confirm(`Delete ${selectedInventory.size} item${selectedInventory.size > 1 ? 's' : ''}? This cannot be undone.`)) {
@@ -5324,7 +5357,7 @@ Let me know if you need anything else.`;
         <div style={{ background: 'linear-gradient(180deg, #111 0%, #0a0a0a 100%)', border: `1px solid ${c.border}`, borderRadius: 20, width: 420, maxHeight: '90vh', overflow: 'auto' }}>
           <div style={{ padding: '18px 22px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#111' }}>
             <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>
-              {modal === 'purchase' ? 'ADD PURCHASE' : modal === 'bulkAdd' ? 'BULK ADD ITEMS' : modal === 'sale' ? 'RECORD SALE' : modal === 'editSale' ? 'EDIT SALE' : modal === 'editInventory' ? 'EDIT INVENTORY' : modal === 'expense' ? 'ADD EXPENSE' : modal === 'editExpense' ? 'EDIT EXPENSE' : modal === 'storage' ? 'ADD STORAGE FEE' : 'LOG MILEAGE'}
+              {modal === 'purchase' ? 'ADD PURCHASE' : modal === 'bulkAdd' ? 'BULK ADD ITEMS' : modal === 'bulkEdit' ? 'BULK EDIT ITEMS' : modal === 'sale' ? 'RECORD SALE' : modal === 'editSale' ? 'EDIT SALE' : modal === 'editInventory' ? 'EDIT INVENTORY' : modal === 'expense' ? 'ADD EXPENSE' : modal === 'editExpense' ? 'EDIT EXPENSE' : modal === 'storage' ? 'ADD STORAGE FEE' : 'LOG MILEAGE'}
             </h3>
             <button onClick={() => setModal(null)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 8, width: 32, height: 32, color: '#fff', fontSize: 18, cursor: 'pointer' }}>×</button>
           </div>
@@ -5338,6 +5371,72 @@ Let me know if you need anything else.`;
                 <input type="number" value={formData.cost || ''} onChange={e => setFormData({ ...formData, cost: e.target.value })} placeholder="Cost *" style={{ ...inputStyle, flex: 1 }} />
               </div>
               <input type="date" value={formData.date || ''} onChange={e => setFormData({ ...formData, date: e.target.value })} style={inputStyle} />
+            </>}
+            {/* BULK EDIT MODAL */}
+            {modal === 'bulkEdit' && <>
+              <div style={{ marginBottom: 20, padding: 16, background: 'rgba(59,130,246,0.1)', borderRadius: 12, border: '1px solid rgba(59,130,246,0.2)' }}>
+                <p style={{ margin: 0, fontSize: 14, color: '#93c5fd' }}>
+                  ✏️ Editing <strong>{selectedInventory.size}</strong> item{selectedInventory.size > 1 ? 's' : ''}
+                </p>
+                <p style={{ margin: '8px 0 0', fontSize: 12, color: c.textMuted }}>
+                  Only fill in fields you want to change. Empty fields will be left unchanged.
+                </p>
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: c.textMuted, marginBottom: 6 }}>📅 DATE</label>
+                <input type="date" value={formData.bulkEditDate || ''} onChange={e => setFormData({ ...formData, bulkEditDate: e.target.value })} style={inputStyle} />
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: c.textMuted, marginBottom: 6 }}>SKU (STYLE CODE)</label>
+                <input value={formData.bulkEditSku || ''} onChange={e => setFormData({ ...formData, bulkEditSku: e.target.value })} placeholder="Leave empty to keep existing" style={inputStyle} />
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: c.textMuted, marginBottom: 6 }}>COST</label>
+                <input type="number" step="0.01" value={formData.bulkEditCost || ''} onChange={e => setFormData({ ...formData, bulkEditCost: e.target.value })} placeholder="Leave empty to keep existing" style={inputStyle} />
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: c.textMuted, marginBottom: 6 }}>STATUS</label>
+                <select value={formData.bulkEditStatus || ''} onChange={e => setFormData({ ...formData, bulkEditStatus: e.target.value })} style={{ ...inputStyle, cursor: 'pointer' }}>
+                  <option value="">-- Keep existing --</option>
+                  <option value="instock">In Stock</option>
+                  <option value="sold">Sold</option>
+                </select>
+              </div>
+              <button 
+                onClick={async () => {
+                  const updates = {};
+                  if (formData.bulkEditDate) updates.date = formData.bulkEditDate;
+                  if (formData.bulkEditSku) updates.sku = formData.bulkEditSku;
+                  if (formData.bulkEditCost) updates.cost = parseFloat(formData.bulkEditCost);
+                  if (formData.bulkEditStatus) updates.sold = formData.bulkEditStatus === 'sold';
+                  
+                  if (Object.keys(updates).length === 0) {
+                    alert('Please fill in at least one field to update.');
+                    return;
+                  }
+                  
+                  // Update in Supabase and local state
+                  for (const id of selectedInventory) {
+                    const item = purchases.find(p => p.id === id);
+                    if (item) {
+                      const updatedItem = { ...item, ...updates };
+                      await updateInventoryInSupabase(updatedItem);
+                    }
+                  }
+                  
+                  setPurchases(prev => prev.map(p => 
+                    selectedInventory.has(p.id) ? { ...p, ...updates } : p
+                  ));
+                  
+                  setSelectedInventory(new Set());
+                  setFormData({});
+                  setModal(null);
+                  alert(`✅ Updated ${selectedInventory.size} item${selectedInventory.size > 1 ? 's' : ''}!`);
+                }}
+                style={{ width: '100%', padding: 14, ...btnPrimary, fontSize: 15, fontWeight: 700 }}
+              >
+                ✓ Apply to {selectedInventory.size} Item{selectedInventory.size > 1 ? 's' : ''}
+              </button>
             </>}
             {modal === 'purchase' && <>
               {formData.image && (
