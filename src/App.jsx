@@ -764,12 +764,7 @@ function App() {
   const [formData, setFormData] = useState({});
   const [settings, setSettings] = useState({ stockxLevel: 9, stockxProcessing: 3, stockxQuickShip: false, stockxDirectFee: 5, stockxDirectProcessing: 3, stockxFlexFee: 5, stockxFlexProcessing: 3, stockxFlexFulfillment: 5, goatFee: 9.5, goatProcessing: 2.9, ebayFee: 12.9, mileageRate: 0.67 });
   const [pendingCosts, setPendingCosts] = useState([]);
-  const [savedReceipts, setSavedReceipts] = useState(() => {
-    try {
-      const saved = localStorage.getItem('flipledger_receipts');
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
+  // Scanned receipts tracked in Supabase (scanned_receipts table)
   
   // Connection state
   const [stockxConnected, setStockxConnected] = useState(false);
@@ -797,13 +792,6 @@ function App() {
   const [showNikeExample, setShowNikeExample] = useState(false);
 
   const ITEMS_PER_PAGE = 50;
-
-  // Save receipts to localStorage when they change
-  useEffect(() => {
-    if (savedReceipts.length > 0) {
-      localStorage.setItem('flipledger_receipts', JSON.stringify(savedReceipts));
-    }
-  }, [savedReceipts]);
 
   // Check for existing session on load
   useEffect(() => {
@@ -1052,6 +1040,40 @@ function App() {
       if (error) throw error;
     } catch (error) {
       console.error('Error deleting sale:', error);
+    }
+  };
+
+  // Check if receipt was already scanned (Supabase)
+  const checkReceiptExists = async (transactionId) => {
+    if (!user || !transactionId) return false;
+    try {
+      const { data, error } = await supabase
+        .from('scanned_receipts')
+        .select('id, created_at')
+        .eq('user_id', user.id)
+        .eq('transaction_id', transactionId)
+        .single();
+      if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found (ok)
+      return data || null;
+    } catch (error) {
+      console.error('Error checking receipt:', error);
+      return null;
+    }
+  };
+
+  // Save scanned receipt to Supabase
+  const saveScannedReceipt = async (transactionId) => {
+    if (!user || !transactionId) return;
+    try {
+      const { error } = await supabase
+        .from('scanned_receipts')
+        .insert({
+          user_id: user.id,
+          transaction_id: transactionId
+        });
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error saving receipt:', error);
     }
   };
 
@@ -1825,27 +1847,19 @@ function App() {
       
       // Check for duplicate receipt EARLY (before showing review)
       const transactionId = result.transactionId || result.orderNumber || '';
-      console.log('=== DUPLICATE CHECK ===');
-      console.log('Transaction ID:', transactionId);
-      console.log('Saved receipts:', savedReceipts);
-      console.log('Looking for match...');
       
       let isDuplicate = false;
       if (transactionId) {
-        const existingReceipt = savedReceipts.find(r => r.id === transactionId);
-        console.log('Found existing receipt:', existingReceipt);
+        // Check Supabase for existing receipt
+        const existingReceipt = await checkReceiptExists(transactionId);
         if (existingReceipt) {
           isDuplicate = true;
           const continueAnyway = confirm(
-            `⚠️ This receipt was already scanned!\n\n` +
-            `Receipt ID: ${transactionId}\n` +
-            `Added on: ${existingReceipt.createdAt ? new Date(existingReceipt.createdAt).toLocaleDateString() : 'Unknown'}\n` +
-            `Items: ${existingReceipt.items}\n\n` +
-            `Continue anyway?`
+            `⚠️ This receipt was already scanned!\n\nReceipt ID: ${transactionId}\nAdded on: ${new Date(existingReceipt.created_at).toLocaleDateString()}\n\nContinue anyway?`
           );
           if (!continueAnyway) {
             setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '', tax: 0, manualTax: '', editingItem: null });
-            return; // User cancelled - don't show review
+            return;
           }
         }
       }
@@ -1902,15 +1916,10 @@ function App() {
       };
     });
     
-    // Save receipt (always save to track duplicates)
-    setSavedReceipts(prev => [...prev, {
-      id: nikeReceipt.orderNum || Date.now().toString(),
-      image: nikeReceipt.image,
-      date: nikeReceipt.date,
-      items: nikeReceipt.items.length,
-      total: subtotal + manualTax,
-      createdAt: new Date().toISOString()
-    }]);
+    // Save receipt to Supabase (for duplicate tracking)
+    if (nikeReceipt.orderNum) {
+      await saveScannedReceipt(nikeReceipt.orderNum);
+    }
     
     // Save to Supabase
     const savedItems = await bulkSaveInventoryToSupabase(itemsToSave);
