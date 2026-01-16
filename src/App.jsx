@@ -1845,24 +1845,8 @@ function App() {
         console.log('Distributed $' + result.tax + ' tax across items');
       }
       
-      // Check for duplicate receipt EARLY (before showing review)
+      // Extract transaction ID for reference (no duplicate check - keep it simple)
       const transactionId = result.transactionId || result.orderNumber || '';
-      
-      let isDuplicate = false;
-      if (transactionId) {
-        // Check Supabase for existing receipt
-        const existingReceipt = await checkReceiptExists(transactionId);
-        if (existingReceipt) {
-          isDuplicate = true;
-          const continueAnyway = confirm(
-            `⚠️ This receipt was already scanned!\n\nReceipt ID: ${transactionId}\nAdded on: ${new Date(existingReceipt.created_at).toLocaleDateString()}\n\nContinue anyway?`
-          );
-          if (!continueAnyway) {
-            setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '', tax: 0, manualTax: '', editingItem: null });
-            return;
-          }
-        }
-      }
       
       setNikeReceipt({ 
         scanning: false, 
@@ -1873,7 +1857,6 @@ function App() {
         tax: result.tax || 0,
         manualTax: '',
         editingItem: null,
-        isDuplicate: isDuplicate, // Flag so we can show warning in UI too
         error: items.length === 0 ? 'No items found. Make sure this is a Nike order screenshot.' : null
       });
       
@@ -1915,11 +1898,6 @@ function App() {
         sold: false
       };
     });
-    
-    // Save receipt to Supabase (for duplicate tracking)
-    if (nikeReceipt.orderNum) {
-      await saveScannedReceipt(nikeReceipt.orderNum);
-    }
     
     // Save to Supabase
     const savedItems = await bulkSaveInventoryToSupabase(itemsToSave);
@@ -3191,16 +3169,6 @@ function App() {
             {/* Scanned Items Review */}
             {nikeReceipt.items.length > 0 && (
               <div style={{ background: 'rgba(249,115,22,0.05)', border: `2px solid rgba(249,115,22,0.3)`, borderRadius: 16, overflow: 'hidden' }}>
-                {/* DUPLICATE WARNING BANNER */}
-                {nikeReceipt.isDuplicate && (
-                  <div style={{ padding: '14px 20px', background: 'rgba(239,68,68,0.2)', borderBottom: '2px solid rgba(239,68,68,0.4)', display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <span style={{ fontSize: 20 }}>⚠️</span>
-                    <div>
-                      <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#f87171' }}>Duplicate Receipt Warning</p>
-                      <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>This receipt was already added. Adding again will create duplicates.</p>
-                    </div>
-                  </div>
-                )}
                 {/* Header */}
                 <div style={{ padding: '16px 20px', background: 'rgba(249,115,22,0.1)', borderBottom: `1px solid rgba(249,115,22,0.2)`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
