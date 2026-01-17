@@ -1531,7 +1531,7 @@ function App() {
           return;
         }
         
-        // Filter out duplicates - check by orderId/orderNumber
+        // Filter out duplicates - check by id (which is the order number from StockX)
         const existingIds = new Set([
           ...pendingCosts.map(p => p.orderId).filter(Boolean),
           ...pendingCosts.map(p => p.orderNumber).filter(Boolean),
@@ -1540,7 +1540,7 @@ function App() {
           ...sales.map(s => s.id)
         ]);
         
-        const newSales = yearFiltered.filter(s => !existingIds.has(s.id) && !existingIds.has(s.orderId));
+        const newSales = yearFiltered.filter(s => !existingIds.has(s.id));
         
         if (newSales.length > 0) {
           // Save to Supabase
