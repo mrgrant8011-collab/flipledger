@@ -21,84 +21,18 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'No image or text provided' });
     }
 
-    // If we have OCR text, parse it directly with JavaScript
+    // OCR text provided - parse with deterministic JS parser (NO Claude)
     if (mode === 'text' && text) {
-      console.log(`[Parser] Parsing OCR text with JS parser`);
+      console.log(`[Parser] Using deterministic JS parser`);
       const result = parseNikeReceiptJS(text);
       return res.status(200).json(result);
     }
 
-    // For image-only mode, use Claude
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
-    }
-
-    const anthropic = new Anthropic({ apiKey });
-
-    let base64Data = image;
-    let mediaType = 'image/jpeg';
-    
-    if (image.startsWith('data:')) {
-      const matches = image.match(/^data:(.+);base64,(.+)$/);
-      if (matches) {
-        mediaType = matches[1];
-        base64Data = matches[2];
-      }
-    }
-
-    const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 8192,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: mediaType,
-                data: base64Data,
-              },
-            },
-            {
-              type: 'text',
-              text: `Extract ALL items from this Nike receipt. Return JSON with items array. Each item needs: name, sku, size, price. Do NOT deduplicate - if same item appears multiple times, list it multiple times.`
-            }
-          ],
-        }
-      ],
+    // Image only - just return error, OCR should be done separately
+    return res.status(400).json({ 
+      error: 'Text mode required', 
+      message: 'Please use Google Vision OCR first.' 
     });
-
-    const content = response.content[0].text;
-    
-    let result;
-    try {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        result = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error('No JSON found');
-      }
-    } catch (parseError) {
-      return res.status(500).json({ 
-        error: 'Failed to parse receipt', 
-        message: 'Could not extract items.' 
-      });
-    }
-
-    if (result.items && Array.isArray(result.items)) {
-      result.items = result.items.map(item => ({
-        name: (item.name || 'Nike Product').trim(),
-        sku: normalizeSkuCode(item.sku) || 'UNKNOWN',
-        size: normalizeSize(item.size) || 'UNKNOWN',
-        price: parseFloat(item.price) || 0,
-        needsReview: !item.sku || !item.size || !item.price
-      }));
-    }
-
-    return res.status(200).json(result);
 
   } catch (error) {
     console.error('Receipt scan error:', error);
@@ -109,140 +43,129 @@ export default async function handler(req, res) {
   }
 }
 
-// JavaScript-based Nike receipt parser using Sale Price as item boundary
+/**
+ * Deterministic JavaScript Nike Receipt Parser
+ * 
+ * Item boundary: Each line matching "$XX.XX $XXX.XX" pattern (sale price + original price)
+ * This is how Nike receipts show pricing - sale price first, then crossed-out original.
+ * 
+ * NEVER deduplicates - identical items are valid bulk purchases.
+ */
 function parseNikeReceiptJS(ocrText) {
+  const lines = ocrText.split('\n').map(l => l.trim());
   const items = [];
-  const lines = ocrText.split('\n');
   
-  // Count markers for logging
-  const styleMatches = ocrText.match(/Style\s+[A-Z0-9]{5,8}-\d{3}/gi) || [];
-  const salePriceMatches = ocrText.match(/sale\s*price/gi) || [];
+  // Pattern: $XX.XX $XXX.XX (sale price followed by original price)
+  const dualPricePattern = /^\$(\d+\.\d{2})\s+\$(\d+\.\d{2})$/;
   
-  console.log(`[JSParser] styleCount: ${styleMatches.length}`);
-  console.log(`[JSParser] salePriceCount: ${salePriceMatches.length}`);
-  
-  // Find all "Sale Price" line indices
-  const salePriceIndices = [];
+  // Find ALL price line indices - each one is exactly 1 item
+  const priceLineIndices = [];
   for (let i = 0; i < lines.length; i++) {
-    if (/sale\s*price/i.test(lines[i])) {
-      salePriceIndices.push(i);
+    if (dualPricePattern.test(lines[i])) {
+      priceLineIndices.push(i);
     }
   }
   
-  console.log(`[JSParser] Found ${salePriceIndices.length} Sale Price markers at lines: ${salePriceIndices.join(', ')}`);
+  const salePriceCount = priceLineIndices.length;
+  console.log(`[JSParser] salePriceCount: ${salePriceCount}`);
   
-  // Process each Sale Price block
-  for (let blockIdx = 0; blockIdx < salePriceIndices.length; blockIdx++) {
-    const salePriceLine = salePriceIndices[blockIdx];
-    const nextSalePriceLine = salePriceIndices[blockIdx + 1] || lines.length;
+  // Process each price line - NO DEDUPLICATION
+  for (let idx = 0; idx < priceLineIndices.length; idx++) {
+    const priceLine = priceLineIndices[idx];
+    const nextPriceLine = priceLineIndices[idx + 1] || lines.length;
     
-    // Search window: from current Sale Price to next Sale Price (or end)
-    // Also look backwards for context
-    const searchStart = Math.max(0, salePriceLine - 20);
-    const searchEnd = nextSalePriceLine;
+    // 1. Extract PRICE from this line
+    const priceMatch = lines[priceLine].match(dualPricePattern);
+    const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
     
-    let price = 0;
+    // 2. Find SIZE - look after price line first, then before
     let size = '';
-    let sku = '';
-    let name = '';
     
-    // Find price: look for $XX.XX pattern after "Sale Price" line
-    for (let i = salePriceLine; i < Math.min(salePriceLine + 5, lines.length); i++) {
-      const priceMatch = lines[i].match(/\$(\d+\.\d{2})/);
-      if (priceMatch) {
-        price = parseFloat(priceMatch[1]);
+    // Look after price line (within this item's block)
+    for (let i = priceLine + 1; i < Math.min(priceLine + 10, nextPriceLine); i++) {
+      const sizeMatch = lines[i].match(/^Size\s+(\d+\.?\d*[CY]?)$/i);
+      if (sizeMatch) {
+        size = sizeMatch[1];
         break;
       }
     }
     
-    // Find size: look backwards from Sale Price line
-    for (let i = salePriceLine - 1; i >= searchStart; i--) {
-      const line = lines[i].trim();
-      
-      // Match various size patterns
-      const sizePatterns = [
-        /^Size\s+(\d+\.?\d*[CY]?)$/i,           // "Size 11" or "Size 7C" or "Size 5Y"
-        /^(\d+\.?\d*[CY])$/,                     // Just "7C" or "5Y"
-        /^(\d+\.?\d*)$/,                         // Just "11" or "10.5"
-      ];
-      
-      for (const pattern of sizePatterns) {
-        const match = line.match(pattern);
-        if (match) {
-          size = match[1].toUpperCase();
+    // If not found after, look before
+    if (!size) {
+      for (let i = priceLine - 1; i >= Math.max(0, priceLine - 10); i--) {
+        const sizeMatch = lines[i].match(/^Size\s+(\d+\.?\d*[CY]?)$/i);
+        if (sizeMatch) {
+          size = sizeMatch[1];
           break;
         }
+        // Stop if we hit another price line
+        if (dualPricePattern.test(lines[i])) break;
       }
-      if (size) break;
     }
     
-    // Find SKU: look in the block area
-    for (let i = searchStart; i < searchEnd; i++) {
-      const skuMatch = lines[i].match(/([A-Z0-9]{5,8}-\d{3})/i);
+    // 3. Find STYLE/SKU - look after price line
+    let sku = '';
+    for (let i = priceLine + 1; i < Math.min(priceLine + 15, nextPriceLine); i++) {
+      const skuMatch = lines[i].match(/^Style\s+([A-Z0-9]{5,8}-\d{3})$/i);
       if (skuMatch) {
         sku = skuMatch[1].toUpperCase();
         break;
       }
     }
     
-    // Find name: look for Air Jordan / Nike lines above size
-    for (let i = salePriceLine - 1; i >= searchStart; i--) {
-      const line = lines[i].trim();
-      if (/^(Air Jordan|Nike|Jordan)\s+/i.test(line)) {
+    // 4. Find NAME - look before price line for "Air Jordan" or "Nike"
+    let name = '';
+    for (let i = priceLine - 1; i >= Math.max(0, priceLine - 8); i--) {
+      const line = lines[i];
+      if (/^Air Jordan/i.test(line) || /^Nike\s+/i.test(line)) {
         name = line;
-        // Check if next line continues the name
-        if (i + 1 < salePriceLine) {
-          const nextLine = lines[i + 1].trim();
-          if (nextLine && !nextLine.match(/^\$/) && !nextLine.match(/^(Size|Style|Sale|Women|Men)/i)) {
-            name += ' ' + nextLine;
+        // Include continuation line if present
+        if (i + 1 < priceLine && lines[i + 1] && !lines[i + 1].match(/^\$/)) {
+          const cont = lines[i + 1];
+          if (!cont.match(/^(Size|Style|Women|Men|\$)/i) && cont.length < 25) {
+            name += ' ' + cont;
           }
         }
-        name = name.replace(/"/g, '');
         break;
       }
+      // Stop if we hit another price line
+      if (dualPricePattern.test(line)) break;
     }
     
     // Create item
-    const item = {
-      name: name || 'Nike Product',
+    items.push({
+      name: name.replace(/"/g, '') || 'Nike Product',
       sku: sku || 'UNKNOWN',
       size: size || 'UNKNOWN',
       price: price,
       needsReview: !sku || !size || price <= 0
-    };
-    
-    items.push(item);
-    console.log(`[JSParser] Item ${blockIdx + 1}: ${item.sku} size ${item.size} @ $${item.price}`);
+    });
   }
   
-  console.log(`[JSParser] finalItemsCount: ${items.length}`);
+  const finalItemsCount = items.length;
+  console.log(`[JSParser] finalItemsCount: ${finalItemsCount}`);
+  
+  // Verify counts match
+  if (finalItemsCount !== salePriceCount) {
+    console.warn(`[JSParser] WARNING: Count mismatch! salePriceCount=${salePriceCount}, finalItemsCount=${finalItemsCount}`);
+  } else {
+    console.log(`[JSParser] ✓ Counts match: ${finalItemsCount} items`);
+  }
+  
+  // Log each item
+  items.forEach((item, i) => {
+    console.log(`[JSParser] Item ${i + 1}: ${item.sku} | Size ${item.size} | $${item.price} | ${item.name.substring(0, 30)}`);
+  });
   
   // Extract order info
   const orderMatch = ocrText.match(/T\d{10,}[A-Z]+/);
-  const totalMatch = ocrText.match(/\$[\d,]+\.\d{2}$/m);
   
   return {
     items: items,
     subtotal: 0,
     tax: 0,
-    total: totalMatch ? parseFloat(totalMatch[0].replace(/[$,]/g, '')) : 0,
+    total: 0,
     orderNumber: orderMatch ? orderMatch[0] : '',
     orderDate: ''
   };
-}
-
-function normalizeSkuCode(sku) {
-  if (!sku) return '';
-  let normalized = String(sku).trim().toUpperCase();
-  normalized = normalized.replace(/\s+/g, '').replace(/[-–—]/g, '-');
-  const match = normalized.match(/^([A-Z0-9]{5,8})-?(\d{3})$/);
-  if (match) return `${match[1]}-${match[2]}`;
-  return sku.trim();
-}
-
-function normalizeSize(size) {
-  if (!size) return '';
-  let normalized = String(size).trim().toUpperCase();
-  normalized = normalized.replace(/^SIZE\s*/i, '');
-  return normalized;
 }
