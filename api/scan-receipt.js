@@ -21,11 +21,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'No image or text provided' });
     }
 
-    // If we have OCR text, parse it directly with JavaScript (no Claude deduplication)
+    // If we have OCR text, parse it directly with JavaScript
     if (mode === 'text' && text) {
-      console.log(`[Parser] Parsing OCR text directly with JavaScript`);
+      console.log(`[Parser] Parsing OCR text with JS parser`);
       const result = parseNikeReceiptJS(text);
-      console.log(`[Parser] JS parser found ${result.items.length} items`);
       return res.status(200).json(result);
     }
 
@@ -110,83 +109,113 @@ export default async function handler(req, res) {
   }
 }
 
-// JavaScript-based Nike receipt parser - NO DEDUPLICATION
+// JavaScript-based Nike receipt parser using Sale Price as item boundary
 function parseNikeReceiptJS(ocrText) {
   const items = [];
   const lines = ocrText.split('\n');
   
-  let currentItem = null;
+  // Count markers for logging
+  const styleMatches = ocrText.match(/Style\s+[A-Z0-9]{5,8}-\d{3}/gi) || [];
+  const salePriceMatches = ocrText.match(/sale\s*price/gi) || [];
   
+  console.log(`[JSParser] styleCount: ${styleMatches.length}`);
+  console.log(`[JSParser] salePriceCount: ${salePriceMatches.length}`);
+  
+  // Find all "Sale Price" line indices
+  const salePriceIndices = [];
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
+    if (/sale\s*price/i.test(lines[i])) {
+      salePriceIndices.push(i);
+    }
+  }
+  
+  console.log(`[JSParser] Found ${salePriceIndices.length} Sale Price markers at lines: ${salePriceIndices.join(', ')}`);
+  
+  // Process each Sale Price block
+  for (let blockIdx = 0; blockIdx < salePriceIndices.length; blockIdx++) {
+    const salePriceLine = salePriceIndices[blockIdx];
+    const nextSalePriceLine = salePriceIndices[blockIdx + 1] || lines.length;
     
-    // Detect Style line - this marks a new item
-    const styleMatch = line.match(/^Style\s+([A-Z0-9]{5,8}-\d{3})$/i);
-    if (styleMatch) {
-      // Save previous item if exists
-      if (currentItem && currentItem.sku) {
-        items.push({ ...currentItem });
-        console.log(`[JSParser] Added item: ${currentItem.sku} size ${currentItem.size} @ $${currentItem.price}`);
+    // Search window: from current Sale Price to next Sale Price (or end)
+    // Also look backwards for context
+    const searchStart = Math.max(0, salePriceLine - 20);
+    const searchEnd = nextSalePriceLine;
+    
+    let price = 0;
+    let size = '';
+    let sku = '';
+    let name = '';
+    
+    // Find price: look for $XX.XX pattern after "Sale Price" line
+    for (let i = salePriceLine; i < Math.min(salePriceLine + 5, lines.length); i++) {
+      const priceMatch = lines[i].match(/\$(\d+\.\d{2})/);
+      if (priceMatch) {
+        price = parseFloat(priceMatch[1]);
+        break;
       }
+    }
+    
+    // Find size: look backwards from Sale Price line
+    for (let i = salePriceLine - 1; i >= searchStart; i--) {
+      const line = lines[i].trim();
       
-      // Start new item
-      currentItem = {
-        name: '',
-        sku: styleMatch[1].toUpperCase(),
-        size: '',
-        price: 0,
-        needsReview: false
-      };
+      // Match various size patterns
+      const sizePatterns = [
+        /^Size\s+(\d+\.?\d*[CY]?)$/i,           // "Size 11" or "Size 7C" or "Size 5Y"
+        /^(\d+\.?\d*[CY])$/,                     // Just "7C" or "5Y"
+        /^(\d+\.?\d*)$/,                         // Just "11" or "10.5"
+      ];
       
-      // Look backwards for name and price
-      for (let j = i - 1; j >= Math.max(0, i - 15); j--) {
-        const prevLine = lines[j].trim();
-        
-        // Find product name (Air Jordan, Nike, etc.)
-        if (!currentItem.name && /^(Air Jordan|Nike|Jordan)\s+/i.test(prevLine)) {
-          // Combine with next line if it continues
-          let fullName = prevLine;
-          if (j + 1 < i && !lines[j + 1].trim().startsWith('$') && !lines[j + 1].trim().match(/^Style/i)) {
-            const nextPart = lines[j + 1].trim();
-            if (nextPart && !nextPart.match(/^\d/) && !nextPart.match(/^(Women|Men|Size|Style|\$)/i)) {
-              fullName += ' ' + nextPart;
-            }
+      for (const pattern of sizePatterns) {
+        const match = line.match(pattern);
+        if (match) {
+          size = match[1].toUpperCase();
+          break;
+        }
+      }
+      if (size) break;
+    }
+    
+    // Find SKU: look in the block area
+    for (let i = searchStart; i < searchEnd; i++) {
+      const skuMatch = lines[i].match(/([A-Z0-9]{5,8}-\d{3})/i);
+      if (skuMatch) {
+        sku = skuMatch[1].toUpperCase();
+        break;
+      }
+    }
+    
+    // Find name: look for Air Jordan / Nike lines above size
+    for (let i = salePriceLine - 1; i >= searchStart; i--) {
+      const line = lines[i].trim();
+      if (/^(Air Jordan|Nike|Jordan)\s+/i.test(line)) {
+        name = line;
+        // Check if next line continues the name
+        if (i + 1 < salePriceLine) {
+          const nextLine = lines[i + 1].trim();
+          if (nextLine && !nextLine.match(/^\$/) && !nextLine.match(/^(Size|Style|Sale|Women|Men)/i)) {
+            name += ' ' + nextLine;
           }
-          currentItem.name = fullName.replace(/"/g, '');
         }
-        
-        // Find price (format: $XX.XX $XXX.XX - first is sale price)
-        const priceMatch = prevLine.match(/^\$(\d+\.\d{2})\s+\$\d+\.\d{2}$/);
-        if (priceMatch && currentItem.price === 0) {
-          currentItem.price = parseFloat(priceMatch[1]);
-        }
-        
-        // Find size
-        const sizeMatch = prevLine.match(/^Size\s+(\d+\.?\d*[CY]?)$/i);
-        if (sizeMatch && !currentItem.size) {
-          currentItem.size = sizeMatch[1].toUpperCase();
-        }
+        name = name.replace(/"/g, '');
+        break;
       }
-      
-      continue;
     }
     
-    // Also check for size after Style line
-    if (currentItem && !currentItem.size) {
-      const sizeMatch = line.match(/^Size\s+(\d+\.?\d*[CY]?)$/i);
-      if (sizeMatch) {
-        currentItem.size = sizeMatch[1].toUpperCase();
-      }
-    }
+    // Create item
+    const item = {
+      name: name || 'Nike Product',
+      sku: sku || 'UNKNOWN',
+      size: size || 'UNKNOWN',
+      price: price,
+      needsReview: !sku || !size || price <= 0
+    };
+    
+    items.push(item);
+    console.log(`[JSParser] Item ${blockIdx + 1}: ${item.sku} size ${item.size} @ $${item.price}`);
   }
   
-  // Don't forget the last item
-  if (currentItem && currentItem.sku) {
-    items.push({ ...currentItem });
-    console.log(`[JSParser] Added item: ${currentItem.sku} size ${currentItem.size} @ $${currentItem.price}`);
-  }
-  
-  console.log(`[JSParser] Total items parsed: ${items.length}`);
+  console.log(`[JSParser] finalItemsCount: ${items.length}`);
   
   // Extract order info
   const orderMatch = ocrText.match(/T\d{10,}[A-Z]+/);

@@ -1837,21 +1837,15 @@ function App() {
         throw new Error(result.message || result.error);
       }
       
-      // Extract items and remove duplicates
-      const seenItems = new Set();
-      const items = (result.items || []).filter(item => {
-        const key = `${item.sku}-${item.size}-${item.price}`;
-        if (seenItems.has(key)) return false;
-        seenItems.add(key);
-        return true;
-      }).map(item => ({
+      // Keep ALL items - NO deduplication (bulk orders have repeats)
+      const items = (result.items || []).map(item => ({
         name: item.name || 'Nike Product',
         sku: item.sku || '',
         size: item.size || '',
         price: parseFloat(item.price) || 0
       }));
       
-      console.log('Found', items.length, 'unique items');
+      console.log('Found', items.length, 'items (no deduplication)');
       
       // Distribute tax if present
       if (result.tax && result.tax > 0 && items.length > 0) {
