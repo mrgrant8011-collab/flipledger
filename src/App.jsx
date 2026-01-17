@@ -2398,7 +2398,12 @@ function App() {
       };
     });
     
-    const existingIds = new Set([...pendingCosts.map(p => p.id), ...sales.map(s => s.orderId || s.id)]);
+    const existingIds = new Set([
+      ...pendingCosts.map(p => p.orderId).filter(Boolean),
+      ...pendingCosts.map(p => p.id),
+      ...sales.map(s => s.orderId).filter(Boolean),
+      ...sales.map(s => s.id)
+    ]);
     const uniqueNew = newPending.filter(p => !existingIds.has(p.id));
     
     if (uniqueNew.length > 0) {
