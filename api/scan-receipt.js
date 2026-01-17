@@ -29,15 +29,19 @@ export default async function handler(req, res) {
     const anthropic = new Anthropic({ apiKey });
 
     let response;
+    let expectedCount = 0;
 
     if (mode === 'text' && text) {
+      expectedCount = countItemsInOCR(text);
+      console.log(`[Parser] Pre-counted ${expectedCount} items in OCR text`);
+      
       response = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 8192,
         messages: [
           {
             role: 'user',
-            content: buildNikeParsingPrompt(text)
+            content: buildNikeParsingPrompt(text, expectedCount)
           }
         ],
       });
@@ -70,7 +74,7 @@ export default async function handler(req, res) {
               },
               {
                 type: 'text',
-                text: buildNikeParsingPrompt('')
+                text: buildNikeParsingPrompt('', 0)
               }
             ],
           }
@@ -101,14 +105,34 @@ export default async function handler(req, res) {
     }
 
     if (result.items && Array.isArray(result.items)) {
-      result.items = result.items.map(item => ({
-        name: (item.name || 'Nike Product').trim(),
-        sku: normalizeSkuCode(item.sku),
-        size: normalizeSize(item.size),
-        price: parseFloat(item.price) || 0
-      })).filter(item => item.sku && item.price > 0);
+      // NO FILTERING - keep ALL items, mark incomplete ones with needsReview
+      result.items = result.items.map(item => {
+        const sku = normalizeSkuCode(item.sku);
+        const size = normalizeSize(item.size);
+        const price = parseFloat(item.price) || 0;
+        const name = (item.name || 'Nike Product').trim();
+        
+        const needsReview = !sku || !size || price <= 0;
+        
+        return {
+          name,
+          sku: sku || 'UNKNOWN',
+          size: size || 'UNKNOWN',
+          price,
+          needsReview
+        };
+      });
       
-      console.log(`[Parser] Returning ${result.items.length} items (NO deduplication applied)`);
+      const validCount = result.items.filter(i => !i.needsReview).length;
+      const reviewCount = result.items.filter(i => i.needsReview).length;
+      
+      console.log(`[Parser] Returning ${result.items.length} total items (${validCount} valid, ${reviewCount} need review)`);
+      
+      if (expectedCount > 0 && result.items.length !== expectedCount) {
+        console.warn(`[Parser] WARNING: Expected ${expectedCount} items but got ${result.items.length}`);
+        result.countMismatch = true;
+        result.expectedCount = expectedCount;
+      }
     }
 
     return res.status(200).json(result);
@@ -122,89 +146,83 @@ export default async function handler(req, res) {
   }
 }
 
-function buildNikeParsingPrompt(ocrText) {
-  const basePrompt = `You are a Nike receipt parser for a BULK RESELLER who buys multiple pairs of the SAME shoe.
+function countItemsInOCR(text) {
+  const styleMatches = text.match(/Style\s+[A-Z0-9]{5,8}-\d{3}/gi) || [];
+  const salePriceMatches = text.match(/\$\d+\.\d{2}\s+\$\d+\.\d{2}/g) || [];
+  const sizeMatches = text.match(/\bSize\s+\d+\.?\d*[CY]?\b/gi) || [];
+  
+  const count = Math.max(styleMatches.length, salePriceMatches.length, sizeMatches.length);
+  console.log(`[Parser] Found ${styleMatches.length} Style codes, ${salePriceMatches.length} price pairs, ${sizeMatches.length} sizes`);
+  
+  return count;
+}
 
-CRITICAL RULES - READ CAREFULLY:
-1. This is a BULK ORDER. The customer bought MULTIPLE PAIRS of the same shoe.
-2. If you see "Air Jordan 8 Retro" appearing 4 times in the text, return 4 SEPARATE items.
-3. If you see the same SKU (e.g., 305381-100) appearing 6 times, return 6 SEPARATE items.
-4. NEVER deduplicate. NEVER combine. NEVER say "appears X times".
-5. Each product block in the receipt = ONE item in your JSON array.
-6. Count the number of "Style" or "Size" lines - that's how many items there are.
+function buildNikeParsingPrompt(ocrText, expectedCount) {
+  let countInstruction = '';
+  if (expectedCount > 0) {
+    countInstruction = `
+MANDATORY ITEM COUNT: There are EXACTLY ${expectedCount} items in this receipt.
+Your items array MUST contain exactly ${expectedCount} entries.
+Each "Style XXXXXX-XXX" line = one item. Count them - there are ${expectedCount}.
+`;
+  }
 
-HOW TO COUNT ITEMS:
-- Count how many times you see a price like "$87.97" or "$119.97"
-- Count how many times you see "Style XXXXXX-XXX"
-- Count how many times you see "Size X"
-- These counts should match your items array length.
+  const basePrompt = `You are parsing a Nike receipt for a BULK RESELLER.
 
-NIKE PRODUCT CATEGORIES:
-- Men's shoes: Sizes 7-15
-- Women's shoes: Sizes 5-12, often marked with "W" or "(Women's)"
-- TD (Toddler): Sizes 4C-10C
-- PS (Preschool): Sizes 10.5C-3Y
-- GS (Grade School): Sizes 3.5Y-7Y
-- Clothing: S, M, L, XL, XXL, 2XL, 3XL
+${countInstruction}
 
-SKU FORMAT: 6-7 alphanumeric characters + dash + 3 digits (e.g., 305381-100, IB2255-100)
+CRITICAL RULES:
+1. This is a BULK ORDER - multiple pairs of the SAME shoe were purchased
+2. Each "Style XXXXXX-XXX" line = ONE item in your output
+3. If Style 305381-100 appears 6 times, output 6 separate items
+4. NEVER combine. NEVER deduplicate. Every Style line = one JSON object.
+5. Even if two items are completely identical, output them separately.
 
-PRICE: Use the SALE price (lower price), not the crossed-out original price.
+PARSING:
+- Use the FIRST price (sale price), not the crossed-out original
+- Size formats: "Size 11", "11", "7C", "5Y"
+- SKU format: XXXXXX-XXX (e.g., 305381-100, IB2255-100)
 
-Return ONLY valid JSON in this exact format:
+OUTPUT FORMAT:
 {
   "items": [
-    {"name": "Air Jordan 8 Retro White and True Red", "sku": "305381-100", "size": "11", "price": 119.97},
-    {"name": "Air Jordan 8 Retro White and True Red", "sku": "305381-100", "size": "11", "price": 119.97},
-    {"name": "Air Jordan 8 Retro White and True Red", "sku": "305381-100", "size": "12", "price": 119.97}
+    {"name": "Air Jordan 8 Retro", "sku": "305381-100", "size": "11", "price": 119.97},
+    {"name": "Air Jordan 8 Retro", "sku": "305381-100", "size": "11", "price": 119.97},
+    {"name": "Air Jordan 8 Retro", "sku": "305381-100", "size": "12", "price": 119.97}
   ],
   "subtotal": 0,
   "tax": 0,
-  "total": 0,
-  "orderNumber": "",
-  "orderDate": ""
+  "total": 0
 }
 
-Notice in the example above: same shoe, same SKU, appears 3 times = 3 items in array.
-
-If no Nike products found:
-{"error": "invalid", "message": "Could not find Nike products."}`;
+Same SKU 3 times = 3 separate items in array.`;
 
   if (ocrText && ocrText.trim()) {
     return `${basePrompt}
 
 ---
-OCR TEXT FROM RECEIPT:
+OCR TEXT:
 ${ocrText}
 ---
 
-Parse every single item. Remember: this is a BULK order. Same item appearing multiple times = multiple entries in the items array.`;
+Return exactly ${expectedCount > 0 ? expectedCount : 'all'} items.`;
   }
   
-  return `${basePrompt}
-
-Extract ALL items from this Nike receipt image. Remember: this is a BULK order. Same item appearing multiple times = multiple entries in the items array.`;
+  return basePrompt;
 }
 
 function normalizeSkuCode(sku) {
   if (!sku) return '';
-  
   let normalized = String(sku).trim().toUpperCase();
   normalized = normalized.replace(/\s+/g, '').replace(/[-–—]/g, '-');
-  
   const match = normalized.match(/^([A-Z0-9]{5,8})-?(\d{3})$/);
-  if (match) {
-    return `${match[1]}-${match[2]}`;
-  }
-  
+  if (match) return `${match[1]}-${match[2]}`;
   return sku.trim();
 }
 
 function normalizeSize(size) {
   if (!size) return '';
-  
   let normalized = String(size).trim().toUpperCase();
   normalized = normalized.replace(/^SIZE\s*/i, '');
-  
   return normalized;
 }
