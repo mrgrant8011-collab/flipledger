@@ -2398,13 +2398,21 @@ function App() {
       };
     });
     
-    const existingIds = new Set([
-      ...pendingCosts.map(p => p.orderId).filter(Boolean),
-      ...pendingCosts.map(p => p.id),
-      ...sales.map(s => s.orderId).filter(Boolean),
-      ...sales.map(s => s.id)
-    ]);
-    const uniqueNew = newPending.filter(p => !existingIds.has(p.id));
+    // Simple duplicate check - match order numbers
+    const existingOrderNumbers = new Set();
+    pendingCosts.forEach(p => {
+      if (p.orderId) existingOrderNumbers.add(p.orderId);
+    });
+    sales.forEach(s => {
+      if (s.orderId) existingOrderNumbers.add(s.orderId);
+    });
+    
+    console.log('Existing order numbers:', existingOrderNumbers.size);
+    console.log('Sample:', [...existingOrderNumbers].slice(0, 3));
+    
+    const uniqueNew = newPending.filter(p => !existingOrderNumbers.has(p.id));
+    
+    console.log('New items:', newPending.length, '→ After filter:', uniqueNew.length);
     
     if (uniqueNew.length > 0) {
       // Save to Supabase
