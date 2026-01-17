@@ -5388,7 +5388,7 @@ Let me know if you need anything else.`;
           </div>
           <div style={{ display: 'flex', gap: 12, padding: '16px 22px 22px' }}>
             <button onClick={() => setModal(null)} style={{ flex: 1, padding: 14, background: 'rgba(255,255,255,0.04)', border: `1px solid ${c.border}`, borderRadius: 10, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>CANCEL</button>
-            <button onClick={() => { 
+            <button onClick={async () => { 
               if (modal === 'purchase') addPurchase(); 
               else if (modal === 'bulkAdd') {
                 const useSameCost = formData.bulkSameCost;
