@@ -4696,7 +4696,13 @@ Let me know if you need anything else.`;
                                   if (s.orderNumber) existingIds.add(s.orderNumber);
                                 });
                                 
-                                const fresh = newPending.filter(s => !existingIds.has(s.id) && !existingIds.has(s.orderId));
+                                const fresh = newPending.filter(s => {
+                                  // Block if ANY identifier matches
+                                  if (existingIds.has(s.id)) return false;
+                                  if (s.orderId && existingIds.has(s.orderId)) return false;
+                                  if (s.orderNumber && existingIds.has(s.orderNumber)) return false;
+                                  return true;
+                                });
                                 
                                 if (fresh.length > 0) {
                                   // Save to Supabase
