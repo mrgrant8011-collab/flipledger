@@ -46,19 +46,52 @@ export default async function handler(req, res) {
 /**
  * Deterministic JavaScript Nike Receipt Parser
  * 
- * Item boundary: Each line matching "$XX.XX $XXX.XX" pattern (sale price + original price)
- * This is how Nike receipts show pricing - sale price first, then crossed-out original.
- * 
+ * Item boundary: Price lines - either "$XX.XX $XXX.XX" (sale + original) or standalone "$XX.XX"
+ * Uses Style lines as secondary boundary to avoid false positives
  * NEVER deduplicates - identical items are valid bulk purchases.
  */
 function parseNikeReceiptJS(ocrText) {
   const lines = ocrText.split('\n').map(l => l.trim());
   const items = [];
   
-  // Pattern: $XX.XX $XXX.XX (sale price followed by original price)
+  // Pattern 1: $XX.XX $XXX.XX (sale price followed by original price)
   const dualPricePattern = /^\$(\d+\.\d{2})\s+\$(\d+\.\d{2})$/;
   
-  // Find ALL price line indices - each one is exactly 1 item
+  // Pattern 2: Style line (always indicates an item)
+  const stylePattern = /^Style\s+([A-Z0-9]{5,8}-\d{3})$/i;
+  
+  // Lines to skip when looking for product name
+  const skipPatterns = [
+    /^\$/, // Price lines
+    /^Size\s+/i, // Size lines
+    /^Style\s+/i, // Style lines
+    /^(Women|Men|Boy|Girl|Baby|Toddler|Kid|Basketball|Lifestyle|Running)/i, // Category lines
+    /^(Black|White|Red|Blue|Green|Gold|Silver|Grey|Gray|Pink|Purple|Orange|Yellow|Brown|Sail|Fir|Anthracite)\//i, // Color lines
+    /Shoes$/i, // "Men's Shoes", "Women's Shoes"
+    /^(Get|Start|Browse)\s+/i, // Action phrases
+    /^(Shipping|Return|Help|Order|Profile|Favorites|Settings|Payment|Summary|Subtotal|Total|Need)/i, // Menu/summary items
+    /^T\d{10,}/, // Order numbers
+    /^\d{4}$/, // Years
+    /^In-Store/i,
+    /^IMAGE$/i, // "IMAGE UNAVAILABLE"
+    /^UNAVAILABLE$/i,
+    /^#/, // Order number with #
+    /^Outlets/i, // Store address
+    /^\d+\s+N\s+/i, // Street addresses
+    /^Lehi/i, // City names
+    /^AMEX$/i, // Payment methods
+    /^\d{4}$/, // 4 digit numbers (card last 4, years)
+  ];
+  
+  // Find ALL Style lines - each Style = 1 item (most reliable)
+  const styleLineIndices = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (stylePattern.test(lines[i])) {
+      styleLineIndices.push(i);
+    }
+  }
+  
+  // Also find price lines
   const priceLineIndices = [];
   for (let i = 0; i < lines.length; i++) {
     if (dualPricePattern.test(lines[i])) {
@@ -66,23 +99,40 @@ function parseNikeReceiptJS(ocrText) {
     }
   }
   
-  const salePriceCount = priceLineIndices.length;
-  console.log(`[JSParser] salePriceCount: ${salePriceCount}`);
+  console.log(`[JSParser] styleCount: ${styleLineIndices.length}`);
+  console.log(`[JSParser] priceLineCount: ${priceLineIndices.length}`);
   
-  // Process each price line - NO DEDUPLICATION
-  for (let idx = 0; idx < priceLineIndices.length; idx++) {
-    const priceLine = priceLineIndices[idx];
-    const nextPriceLine = priceLineIndices[idx + 1] || lines.length;
+  // Use Style lines as the primary item boundary (more reliable than prices)
+  const itemCount = styleLineIndices.length;
+  
+  for (let idx = 0; idx < styleLineIndices.length; idx++) {
+    const styleLine = styleLineIndices[idx];
+    const prevStyleLine = idx > 0 ? styleLineIndices[idx - 1] : -1;
+    const nextStyleLine = styleLineIndices[idx + 1] || lines.length;
     
-    // 1. Extract PRICE from this line
-    const priceMatch = lines[priceLine].match(dualPricePattern);
-    const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
+    // 1. Extract SKU from Style line
+    const skuMatch = lines[styleLine].match(stylePattern);
+    const sku = skuMatch ? skuMatch[1].toUpperCase() : 'UNKNOWN';
     
-    // 2. Find SIZE - look after price line first, then before
+    // 2. Find PRICE - look backwards from Style line
+    let price = 0;
+    for (let i = styleLine - 1; i >= Math.max(0, prevStyleLine + 1); i--) {
+      const priceMatch = lines[i].match(dualPricePattern);
+      if (priceMatch) {
+        price = parseFloat(priceMatch[1]);
+        break;
+      }
+      // Also try single price pattern for items without crossed-out price
+      const singlePriceMatch = lines[i].match(/^\$(\d+\.\d{2})$/);
+      if (singlePriceMatch) {
+        price = parseFloat(singlePriceMatch[1]);
+        break;
+      }
+    }
+    
+    // 3. Find SIZE - look backwards from Style line
     let size = '';
-    
-    // Look after price line (within this item's block)
-    for (let i = priceLine + 1; i < Math.min(priceLine + 10, nextPriceLine); i++) {
+    for (let i = styleLine - 1; i >= Math.max(0, prevStyleLine + 1); i--) {
       const sizeMatch = lines[i].match(/^Size\s+(\d+\.?\d*[CY]?)$/i);
       if (sizeMatch) {
         size = sizeMatch[1];
@@ -90,55 +140,42 @@ function parseNikeReceiptJS(ocrText) {
       }
     }
     
-    // If not found after, look before
-    if (!size) {
-      for (let i = priceLine - 1; i >= Math.max(0, priceLine - 10); i--) {
-        const sizeMatch = lines[i].match(/^Size\s+(\d+\.?\d*[CY]?)$/i);
-        if (sizeMatch) {
-          size = sizeMatch[1];
+    // 4. Find NAME - look backwards, skip non-name lines
+    let name = '';
+    let nameParts = [];
+    const searchStart = Math.max(0, prevStyleLine + 1);
+    
+    for (let i = styleLine - 1; i >= searchStart; i--) {
+      const line = lines[i];
+      if (!line) continue;
+      
+      // Check if line should be skipped
+      let shouldSkip = false;
+      for (const pattern of skipPatterns) {
+        if (pattern.test(line)) {
+          shouldSkip = true;
           break;
         }
-        // Stop if we hit another price line
-        if (dualPricePattern.test(lines[i])) break;
       }
+      
+      if (shouldSkip) continue;
+      
+      // This looks like a product name line
+      nameParts.unshift(line);
+      
+      // Stop after collecting 2 lines max
+      if (nameParts.length >= 2) break;
     }
     
-    // 3. Find STYLE/SKU - look after price line
-    let sku = '';
-    for (let i = priceLine + 1; i < Math.min(priceLine + 15, nextPriceLine); i++) {
-      const skuMatch = lines[i].match(/^Style\s+([A-Z0-9]{5,8}-\d{3})$/i);
-      if (skuMatch) {
-        sku = skuMatch[1].toUpperCase();
-        break;
-      }
-    }
-    
-    // 4. Find NAME - look before price line for "Air Jordan" or "Nike"
-    let name = '';
-    for (let i = priceLine - 1; i >= Math.max(0, priceLine - 8); i--) {
-      const line = lines[i];
-      if (/^Air Jordan/i.test(line) || /^Nike\s+/i.test(line)) {
-        name = line;
-        // Include continuation line if present
-        if (i + 1 < priceLine && lines[i + 1] && !lines[i + 1].match(/^\$/)) {
-          const cont = lines[i + 1];
-          if (!cont.match(/^(Size|Style|Women|Men|\$)/i) && cont.length < 25) {
-            name += ' ' + cont;
-          }
-        }
-        break;
-      }
-      // Stop if we hit another price line
-      if (dualPricePattern.test(line)) break;
-    }
+    name = nameParts.join(' ').replace(/"/g, '').trim();
     
     // Create item
     items.push({
-      name: name.replace(/"/g, '') || 'Nike Product',
-      sku: sku || 'UNKNOWN',
+      name: name || 'Nike Product',
+      sku: sku,
       size: size || 'UNKNOWN',
       price: price,
-      needsReview: !sku || !size || price <= 0
+      needsReview: !sku || sku === 'UNKNOWN' || !size || price <= 0
     });
   }
   
@@ -146,15 +183,15 @@ function parseNikeReceiptJS(ocrText) {
   console.log(`[JSParser] finalItemsCount: ${finalItemsCount}`);
   
   // Verify counts match
-  if (finalItemsCount !== salePriceCount) {
-    console.warn(`[JSParser] WARNING: Count mismatch! salePriceCount=${salePriceCount}, finalItemsCount=${finalItemsCount}`);
+  if (finalItemsCount !== itemCount) {
+    console.warn(`[JSParser] WARNING: Count mismatch!`);
   } else {
     console.log(`[JSParser] ✓ Counts match: ${finalItemsCount} items`);
   }
   
   // Log each item
   items.forEach((item, i) => {
-    console.log(`[JSParser] Item ${i + 1}: ${item.sku} | Size ${item.size} | $${item.price} | ${item.name.substring(0, 30)}`);
+    console.log(`[JSParser] Item ${i + 1}: ${item.sku} | Size ${item.size} | $${item.price} | ${item.name.substring(0, 40)}`);
   });
   
   // Extract order info
