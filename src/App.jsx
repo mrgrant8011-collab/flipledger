@@ -17,6 +17,10 @@ import {
   safeUpdateInventory,
   safeSaveExpense,
   safeDeleteExpense,
+  safeSaveStorageFee,
+  safeDeleteStorageFee,
+  safeSaveMileage,
+  safeDeleteMileage,
   checkOrderExists
 } from './safeDatabase';
 import { syncStockXSales, syncEbaySales, transformPendingForDisplay } from './syncModule';
@@ -915,6 +919,40 @@ function App() {
           })));
         }
 
+        // Load storage fees
+        const { data: storageData, error: storageError } = await supabase
+          .from('storage_fees')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+        if (storageError) console.error('Storage fees load error:', storageError);
+        if (storageData && storageData.length > 0) {
+          setStorageFees(storageData.map(item => ({
+            id: item.id,
+            month: item.month || '',
+            amount: parseFloat(item.amount) || 0,
+            notes: item.notes || ''
+          })));
+        }
+
+        // Load mileage
+        const { data: mileageData, error: mileageError } = await supabase
+          .from('mileage')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+        if (mileageError) console.error('Mileage load error:', mileageError);
+        if (mileageData && mileageData.length > 0) {
+          setMileage(mileageData.map(item => ({
+            id: item.id,
+            date: item.date || '',
+            miles: parseFloat(item.miles) || 0,
+            purpose: item.purpose || 'Pickup/Dropoff',
+            from: item.from_location || '',
+            to: item.to_location || ''
+          })));
+        }
+
         // Load settings from localStorage (user-specific settings stay local for now)
         const savedSettings = localStorage.getItem(`flipledger_settings_${user.id}`);
         if (savedSettings) setSettings(JSON.parse(savedSettings));
@@ -1698,8 +1736,52 @@ function App() {
     setFormData({}); 
   };
 
-  const addStorage = () => { if (!formData.amount) return; setStorageFees([...storageFees, { id: Date.now(), month: formData.month || '2025-01', amount: parseFloat(formData.amount), notes: formData.notes || '' }]); setModal(null); setFormData({}); };
-  const addMileage = () => { if (!formData.miles) return; setMileage([...mileage, { id: Date.now(), date: formData.date || new Date().toISOString().split('T')[0], miles: parseFloat(formData.miles), purpose: formData.purpose || 'Pickup/Dropoff', from: formData.from || '', to: formData.to || '' }]); setModal(null); setFormData({}); };
+  const addStorage = async () => { 
+    if (!formData.amount) return; 
+    const newStorage = {
+      month: formData.month || new Date().toISOString().substring(0, 7),
+      amount: parseFloat(formData.amount),
+      notes: formData.notes || ''
+    };
+    const result = await safeSaveStorageFee(user.id, newStorage);
+    if (result.success && result.data) {
+      setStorageFees([...storageFees, result.data]);
+      console.log('[Storage] Added:', result.data.id);
+    } else {
+      console.error('[Storage] Failed to add:', result.error);
+      alert('Failed to save storage fee: ' + (result.error || 'Unknown error'));
+    }
+    setModal(null); 
+    setFormData({}); 
+  };
+
+  const addMileage = async () => { 
+    if (!formData.miles) return; 
+    const newMileage = {
+      date: formData.date || new Date().toISOString().split('T')[0],
+      miles: parseFloat(formData.miles),
+      purpose: formData.purpose || 'Pickup/Dropoff',
+      from: formData.from || '',
+      to: formData.to || ''
+    };
+    const result = await safeSaveMileage(user.id, newMileage);
+    if (result.success && result.data) {
+      setMileage([...mileage, {
+        id: result.data.id,
+        date: result.data.date,
+        miles: result.data.miles,
+        purpose: result.data.purpose,
+        from: result.data.from_location,
+        to: result.data.to_location
+      }]);
+      console.log('[Mileage] Added:', result.data.id);
+    } else {
+      console.error('[Mileage] Failed to add:', result.error);
+      alert('Failed to save mileage: ' + (result.error || 'Unknown error'));
+    }
+    setModal(null); 
+    setFormData({}); 
+  };
 
   // Nike Receipt Scanner
   const parseNikeReceipt = async (imageFile) => {

@@ -974,6 +974,167 @@ export const safeDeleteExpense = async (userId, id) => {
 };
 
 // ============================================================
+// STORAGE FEES OPERATIONS
+// ============================================================
+
+/**
+ * SAFE: Save a storage fee (create or update)
+ */
+export const safeSaveStorageFee = async (userId, data) => {
+  try {
+    if (!userId) {
+      return { success: false, error: 'User ID is required' };
+    }
+    if (!data.amount || data.amount <= 0) {
+      return { success: false, error: 'Amount must be greater than zero' };
+    }
+    if (!data.month) {
+      return { success: false, error: 'Month is required' };
+    }
+    
+    const record = {
+      user_id: userId,
+      month: data.month,
+      amount: data.amount,
+      notes: data.notes || ''
+    };
+    
+    if (data.id) {
+      // UPDATE
+      const { data: updated, error } = await supabase
+        .from('storage_fees')
+        .update(record)
+        .eq('id', data.id)
+        .eq('user_id', userId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      console.log(`[SafeDB] Storage fee updated: ${data.id}`);
+      return { success: true, data: updated };
+    } else {
+      // INSERT
+      const { data: inserted, error } = await supabase
+        .from('storage_fees')
+        .insert(record)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      console.log(`[SafeDB] Storage fee created: ${inserted.id}`);
+      return { success: true, data: inserted };
+    }
+  } catch (error) {
+    console.error('[SafeDB] Error saving storage fee:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * SAFE: Delete a storage fee
+ */
+export const safeDeleteStorageFee = async (userId, id) => {
+  try {
+    if (!userId || !id) {
+      return { success: false, error: 'User ID and storage fee ID are required' };
+    }
+    
+    const { error } = await supabase
+      .from('storage_fees')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+    
+    if (error) throw error;
+    console.log(`[SafeDB] Storage fee deleted: ${id}`);
+    return { success: true };
+  } catch (error) {
+    console.error('[SafeDB] Error deleting storage fee:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// ============================================================
+// MILEAGE OPERATIONS
+// ============================================================
+
+/**
+ * SAFE: Save a mileage entry (create or update)
+ */
+export const safeSaveMileage = async (userId, data) => {
+  try {
+    if (!userId) {
+      return { success: false, error: 'User ID is required' };
+    }
+    if (!data.miles || data.miles <= 0) {
+      return { success: false, error: 'Miles must be greater than zero' };
+    }
+    
+    const record = {
+      user_id: userId,
+      date: data.date || new Date().toISOString().split('T')[0],
+      miles: data.miles,
+      purpose: data.purpose || 'Pickup/Dropoff',
+      from_location: data.from || '',
+      to_location: data.to || ''
+    };
+    
+    if (data.id) {
+      // UPDATE
+      const { data: updated, error } = await supabase
+        .from('mileage')
+        .update(record)
+        .eq('id', data.id)
+        .eq('user_id', userId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      console.log(`[SafeDB] Mileage updated: ${data.id}`);
+      return { success: true, data: updated };
+    } else {
+      // INSERT
+      const { data: inserted, error } = await supabase
+        .from('mileage')
+        .insert(record)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      console.log(`[SafeDB] Mileage created: ${inserted.id}`);
+      return { success: true, data: inserted };
+    }
+  } catch (error) {
+    console.error('[SafeDB] Error saving mileage:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * SAFE: Delete a mileage entry
+ */
+export const safeDeleteMileage = async (userId, id) => {
+  try {
+    if (!userId || !id) {
+      return { success: false, error: 'User ID and mileage ID are required' };
+    }
+    
+    const { error } = await supabase
+      .from('mileage')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+    
+    if (error) throw error;
+    console.log(`[SafeDB] Mileage deleted: ${id}`);
+    return { success: true };
+  } catch (error) {
+    console.error('[SafeDB] Error deleting mileage:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// ============================================================
 // UTILITY: Check order existence (for UI display)
 // ============================================================
 
