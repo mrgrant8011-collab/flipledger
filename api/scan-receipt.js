@@ -10,9 +10,7 @@ export default async function handler(req, res) {
   try {
     const { text, mode } = req.body;
     if (mode !== 'text' || !text) return res.status(400).json({ error: 'Text mode required' });
-
-    const result = parseNikeReceiptJS(text);
-    return res.status(200).json(result);
+    return res.status(200).json(parseNikeReceiptJS(text));
   } catch (error) {
     return res.status(500).json({ error: 'Scan failed', message: error.message });
   }
@@ -28,38 +26,33 @@ function parseNikeReceiptJS(ocrText) {
     if (!styleMatch) continue;
     
     const sku = styleMatch[1].toUpperCase();
-    let name = '';
     let size = '';
     let price = 0;
+    let name = '';
     
     // Look backwards for size, price, name
     for (let j = i - 1; j >= Math.max(0, i - 8); j--) {
       const line = lines[j];
+      if (!line) continue;
       
+      // Size: "Size XX"
       if (!size && /^Size\s+/i.test(line)) {
         size = line.replace(/^Size\s+/i, '');
       }
       
-      if (!price) {
-        const p = line.match(/^\$(\d+\.\d{2})/);
-        if (p) price = parseFloat(p[1]);
-      }
-      
-      // Name = first line that's not price/size/category/color
-      if (!name && price && 
-          !line.match(/^\$/) && 
-          !line.match(/^Size/i) && 
-          !line.match(/^(Women|Men|Baby|Basketball|Running|Lifestyle)/i) &&
-          !line.match(/\//) &&
-          line.length > 3) {
-        name = line.replace(/"/g, '');
+      // Price: "$XX.XX" - grab first number
+      if (!price && /^\$\d+\.\d{2}/.test(line)) {
+        price = parseFloat(line.match(/^\$(\d+\.\d{2})/)[1]);
+        // Name is the line right before price
+        if (j > 0 && lines[j-1]) {
+          name = lines[j-1].replace(/"/g, '');
+        }
       }
     }
     
-    items.push({ name: name || 'Nike Product', sku, size: size || '', price });
+    items.push({ name: name || 'Nike Product', sku, size, price });
   }
   
   console.log(`[Parser] Found ${items.length} items`);
-  
   return { items };
 }
