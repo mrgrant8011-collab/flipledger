@@ -1,6 +1,6 @@
 /**
- * FLIPLEDGER SAFE DATABASE MODULE
- * ================================
+ * FLIPLEDGER SAFE DATABASE MODULE v2.0
+ * =====================================
  * This is the ONLY way data should be written to the database.
  * All sync functions, imports, and manual entries MUST use these functions.
  * 
@@ -10,6 +10,11 @@
  * 3. Negative costs are rejected
  * 4. Missing required fields throw clear errors
  * 5. All order IDs are tracked for idempotent re-imports
+ * 
+ * v2.0 CHANGES:
+ * - Full sale details saved: price, fees, cost, payout, order_id
+ * - Inventory auto-matching when confirming sales
+ * - Enhanced duplicate detection across pending_costs AND sales tables
  */
 
 import { supabase } from './supabase';
@@ -174,6 +179,48 @@ const checkOrderExists = async (userId, orderId) => {
   return { exists: false, location: null, record: null };
 };
 
+/**
+ * Batch check for duplicates - more efficient for bulk operations
+ * @returns {Set} Set of order_ids that already exist
+ */
+const batchCheckDuplicates = async (userId, orderIds) => {
+  const existingIds = new Set();
+  
+  if (!orderIds || orderIds.length === 0) return existingIds;
+  
+  // Filter out null/undefined
+  const validIds = orderIds.filter(id => id);
+  if (validIds.length === 0) return existingIds;
+  
+  try {
+    // Check pending_costs
+    const { data: pendingData } = await supabase
+      .from('pending_costs')
+      .select('order_id')
+      .eq('user_id', userId)
+      .in('order_id', validIds);
+    
+    if (pendingData) {
+      pendingData.forEach(r => existingIds.add(r.order_id));
+    }
+    
+    // Check sales
+    const { data: salesData } = await supabase
+      .from('sales')
+      .select('order_id')
+      .eq('user_id', userId)
+      .in('order_id', validIds);
+    
+    if (salesData) {
+      salesData.forEach(r => existingIds.add(r.order_id));
+    }
+  } catch (error) {
+    console.error('[SafeDB] Batch duplicate check error:', error);
+  }
+  
+  return existingIds;
+};
+
 // ============================================================
 // SAFE WRITE FUNCTIONS
 // ============================================================
@@ -186,13 +233,15 @@ const checkOrderExists = async (userId, orderId) => {
  * @param {string} data.name - Product name (required)
  * @param {number} data.sale_price - Sale price (required, must be > 0)
  * @param {string} data.platform - Platform name (required)
- * @param {string} data.order_id - External order ID for duplicate prevention
+ * @param {string} data.order_id - External order ID for duplicate prevention (CRITICAL)
  * @param {string} [data.sku] - Product SKU
  * @param {string} [data.size] - Product size
  * @param {number} [data.fees] - Platform fees
  * @param {number} [data.payout] - Net payout
  * @param {string} [data.sale_date] - Sale date (YYYY-MM-DD)
  * @param {string} [data.image] - Product image URL
+ * @param {string} [data.buyer] - Buyer username (eBay)
+ * @param {number} [data.ad_fee] - Ad fee (eBay)
  * 
  * @returns {Object} { success: boolean, data?: Object, duplicate?: boolean, error?: string }
  */
@@ -219,7 +268,7 @@ export const safeSavePendingCost = async (userId, data) => {
       }
     }
     
-    // 3. Prepare record
+    // 3. Prepare record with ALL fields
     const record = {
       user_id: userId,
       name: data.name.trim(),
@@ -232,7 +281,11 @@ export const safeSavePendingCost = async (userId, data) => {
       sale_date: data.sale_date || null,
       order_id: data.order_id || null,
       order_number: data.order_number || data.order_id || null,
-      image: data.image || null
+      image: data.image || null,
+      // New fields for complete tracking
+      buyer: data.buyer || null,
+      ad_fee: data.ad_fee || null,
+      note: data.note || null
     };
     
     // 4. Insert with conflict handling
@@ -251,7 +304,7 @@ export const safeSavePendingCost = async (userId, data) => {
       throw error;
     }
     
-    console.log(`[SafeDB] Pending cost saved: ${result.id} (${data.name})`);
+    console.log(`[SafeDB] Pending cost saved: ${result.id} (${data.name}) [Order: ${data.order_id}]`);
     return { success: true, data: result };
     
   } catch (error) {
@@ -261,7 +314,7 @@ export const safeSavePendingCost = async (userId, data) => {
 };
 
 /**
- * SAFE: Add a completed sale
+ * SAFE: Add a completed sale with full details
  * 
  * @param {string} userId - User's UUID
  * @param {Object} data - Sale data
@@ -273,8 +326,13 @@ export const safeSavePendingCost = async (userId, data) => {
  * @param {string} [data.sku] - Product SKU
  * @param {string} [data.size] - Product size
  * @param {number} [data.fees] - Platform fees
- * @param {number} [data.profit] - Calculated profit
+ * @param {number} [data.payout] - Net payout from platform
+ * @param {number} [data.profit] - Calculated profit (auto-calculated if not provided)
  * @param {string} [data.sale_date] - Sale date (YYYY-MM-DD)
+ * @param {string} [data.image] - Product image URL
+ * @param {string} [data.buyer] - Buyer username
+ * @param {number} [data.ad_fee] - Advertising fee
+ * @param {number} [data.inventory_id] - Link to inventory item
  * 
  * @returns {Object} { success: boolean, data?: Object, duplicate?: boolean, error?: string }
  */
@@ -301,10 +359,19 @@ export const safeSaveSale = async (userId, data) => {
     }
     
     // 3. Calculate profit if not provided
+    // Profit = Payout - Cost (if payout available)
+    // Otherwise: Profit = SalePrice - Cost - Fees
     const fees = data.fees || 0;
-    const profit = data.profit !== undefined ? data.profit : (data.sale_price - data.cost - fees);
+    let profit;
+    if (data.profit !== undefined) {
+      profit = data.profit;
+    } else if (data.payout) {
+      profit = data.payout - data.cost;
+    } else {
+      profit = data.sale_price - data.cost - fees;
+    }
     
-    // 4. Prepare record
+    // 4. Prepare record with ALL fields
     const record = {
       user_id: userId,
       name: data.name.trim(),
@@ -314,10 +381,15 @@ export const safeSaveSale = async (userId, data) => {
       sale_price: data.sale_price,
       platform: data.platform || 'Other',
       fees: fees,
+      payout: data.payout || null,
       profit: profit,
       sale_date: data.sale_date || new Date().toISOString().split('T')[0],
       order_id: data.order_id || null,
-      payout: data.payout || null
+      image: data.image || null,
+      buyer: data.buyer || null,
+      ad_fee: data.ad_fee || null,
+      note: data.note || null,
+      inventory_id: data.inventory_id || null
     };
     
     // 5. Insert
@@ -335,7 +407,7 @@ export const safeSaveSale = async (userId, data) => {
       throw error;
     }
     
-    console.log(`[SafeDB] Sale saved: ${result.id} (${data.name})`);
+    console.log(`[SafeDB] Sale saved: ${result.id} (${data.name}) [Order: ${data.order_id}] Profit: $${profit.toFixed(2)}`);
     return { success: true, data: result };
     
   } catch (error) {
@@ -355,6 +427,8 @@ export const safeSaveSale = async (userId, data) => {
  * @param {string} [data.size] - Product size
  * @param {string} [data.date] - Purchase date (YYYY-MM-DD)
  * @param {number} [data.quantity] - Quantity (default 1)
+ * @param {string} [data.image] - Product image URL
+ * @param {string} [data.source] - Where purchased (Nike, Finish Line, etc)
  * 
  * @returns {Object} { success: boolean, data?: Object, error?: string }
  */
@@ -376,7 +450,9 @@ export const safeSaveInventory = async (userId, data) => {
       cost: data.cost,
       quantity: data.quantity || 1,
       date: data.date || new Date().toISOString().split('T')[0],
-      sold: false
+      sold: false,
+      image: data.image || null,
+      source: data.source || null
     };
     
     // 3. Insert
@@ -400,12 +476,12 @@ export const safeSaveInventory = async (userId, data) => {
 };
 
 // ============================================================
-// BULK OPERATIONS (with individual validation)
+// OPTIMIZED BULK OPERATIONS
 // ============================================================
 
 /**
- * SAFE: Bulk save pending costs with duplicate filtering
- * Each item is validated individually. Duplicates are skipped, not rejected.
+ * SAFE: Bulk save pending costs with pre-flight duplicate check
+ * Uses batch duplicate checking for better performance
  * 
  * @param {string} userId - User's UUID
  * @param {Array} items - Array of pending cost objects
@@ -424,11 +500,25 @@ export const safeBulkSavePendingCosts = async (userId, items) => {
   
   console.log(`[SafeDB] Bulk saving ${items.length} pending costs...`);
   
+  // Pre-flight: batch check for existing order_ids
+  const orderIds = items.map(i => i.order_id).filter(Boolean);
+  const existingOrderIds = await batchCheckDuplicates(userId, orderIds);
+  console.log(`[SafeDB] Pre-flight found ${existingOrderIds.size} existing orders`);
+  
+  // Process items
   for (const item of items) {
+    // Quick duplicate check using pre-fetched set
+    if (item.order_id && existingOrderIds.has(item.order_id)) {
+      results.duplicates.push({ item, reason: `Order ${item.order_id} already exists` });
+      continue;
+    }
+    
     const result = await safeSavePendingCost(userId, item);
     
     if (result.success) {
       results.saved.push(result.data);
+      // Add to set to catch duplicates within the same batch
+      if (item.order_id) existingOrderIds.add(item.order_id);
     } else if (result.duplicate) {
       results.duplicates.push({ item, reason: result.error });
     } else {
@@ -606,6 +696,42 @@ export const safeUpdateInventory = async (userId, id, updates) => {
 };
 
 // ============================================================
+// INVENTORY MATCHING HELPER
+// ============================================================
+
+/**
+ * Find matching inventory item for a pending sale
+ * Matches by SKU + Size (exact match)
+ * 
+ * @param {string} userId - User's UUID
+ * @param {string} sku - Product SKU
+ * @param {string} size - Product size
+ * @returns {Object|null} Matching inventory item or null
+ */
+export const findMatchingInventory = async (userId, sku, size) => {
+  if (!userId || !sku) return null;
+  
+  try {
+    const { data, error } = await supabase
+      .from('inventory')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('sku', sku)
+      .eq('size', size || '')
+      .eq('sold', false)
+      .order('date', { ascending: true }) // FIFO: oldest first
+      .limit(1)
+      .maybeSingle();
+    
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('[SafeDB] Error finding matching inventory:', error);
+    return null;
+  }
+};
+
+// ============================================================
 // TRANSITION HELPER: Move pending cost to confirmed sale
 // ============================================================
 
@@ -616,9 +742,13 @@ export const safeUpdateInventory = async (userId, id, updates) => {
  * @param {string} userId - User's UUID
  * @param {string} pendingId - ID of the pending_costs record
  * @param {number} cost - Cost basis entered by user
- * @returns {Object} { success: boolean, sale?: Object, error?: string }
+ * @param {Object} [options] - Additional options
+ * @param {boolean} [options.autoMatchInventory] - Try to match and mark inventory as sold
+ * @param {string} [options.inventoryId] - Specific inventory ID to link
+ * 
+ * @returns {Object} { success: boolean, sale?: Object, inventory?: Object, error?: string }
  */
-export const safeConfirmSale = async (userId, pendingId, cost) => {
+export const safeConfirmSale = async (userId, pendingId, cost, options = {}) => {
   try {
     // 1. Validate cost
     if (cost === undefined || cost === null) {
@@ -650,11 +780,29 @@ export const safeConfirmSale = async (userId, pendingId, cost) => {
       }
     }
     
-    // 4. Calculate profit
-    const fees = pending.fees || 0;
-    const profit = pending.payout ? (pending.payout - cost) : (pending.sale_price - cost - fees);
+    // 4. Try to match inventory if requested
+    let matchedInventory = null;
+    let inventoryId = options.inventoryId || null;
     
-    // 5. Create the sale
+    if (options.autoMatchInventory && pending.sku) {
+      matchedInventory = await findMatchingInventory(userId, pending.sku, pending.size);
+      if (matchedInventory) {
+        inventoryId = matchedInventory.id;
+        // Use inventory cost if no cost provided
+        if (cost === 0 && matchedInventory.cost > 0) {
+          cost = matchedInventory.cost;
+        }
+      }
+    }
+    
+    // 5. Calculate profit
+    // If payout is available, profit = payout - cost
+    // Otherwise, profit = sale_price - fees - cost
+    const fees = pending.fees || 0;
+    const payout = pending.payout || (pending.sale_price - fees);
+    const profit = payout - cost;
+    
+    // 6. Create the sale with ALL details preserved
     const saleResult = await safeSaveSale(userId, {
       name: pending.name,
       sku: pending.sku,
@@ -663,21 +811,35 @@ export const safeConfirmSale = async (userId, pendingId, cost) => {
       sale_price: pending.sale_price,
       platform: pending.platform,
       fees: fees,
+      payout: pending.payout || payout,
       profit: profit,
       sale_date: pending.sale_date,
       order_id: pending.order_id,
-      payout: pending.payout
+      image: pending.image,
+      buyer: pending.buyer,
+      ad_fee: pending.ad_fee,
+      note: pending.note,
+      inventory_id: inventoryId
     });
     
     if (!saleResult.success) {
       return saleResult;
     }
     
-    // 6. Delete from pending
+    // 7. Mark inventory as sold if matched
+    if (matchedInventory) {
+      await safeUpdateInventory(userId, matchedInventory.id, { sold: true });
+    }
+    
+    // 8. Delete from pending
     await safeDeletePendingCost(userId, pendingId);
     
-    console.log(`[SafeDB] Sale confirmed: ${pending.order_id} -> ${saleResult.data.id}`);
-    return { success: true, sale: saleResult.data };
+    console.log(`[SafeDB] Sale confirmed: ${pending.order_id} -> ${saleResult.data.id} (Profit: $${profit.toFixed(2)})`);
+    return { 
+      success: true, 
+      sale: saleResult.data,
+      inventory: matchedInventory
+    };
     
   } catch (error) {
     console.error('[SafeDB] Error confirming sale:', error);
@@ -689,4 +851,4 @@ export const safeConfirmSale = async (userId, pendingId, cost) => {
 // UTILITY: Check order existence (for UI display)
 // ============================================================
 
-export { checkOrderExists };
+export { checkOrderExists, batchCheckDuplicates };
