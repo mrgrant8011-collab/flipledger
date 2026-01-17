@@ -153,7 +153,7 @@ async function sliceImageIntoChunks(imageBuffer, dimensions, chunkHeight, overla
   return chunks;
 }
 
-async function ocrChunkWithBlocks(chunkBase64, apiKey) {
+async function ocrSingleChunk(chunkBase64, apiKey, chunkIndex) {
   const response = await fetch(
     `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
     {
@@ -178,20 +178,22 @@ async function ocrChunkWithBlocks(chunkBase64, apiKey) {
   const data = await response.json();
   
   if (data.error) {
-    throw new Error(data.error.message || 'Google Vision API error');
+    console.error(`[OCR] Chunk ${chunkIndex + 1} API error:`, data.error.message);
+    return { text: '', blocks: [] };
   }
 
-  const blocks = [];
   const fullTextAnnotation = data.responses?.[0]?.fullTextAnnotation;
+  const textAnnotations = data.responses?.[0]?.textAnnotations || [];
   
-  if (fullTextAnnotation?.pages) {
+  let chunkText = '';
+  const blocks = [];
+  
+  if (fullTextAnnotation?.pages && fullTextAnnotation.pages.length > 0) {
     for (const page of fullTextAnnotation.pages) {
       for (const block of page.blocks || []) {
         const blockVertices = block.boundingBox?.vertices || [];
-        if (blockVertices.length === 0) continue;
-        
-        const blockMinY = Math.min(...blockVertices.map(v => v.y || 0));
-        const blockMaxY = Math.max(...blockVertices.map(v => v.y || 0));
+        const blockMinY = blockVertices.length > 0 ? Math.min(...blockVertices.map(v => v.y || 0)) : 0;
+        const blockMaxY = blockVertices.length > 0 ? Math.max(...blockVertices.map(v => v.y || 0)) : 0;
         const blockText = extractBlockText(block);
         
         if (blockText.trim()) {
@@ -203,9 +205,22 @@ async function ocrChunkWithBlocks(chunkBase64, apiKey) {
         }
       }
     }
+    
+    if (blocks.length > 0) {
+      blocks.sort((a, b) => a.minY - b.minY);
+      chunkText = blocks.map(b => b.text).join('\n');
+    } else if (fullTextAnnotation.text) {
+      chunkText = fullTextAnnotation.text;
+    }
+  } else if (fullTextAnnotation?.text) {
+    chunkText = fullTextAnnotation.text;
+  } else if (textAnnotations.length > 0 && textAnnotations[0]?.description) {
+    chunkText = textAnnotations[0].description;
   }
   
-  return blocks;
+  console.log(`[OCR] Chunk ${chunkIndex + 1} extracted ${chunkText.length} chars, ${blocks.length} blocks`);
+  
+  return { text: chunkText, blocks };
 }
 
 function extractBlockText(block) {
@@ -239,78 +254,75 @@ async function processImageInChunks(imageBuffer, apiKey, dimensions, chunkHeight
   for (const chunk of chunks) {
     console.log(`[OCR] OCR processing chunk ${chunk.index + 1}/${chunks.length}...`);
     
-    const chunkBlocks = await ocrChunkWithBlocks(chunk.base64, apiKey);
-    
-    const blocksWithGlobalY = chunkBlocks.map(block => ({
-      globalMinY: block.minY + chunk.yOffset,
-      globalMaxY: block.maxY + chunk.yOffset,
-      localMinY: block.minY,
-      localMaxY: block.maxY,
-      text: block.text,
-      chunkIndex: chunk.index,
-      chunkHeight: chunk.height,
-      chunkYOffset: chunk.yOffset
-    }));
+    const ocrResult = await ocrSingleChunk(chunk.base64, apiKey, chunk.index);
     
     chunkResults.push({
       chunkIndex: chunk.index,
       yOffset: chunk.yOffset,
       height: chunk.height,
-      blocks: blocksWithGlobalY
+      text: ocrResult.text,
+      blocks: ocrResult.blocks.map(b => ({
+        ...b,
+        globalMinY: b.minY + chunk.yOffset,
+        globalMaxY: b.maxY + chunk.yOffset
+      }))
     });
-    
-    console.log(`[OCR] Chunk ${chunk.index + 1} returned ${chunkBlocks.length} blocks`);
   }
   
-  const finalBlocks = dedupeOverlapOnly(chunkResults, overlap);
-  
-  finalBlocks.sort((a, b) => a.globalMinY - b.globalMinY);
-  
-  const mergedText = finalBlocks.map(b => b.text).join('\n');
+  const mergedText = mergeChunkResults(chunkResults, overlap);
   
   console.log(`[OCR] Final merged text length: ${mergedText.length}`);
   
   return mergedText;
 }
 
-function dedupeOverlapOnly(chunkResults, overlap) {
-  if (chunkResults.length === 0) return [];
-  if (chunkResults.length === 1) return chunkResults[0].blocks;
+function mergeChunkResults(chunkResults, overlap) {
+  if (chunkResults.length === 0) return '';
+  if (chunkResults.length === 1) return chunkResults[0].text;
   
-  const finalBlocks = [];
+  const finalLines = [];
   
   for (let i = 0; i < chunkResults.length; i++) {
     const chunk = chunkResults[i];
     const nextChunk = chunkResults[i + 1];
     
-    for (const block of chunk.blocks) {
-      if (nextChunk) {
-        const overlapStartGlobal = nextChunk.yOffset;
-        const overlapEndGlobal = nextChunk.yOffset + overlap;
+    const chunkLines = chunk.text.split('\n').filter(line => line.trim());
+    
+    if (!nextChunk) {
+      finalLines.push(...chunkLines);
+      continue;
+    }
+    
+    const overlapStartY = nextChunk.yOffset;
+    const overlapEndY = nextChunk.yOffset + overlap;
+    
+    const nextChunkLines = nextChunk.text.split('\n').filter(line => line.trim());
+    const nextChunkFirstLines = nextChunkLines.slice(0, 15);
+    
+    let cutoffIndex = chunkLines.length;
+    
+    for (let j = chunkLines.length - 1; j >= Math.max(0, chunkLines.length - 20); j--) {
+      const line = chunkLines[j].trim();
+      if (!line || line.length < 5) continue;
+      
+      const lineStart = line.substring(0, 60);
+      
+      for (const nextLine of nextChunkFirstLines) {
+        const nextLineStart = nextLine.trim().substring(0, 60);
         
-        const blockInOverlapZone = block.globalMinY >= overlapStartGlobal && block.globalMinY < overlapEndGlobal;
-        
-        if (blockInOverlapZone) {
-          const duplicateInNextChunk = nextChunk.blocks.find(nextBlock => {
-            const nextBlockInOverlapZone = nextBlock.localMinY < overlap;
-            if (!nextBlockInOverlapZone) return false;
-            
-            const textMatch = block.text.trim().substring(0, 80) === nextBlock.text.trim().substring(0, 80);
-            const yClose = Math.abs(block.globalMinY - nextBlock.globalMinY) < 100;
-            
-            return textMatch && yClose;
-          });
-          
-          if (duplicateInNextChunk) {
-            console.log(`[OCR] Skipping overlap duplicate from chunk ${i + 1}: "${block.text.substring(0, 50)}..."`);
-            continue;
-          }
+        if (lineStart === nextLineStart && lineStart.length >= 5) {
+          cutoffIndex = j;
+          console.log(`[OCR] Found overlap at chunk ${i + 1} line ${j}: "${lineStart.substring(0, 40)}..."`);
+          break;
         }
       }
       
-      finalBlocks.push(block);
+      if (cutoffIndex < chunkLines.length) break;
     }
+    
+    const linesToKeep = chunkLines.slice(0, cutoffIndex);
+    finalLines.push(...linesToKeep);
   }
   
-  return finalBlocks;
+  return finalLines.join('\n');
 }

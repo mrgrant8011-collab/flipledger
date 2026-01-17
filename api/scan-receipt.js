@@ -78,7 +78,7 @@ For each item find:
 - Size (include W for women's, C for toddler, Y for youth)
 - SALE/Final price (the lower price, not crossed-out original)
 
-IMPORTANT: Keep ALL items exactly as they appear, even if the same item/size appears multiple times.
+CRITICAL: Keep ALL items exactly as they appear. If the same item/size appears 5 times, return it 5 times. Do NOT remove duplicates.
 
 Return ONLY valid JSON:
 {
@@ -128,6 +128,8 @@ If no Nike products found:
         size: normalizeSize(item.size),
         price: parseFloat(item.price) || 0
       })).filter(item => item.sku && item.price > 0);
+      
+      console.log(`[Parser] Returning ${result.items.length} items (no deduplication)`);
     }
 
     return res.status(200).json(result);
@@ -144,7 +146,11 @@ If no Nike products found:
 function buildNikeParsingPrompt(ocrText) {
   return `You are an expert Nike receipt parser. Extract ALL products from this Nike order OCR text.
 
-IMPORTANT: Keep ALL items exactly as they appear on the receipt. If the same item appears 5 times, return it 5 times. Do NOT deduplicate real items.
+CRITICAL RULES:
+1. Keep ALL items exactly as they appear on the receipt
+2. If the same item appears 5 times, return it 5 times
+3. Do NOT deduplicate or remove any items
+4. Every line item on the receipt = one item in your response
 
 ## NIKE PRODUCT CATEGORIES TO RECOGNIZE:
 
@@ -188,7 +194,7 @@ OCR TEXT:
 ${ocrText}
 ---
 
-Parse all items and return JSON. Keep every item, even duplicates.`;
+Parse ALL items. Keep every single item, even if identical to another. Do NOT deduplicate.`;
 }
 
 function normalizeSkuCode(sku) {
