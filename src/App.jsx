@@ -856,7 +856,9 @@ function App() {
             fees: parseFloat(item.fees) || 0,
             profit: parseFloat(item.profit) || 0,
             saleDate: item.sale_date || '',
-            orderId: item.order_id || ''
+            orderId: item.order_id || '',
+            payout: parseFloat(item.payout) || 0,
+            image: item.image || ''
           })));
         }
 
@@ -895,7 +897,9 @@ function App() {
             fees: parseFloat(item.fees) || 0,
             saleDate: item.sale_date || '',
             orderId: item.order_id || '',
-            orderNumber: item.order_number || ''
+            orderNumber: item.order_number || '',
+            payout: parseFloat(item.payout) || 0,
+            image: item.image || ''
           })));
         }
 
@@ -1006,7 +1010,9 @@ function App() {
         fees: item.fees,
         profit: item.profit,
         sale_date: item.saleDate,
-        order_id: item.orderId || null
+        order_id: item.orderId || null,
+        payout: item.payout || null,
+        image: item.image || null
       };
 
       if (isNew) {
@@ -1215,7 +1221,9 @@ function App() {
         fees: item.fees,
         sale_date: item.saleDate,
         order_id: item.orderId || item.id,
-        order_number: item.orderNumber || null
+        order_number: item.orderNumber || null,
+        payout: item.payout || null,
+        image: item.image || null
       }));
 
       // UPSERT: Insert new, update existing (based on user_id + order_id)
@@ -1564,16 +1572,11 @@ function App() {
           orderId: s.id // Map id to orderId for upsert
         }));
         
-        // Create a map of images by order ID
-        const imageMap = new Map(salesWithOrderId.map(s => [s.id, s.image]));
-        
         // UPSERT to Supabase - database handles duplicates
+        // payout and image are saved to Supabase now
         const savedPending = await upsertPendingCosts(salesWithOrderId);
         if (savedPending.length > 0) {
-          // Create payout map from original data
-          const payoutMap = new Map(salesWithOrderId.map(s => [s.id, s.payout]));
-          
-          // Update local state with saved items
+          // Update local state from Supabase response (includes payout and image)
           setPendingCosts(prev => {
             const existingIds = new Set(prev.map(p => p.orderId));
             const newItems = savedPending
@@ -1589,8 +1592,8 @@ function App() {
                 saleDate: item.sale_date,
                 orderId: item.order_id || '',
                 orderNumber: item.order_number || '',
-                image: imageMap.get(item.order_id) || '',
-                payout: payoutMap.get(item.order_id) || 0
+                image: item.image || '',
+                payout: parseFloat(item.payout) || 0
               }));
             return [...prev, ...newItems];
           });
@@ -2442,16 +2445,11 @@ function App() {
     }
     
     if (itemsWithOrderId.length > 0) {
-      // Create image map before upsert
-      const imageMap = new Map(itemsWithOrderId.map(item => [item.orderId || item.id, item.image]));
-      
       // UPSERT to Supabase - database handles duplicates via UNIQUE constraint
+      // payout and image are saved to Supabase
       const savedPending = await upsertPendingCosts(itemsWithOrderId);
       if (savedPending.length > 0) {
-        // Create payout map from original data
-        const payoutMap = new Map(itemsWithOrderId.map(item => [item.orderId || item.id, item.payout]));
-        
-        // Refresh pending costs from what was actually saved/updated
+        // Refresh pending costs from Supabase response (includes payout and image)
         setPendingCosts(prev => {
           const existingIds = new Set(prev.map(p => p.orderId));
           const newItems = savedPending
@@ -2467,8 +2465,8 @@ function App() {
               saleDate: item.sale_date,
               orderId: item.order_id,
               orderNumber: item.order_number,
-              image: imageMap.get(item.order_id) || '',
-              payout: payoutMap.get(item.order_id) || 0
+              image: item.image || '',
+              payout: parseFloat(item.payout) || 0
             }));
           return [...prev, ...newItems];
         });
@@ -3847,7 +3845,7 @@ function App() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                   <span style={{ color: c.red, fontWeight: 700, fontSize: 16 }}>{fmt(e.amount)}</span>
                   <button onClick={() => { setFormData({ editExpenseId: e.id, category: e.category, amount: e.amount, description: e.description, date: e.date }); setModal('editExpense'); }} style={{ background: 'none', border: 'none', color: c.green, cursor: 'pointer', fontSize: 14 }}>✏️</button>
-                  <button onClick={() => setExpenses(expenses.filter(x => x.id !== e.id))} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 18 }}>×</button>
+                  <button onClick={() => { deleteExpenseFromSupabase(e.id); setExpenses(expenses.filter(x => x.id !== e.id)); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 18 }}>×</button>
                 </div>
               </div>
             )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💳</div><p style={{ color: c.textMuted }}>{expenseSearch || expenseCatFilter !== 'all' ? 'No matching expenses' : 'No expenses yet'}</p></div>}
@@ -4764,11 +4762,7 @@ Let me know if you need anything else.`;
                                 });
                                 
                                 if (fresh.length > 0) {
-                                  // Create maps for data that won't be in Supabase response
-                                  const payoutMap = new Map(fresh.map(s => [s.orderId || s.id, s.payout]));
-                                  const imageMap = new Map(fresh.map(s => [s.orderId || s.id, s.image]));
-                                  
-                                  // Save to Supabase
+                                  // Save to Supabase (payout and image are saved to DB now)
                                   const savedPending = await bulkSavePendingToSupabase(fresh);
                                   if (savedPending.length > 0) {
                                     setPendingCosts(prev => [...prev, ...savedPending.map(item => ({
@@ -4781,10 +4775,10 @@ Let me know if you need anything else.`;
                                       fees: parseFloat(item.fees) || 0,
                                       saleDate: item.sale_date,
                                       orderId: item.order_id || '',
-                                      payout: payoutMap.get(item.order_id) || 0,
-                                      image: imageMap.get(item.order_id) || ''
+                                      payout: parseFloat(item.payout) || 0,
+                                      image: item.image || ''
                                     }))]);
-                                    const withImages = fresh.filter(s => s.image).length;
+                                    const withImages = savedPending.filter(s => s.image).length;
                                     alert(`✓ Imported ${savedPending.length} eBay sales (${withImages} with images)`);
                                   }
                                 } else {
