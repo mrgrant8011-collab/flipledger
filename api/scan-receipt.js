@@ -34,17 +34,33 @@ export default async function handler(req, res) {
  * 
  * Each "Style XXXXXX-XXX" line = 1 item
  * Look backwards from Style line to find: name, price, size
+ * 
+ * OCR artifact handling: If same Style line appears within 3 lines of previous,
+ * it's likely an OCR chunk overlap artifact - skip it.
  */
 function parseNikeReceiptJS(ocrText) {
   const lines = ocrText.split('\n').map(l => l.trim());
   const items = [];
   
-  // Find all Style lines
+  let lastStyleLine = -999; // Track line number of last Style we processed
+  let lastSku = '';
+  
   for (let i = 0; i < lines.length; i++) {
     const styleMatch = lines[i].match(/^Style\s+([A-Z0-9]+-\d{3})$/i);
     if (!styleMatch) continue;
     
     const sku = styleMatch[1].toUpperCase();
+    
+    // OCR artifact check: if same SKU appears within 5 lines of last one, skip it
+    // (Real duplicate items have ~10+ lines between them with name/price/size/etc)
+    if (sku === lastSku && (i - lastStyleLine) < 5) {
+      console.log(`[JSParser] Skipping OCR artifact: ${sku} at line ${i} (too close to line ${lastStyleLine})`);
+      continue;
+    }
+    
+    lastStyleLine = i;
+    lastSku = sku;
+    
     let name = '';
     let price = 0;
     let size = '';
@@ -67,10 +83,11 @@ function parseNikeReceiptJS(ocrText) {
       }
       
       // Name: Line before price that looks like a product name
-      // (contains letters, not a category/color/size line)
       if (!name && price && !line.match(/^\$/) && !line.match(/^Size\s/i) && 
           !line.match(/^(Women|Men|Baby|Toddler|Basketball|Lifestyle|Running)/i) &&
           !line.match(/\// ) && // Skip color lines like "Black/White"
+          !line.match(/^Style\s/i) &&
+          !line.match(/^Grey$/i) && !line.match(/^Black$/i) && !line.match(/^White$/i) &&
           line.length > 3) {
         name = line.replace(/"/g, '');
       }
