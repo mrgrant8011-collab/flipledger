@@ -892,7 +892,9 @@ function App() {
             salePrice: parseFloat(item.sale_price) || 0,
             platform: item.platform || '',
             fees: parseFloat(item.fees) || 0,
-            saleDate: item.sale_date || ''
+            saleDate: item.sale_date || '',
+            orderId: item.order_id || '',
+            orderNumber: item.order_number || ''
           })));
         }
 
@@ -1192,7 +1194,9 @@ function App() {
         sale_price: item.salePrice,
         platform: item.platform,
         fees: item.fees,
-        sale_date: item.saleDate
+        sale_date: item.saleDate,
+        order_id: item.orderId || item.id || null,
+        order_number: item.orderNumber || null
       }));
 
       const { data, error } = await supabase
@@ -1525,13 +1529,16 @@ function App() {
           return;
         }
         
-        // Filter out duplicates
+        // Filter out duplicates - check by orderId/orderNumber
         const existingIds = new Set([
+          ...pendingCosts.map(p => p.orderId).filter(Boolean),
+          ...pendingCosts.map(p => p.orderNumber).filter(Boolean),
           ...pendingCosts.map(p => p.id),
-          ...sales.map(s => s.orderId || s.id)
+          ...sales.map(s => s.orderId).filter(Boolean),
+          ...sales.map(s => s.id)
         ]);
         
-        const newSales = yearFiltered.filter(s => !existingIds.has(s.id));
+        const newSales = yearFiltered.filter(s => !existingIds.has(s.id) && !existingIds.has(s.orderId));
         
         if (newSales.length > 0) {
           // Save to Supabase
@@ -1545,7 +1552,9 @@ function App() {
               salePrice: parseFloat(item.sale_price) || 0,
               platform: item.platform,
               fees: parseFloat(item.fees) || 0,
-              saleDate: item.sale_date
+              saleDate: item.sale_date,
+              orderId: item.order_id || '',
+              orderNumber: item.order_number || ''
             }))]);
           }
           alert(`✓ Synced ${newSales.length} sales from ${selectedYear}!${yearFiltered.length - newSales.length > 0 ? `\n${yearFiltered.length - newSales.length} already existed` : ''}`);
