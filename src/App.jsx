@@ -855,7 +855,8 @@ function App() {
             platform: item.platform || '',
             fees: parseFloat(item.fees) || 0,
             profit: parseFloat(item.profit) || 0,
-            saleDate: item.sale_date || ''
+            saleDate: item.sale_date || '',
+            orderId: item.order_id || ''
           })));
         }
 
@@ -1004,7 +1005,8 @@ function App() {
         platform: item.platform,
         fees: item.fees,
         profit: item.profit,
-        sale_date: item.saleDate
+        sale_date: item.saleDate,
+        order_id: item.orderId || null
       };
 
       if (isNew) {
@@ -1699,7 +1701,8 @@ function App() {
       platform: sale.platform || channel,
       fees: sale.fees || (sale.salePrice - sale.payout),
       profit: profit,
-      saleDate: sale.saleDate
+      saleDate: sale.saleDate,
+      orderId: sale.orderId || sale.id
     };
     
     // Save to Supabase first
@@ -1707,8 +1710,7 @@ function App() {
     if (id) {
       setSales(prev => [...prev, { 
         ...newSale, 
-        id,
-        orderId: sale.id
+        id
       }]);
     }
     setPendingCosts(prev => prev.filter(s => s.id !== saleId));
