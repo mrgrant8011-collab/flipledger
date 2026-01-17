@@ -848,6 +848,132 @@ export const safeConfirmSale = async (userId, pendingId, cost, options = {}) => 
 };
 
 // ============================================================
+// EXPENSE OPERATIONS
+// ============================================================
+
+/**
+ * Validates an expense record before saving
+ * @throws {Error} with clear message if validation fails
+ */
+const validateExpense = (data) => {
+  const errors = [];
+  
+  if (data.amount === undefined || data.amount === null) {
+    errors.push('Amount is required');
+  } else if (typeof data.amount !== 'number' || isNaN(data.amount)) {
+    errors.push('Amount must be a valid number');
+  } else if (data.amount <= 0) {
+    errors.push('Amount must be greater than zero');
+  }
+  
+  if (!data.category || data.category.trim() === '') {
+    errors.push('Category is required');
+  }
+  
+  if (errors.length > 0) {
+    throw new Error(`Validation failed: ${errors.join(', ')}`);
+  }
+};
+
+/**
+ * SAFE: Save an expense (create or update)
+ * 
+ * @param {string} userId - User's UUID
+ * @param {Object} data - Expense data
+ * @param {number} data.amount - Expense amount (required, must be > 0)
+ * @param {string} data.category - Expense category (required)
+ * @param {string} [data.description] - Optional description
+ * @param {string} [data.date] - Expense date (YYYY-MM-DD)
+ * @param {string} [data.id] - If provided, updates existing expense
+ * 
+ * @returns {Object} { success: boolean, data?: Object, error?: string }
+ */
+export const safeSaveExpense = async (userId, data) => {
+  try {
+    // 1. Validate required fields
+    if (!userId) {
+      return { success: false, error: 'User ID is required' };
+    }
+    
+    validateExpense(data);
+    
+    // 2. Prepare record
+    const record = {
+      user_id: userId,
+      amount: data.amount,
+      category: data.category.trim(),
+      description: data.description?.trim() || '',
+      date: data.date || new Date().toISOString().split('T')[0]
+    };
+    
+    // 3. Insert or Update
+    if (data.id) {
+      // UPDATE existing expense
+      const { data: updated, error } = await supabase
+        .from('expenses')
+        .update(record)
+        .eq('id', data.id)
+        .eq('user_id', userId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      console.log(`[SafeDB] Expense updated: ${data.id}`);
+      return { success: true, data: updated };
+    } else {
+      // INSERT new expense
+      const { data: inserted, error } = await supabase
+        .from('expenses')
+        .insert(record)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      console.log(`[SafeDB] Expense created: ${inserted.id}`);
+      return { success: true, data: inserted };
+    }
+  } catch (error) {
+    console.error('[SafeDB] Error saving expense:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * SAFE: Delete an expense
+ * 
+ * @param {string} userId - User's UUID
+ * @param {string} id - Expense ID to delete
+ * 
+ * @returns {Object} { success: boolean, error?: string }
+ */
+export const safeDeleteExpense = async (userId, id) => {
+  try {
+    if (!userId) {
+      return { success: false, error: 'User ID is required' };
+    }
+    if (!id) {
+      return { success: false, error: 'Expense ID is required' };
+    }
+    
+    const { error } = await supabase
+      .from('expenses')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+    
+    if (error) throw error;
+    
+    console.log(`[SafeDB] Expense deleted: ${id}`);
+    return { success: true };
+  } catch (error) {
+    console.error('[SafeDB] Error deleting expense:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// ============================================================
 // UTILITY: Check order existence (for UI display)
 // ============================================================
 

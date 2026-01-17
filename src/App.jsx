@@ -15,6 +15,8 @@ import {
   safeDeleteInventory,
   safeUpdateSale,
   safeUpdateInventory,
+  safeSaveExpense,
+  safeDeleteExpense,
   checkOrderExists
 } from './safeDatabase';
 import { syncStockXSales, syncEbaySales, transformPendingForDisplay } from './syncModule';
@@ -1060,55 +1062,7 @@ function App() {
     }
   };
 
-  // Save expense to Supabase
-  const saveExpenseToSupabase = async (item, isNew = true) => {
-    if (!user) return;
-    try {
-      const record = {
-        user_id: user.id,
-        description: item.description,
-        amount: item.amount,
-        category: item.category,
-        date: item.date
-      };
-
-      if (isNew) {
-        const { data, error } = await supabase
-          .from('expenses')
-          .insert(record)
-          .select()
-          .single();
-        if (error) throw error;
-        return data.id;
-      } else {
-        const { error } = await supabase
-          .from('expenses')
-          .update(record)
-          .eq('id', item.id)
-          .eq('user_id', user.id);
-        if (error) throw error;
-        return item.id;
-      }
-    } catch (error) {
-      console.error('Error saving expense:', error);
-      return null;
-    }
-  };
-
-  // Delete expense from Supabase
-  const deleteExpenseFromSupabase = async (id) => {
-    if (!user) return;
-    try {
-      const { error } = await supabase
-        .from('expenses')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', user.id);
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error deleting expense:', error);
-    }
-  };
+  // NOTE: Expense operations now use centralized safeSaveExpense and safeDeleteExpense from safeDatabase.js
 
   // Save pending cost to Supabase
   const savePendingToSupabase = async (item, isNew = true) => {
@@ -1731,10 +1685,14 @@ function App() {
       description: formData.description || '', 
       date: formData.date || new Date().toISOString().split('T')[0] 
     };
-    // Save to Supabase first
-    const id = await saveExpenseToSupabase(newExpense, true);
-    if (id) {
-      setExpenses([...expenses, { ...newExpense, id }]); 
+    // Save to Supabase using centralized function
+    const result = await safeSaveExpense(user.id, newExpense);
+    if (result.success && result.data) {
+      setExpenses([...expenses, result.data]); 
+      console.log('[Expenses] Added:', result.data.id);
+    } else {
+      console.error('[Expenses] Failed to add:', result.error);
+      alert('Failed to save expense: ' + (result.error || 'Unknown error'));
     }
     setModal(null); 
     setFormData({}); 
@@ -3591,7 +3549,16 @@ function App() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                   <span style={{ color: c.red, fontWeight: 700, fontSize: 16 }}>{fmt(e.amount)}</span>
                   <button onClick={() => { setFormData({ editExpenseId: e.id, category: e.category, amount: e.amount, description: e.description, date: e.date }); setModal('editExpense'); }} style={{ background: 'none', border: 'none', color: c.green, cursor: 'pointer', fontSize: 14 }}>✏️</button>
-                  <button onClick={() => setExpenses(expenses.filter(x => x.id !== e.id))} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 18 }}>×</button>
+                  <button onClick={async () => {
+                    const result = await safeDeleteExpense(user.id, e.id);
+                    if (result.success) {
+                      setExpenses(expenses.filter(x => x.id !== e.id));
+                      console.log('[Expenses] Deleted:', e.id);
+                    } else {
+                      console.error('[Expenses] Delete failed:', result.error);
+                      alert('Failed to delete expense: ' + (result.error || 'Unknown error'));
+                    }
+                  }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 18 }}>×</button>
                 </div>
               </div>
             )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💳</div><p style={{ color: c.textMuted }}>{expenseSearch || expenseCatFilter !== 'all' ? 'No matching expenses' : 'No expenses yet'}</p></div>}
@@ -5509,14 +5476,22 @@ Let me know if you need anything else.`;
               }
               else if (modal === 'expense') addExpense(); 
               else if (modal === 'editExpense') {
-                // Update existing expense (stays local for now - expenses table doesn't have all fields)
-                setExpenses(expenses.map(e => e.id === formData.editExpenseId ? {
-                  ...e,
+                // Update existing expense in Supabase
+                const updatedExpense = {
+                  id: formData.editExpenseId,
                   category: formData.category,
                   amount: parseFloat(formData.amount) || 0,
-                  description: formData.description,
+                  description: formData.description || '',
                   date: formData.date
-                } : e));
+                };
+                const result = await safeSaveExpense(user.id, updatedExpense);
+                if (result.success && result.data) {
+                  setExpenses(expenses.map(e => e.id === formData.editExpenseId ? result.data : e));
+                  console.log('[Expenses] Updated:', formData.editExpenseId);
+                } else {
+                  console.error('[Expenses] Update failed:', result.error);
+                  alert('Failed to update expense: ' + (result.error || 'Unknown error'));
+                }
                 setModal(null);
                 setFormData({});
               }
