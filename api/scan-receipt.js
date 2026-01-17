@@ -35,15 +35,14 @@ export default async function handler(req, res) {
  * Each "Style XXXXXX-XXX" line = 1 item
  * Look backwards from Style line to find: name, price, size
  * 
- * OCR artifact handling: If same Style line appears within 3 lines of previous,
- * it's likely an OCR chunk overlap artifact - skip it.
+ * OCR artifact detection: A real item MUST have a price line between Style lines.
+ * If no price found between two Style lines, the second is a duplicate.
  */
 function parseNikeReceiptJS(ocrText) {
   const lines = ocrText.split('\n').map(l => l.trim());
   const items = [];
   
-  let lastStyleLine = -999; // Track line number of last Style we processed
-  let lastSku = '';
+  let lastStyleLine = -1;
   
   for (let i = 0; i < lines.length; i++) {
     const styleMatch = lines[i].match(/^Style\s+([A-Z0-9]+-\d{3})$/i);
@@ -51,47 +50,54 @@ function parseNikeReceiptJS(ocrText) {
     
     const sku = styleMatch[1].toUpperCase();
     
-    // OCR artifact check: if same SKU appears within 5 lines of last one, skip it
-    // (Real duplicate items have ~10+ lines between them with name/price/size/etc)
-    if (sku === lastSku && (i - lastStyleLine) < 5) {
-      console.log(`[JSParser] Skipping OCR artifact: ${sku} at line ${i} (too close to line ${lastStyleLine})`);
-      continue;
-    }
-    
-    lastStyleLine = i;
-    lastSku = sku;
-    
+    // Look backwards for price, size, name
     let name = '';
     let price = 0;
     let size = '';
+    let foundPrice = false;
     
-    // Look backwards up to 10 lines to find name, price, size
-    for (let j = i - 1; j >= Math.max(0, i - 10); j--) {
+    // Search backwards to previous Style line or start
+    const searchStart = Math.max(0, lastStyleLine + 1);
+    
+    for (let j = i - 1; j >= searchStart; j--) {
       const line = lines[j];
       
-      // Size: "Size XX" or "Size 10.5" or "Size 7C"
+      // Size
       if (!size && /^Size\s+/i.test(line)) {
         size = line.replace(/^Size\s+/i, '');
       }
       
-      // Price: "$XX.XX $XXX.XX" or "$XX.XX"
+      // Price
       if (!price) {
         const dualPrice = line.match(/^\$(\d+\.\d{2})\s+\$\d+\.\d{2}$/);
         const singlePrice = line.match(/^\$(\d+\.\d{2})$/);
-        if (dualPrice) price = parseFloat(dualPrice[1]);
-        else if (singlePrice) price = parseFloat(singlePrice[1]);
+        if (dualPrice) {
+          price = parseFloat(dualPrice[1]);
+          foundPrice = true;
+        } else if (singlePrice) {
+          price = parseFloat(singlePrice[1]);
+          foundPrice = true;
+        }
       }
       
-      // Name: Line before price that looks like a product name
-      if (!name && price && !line.match(/^\$/) && !line.match(/^Size\s/i) && 
-          !line.match(/^(Women|Men|Baby|Toddler|Basketball|Lifestyle|Running)/i) &&
-          !line.match(/\// ) && // Skip color lines like "Black/White"
+      // Name - line before price, not a category/color/etc
+      if (!name && foundPrice && !line.match(/^\$/) && !line.match(/^Size\s/i) && 
+          !line.match(/^(Women|Men|Baby|Toddler|Basketball|Lifestyle|Running|Shop Similar)/i) &&
+          !line.match(/\// ) &&
           !line.match(/^Style\s/i) &&
-          !line.match(/^Grey$/i) && !line.match(/^Black$/i) && !line.match(/^White$/i) &&
+          !line.match(/^(Grey|Black|White|IMAGE|UNAVAILABLE)$/i) &&
           line.length > 3) {
         name = line.replace(/"/g, '');
       }
     }
+    
+    // OCR artifact check: if no price found between this Style and last Style, skip it
+    if (!foundPrice && lastStyleLine >= 0) {
+      console.log(`[JSParser] Skipping OCR artifact: ${sku} at line ${i} (no price since line ${lastStyleLine})`);
+      continue;
+    }
+    
+    lastStyleLine = i;
     
     items.push({
       name: name || 'Nike Product',
