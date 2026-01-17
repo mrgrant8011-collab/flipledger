@@ -1192,9 +1192,8 @@ function App() {
 
   // UPSERT pending costs to Supabase (shared function for all write paths)
   // Uses ON CONFLICT to prevent duplicates at database level
-  const upsertPendingCosts = async (items) => {
+  const bulkSavePendingToSupabase = async (items) => {
     if (!user || items.length === 0) return [];
-    
     try {
       const records = items.map(item => ({
         user_id: user.id,
@@ -1211,27 +1210,20 @@ function App() {
         image: item.image || null
       }));
 
-      // UPSERT: Insert new, update existing (based on user_id + order_id)
       const { data, error } = await supabase
         .from('pending_costs')
-        .upsert(records, { 
-          onConflict: 'user_id,order_id',
-          ignoreDuplicates: false // Update existing rows
-        })
+        .insert(records)
         .select();
-      
       if (error) throw error;
-      
-      console.log(`Upserted ${data.length} pending costs`);
       return data;
     } catch (error) {
-      console.error('Error upserting pending costs:', error);
+      console.error('Error bulk saving pending:', error);
       return [];
     }
   };
   
-  // Alias for backwards compatibility
-  const bulkSavePendingToSupabase = upsertPendingCosts;
+  // Alias for UPSERT calls
+  const upsertPendingCosts = bulkSavePendingToSupabase;
 
   // Bulk save inventory items to Supabase
   const bulkSaveInventoryToSupabase = async (items) => {
