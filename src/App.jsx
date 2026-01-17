@@ -4764,6 +4764,10 @@ Let me know if you need anything else.`;
                                 });
                                 
                                 if (fresh.length > 0) {
+                                  // Create maps for data that won't be in Supabase response
+                                  const payoutMap = new Map(fresh.map(s => [s.orderId || s.id, s.payout]));
+                                  const imageMap = new Map(fresh.map(s => [s.orderId || s.id, s.image]));
+                                  
                                   // Save to Supabase
                                   const savedPending = await bulkSavePendingToSupabase(fresh);
                                   if (savedPending.length > 0) {
@@ -4775,7 +4779,10 @@ Let me know if you need anything else.`;
                                       salePrice: parseFloat(item.sale_price) || 0,
                                       platform: item.platform,
                                       fees: parseFloat(item.fees) || 0,
-                                      saleDate: item.sale_date
+                                      saleDate: item.sale_date,
+                                      orderId: item.order_id || '',
+                                      payout: payoutMap.get(item.order_id) || 0,
+                                      image: imageMap.get(item.order_id) || ''
                                     }))]);
                                     const withImages = fresh.filter(s => s.image).length;
                                     alert(`✓ Imported ${savedPending.length} eBay sales (${withImages} with images)`);
