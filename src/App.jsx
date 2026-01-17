@@ -1195,23 +1195,8 @@ function App() {
   const upsertPendingCosts = async (items) => {
     if (!user || items.length === 0) return [];
     
-    // Filter out items without order_id - these cannot be deduplicated
-    const validItems = items.filter(item => {
-      const orderId = item.orderId || item.id;
-      if (!orderId) {
-        console.warn('Skipping item without order_id:', item.name);
-        return false;
-      }
-      return true;
-    });
-    
-    if (validItems.length === 0) {
-      console.error('No valid items to save - all missing order_id');
-      return [];
-    }
-    
     try {
-      const records = validItems.map(item => ({
+      const records = items.map(item => ({
         user_id: user.id,
         name: item.name,
         sku: item.sku,
@@ -1220,7 +1205,7 @@ function App() {
         platform: item.platform,
         fees: item.fees,
         sale_date: item.saleDate,
-        order_id: item.orderId || item.id,
+        order_id: item.orderId || item.id || null,
         order_number: item.orderNumber || null,
         payout: item.payout || null,
         image: item.image || null
@@ -5897,13 +5882,18 @@ Let me know if you need anything else.`;
               }
               else if (modal === 'expense') addExpense(); 
               else if (modal === 'editExpense') {
-                // Update existing expense (stays local for now - expenses table doesn't have all fields)
-                setExpenses(expenses.map(e => e.id === formData.editExpenseId ? {
-                  ...e,
+                // Update existing expense in Supabase
+                const updatedExpense = {
+                  id: formData.editExpenseId,
                   category: formData.category,
                   amount: parseFloat(formData.amount) || 0,
                   description: formData.description,
                   date: formData.date
+                };
+                await saveExpenseToSupabase(updatedExpense, false);
+                setExpenses(expenses.map(e => e.id === formData.editExpenseId ? {
+                  ...e,
+                  ...updatedExpense
                 } : e));
                 setModal(null);
                 setFormData({});
