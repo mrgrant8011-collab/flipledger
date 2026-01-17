@@ -61,10 +61,14 @@ export default async function handler(req, res) {
       fullText = await processImageInChunks(imageBuffer, apiKey, dimensions, CHUNK_HEIGHT, OVERLAP);
     }
 
+    const salePriceCount = (fullText.match(/Sale Price/gi) || []).length;
+    console.log(`[OCR] Final "Sale Price" occurrences: ${salePriceCount}`);
+
     return res.status(200).json({ 
       text: fullText,
       dimensions: dimensions,
-      chunked: dimensions.height > MAX_HEIGHT_SINGLE
+      chunked: dimensions.height > MAX_HEIGHT_SINGLE,
+      salePriceCount: salePriceCount
     });
 
   } catch (error) {
@@ -104,13 +108,8 @@ async function callGoogleVisionOCR(base64Data, apiKey) {
     throw new Error(data.error.message || 'Google Vision API error');
   }
 
-  return extractTextFromVisionResponse(data);
-}
-
-function extractTextFromVisionResponse(data) {
   const visionResponse = data.responses?.[0];
   if (!visionResponse) {
-    console.log('[OCR] No response from Vision API');
     return '';
   }
 
@@ -118,16 +117,13 @@ function extractTextFromVisionResponse(data) {
   const textAnnotations = visionResponse.textAnnotations;
 
   if (fullTextAnnotation && fullTextAnnotation.text && fullTextAnnotation.text.trim()) {
-    console.log('[OCR] Using fullTextAnnotation.text');
     return fullTextAnnotation.text;
   }
 
   if (textAnnotations && textAnnotations.length > 0 && textAnnotations[0].description) {
-    console.log('[OCR] Using textAnnotations[0].description');
     return textAnnotations[0].description;
   }
 
-  console.log('[OCR] No text found in response');
   return '';
 }
 
@@ -213,13 +209,11 @@ async function ocrSingleChunk(chunkBase64, apiKey, chunkIndex) {
 
   if (fullTextAnnotation && fullTextAnnotation.text && fullTextAnnotation.text.trim()) {
     chunkText = fullTextAnnotation.text;
-    console.log(`[OCR] Chunk ${chunkIndex + 1}: Got ${chunkText.length} chars from fullTextAnnotation.text`);
   } else if (textAnnotations && textAnnotations.length > 0 && textAnnotations[0].description) {
     chunkText = textAnnotations[0].description;
-    console.log(`[OCR] Chunk ${chunkIndex + 1}: Got ${chunkText.length} chars from textAnnotations[0].description`);
-  } else {
-    console.log(`[OCR] Chunk ${chunkIndex + 1}: No text found in response`);
   }
+
+  console.log(`[OCR] Chunk ${chunkIndex + 1}: Got ${chunkText.length} chars`);
 
   return chunkText;
 }
@@ -236,71 +230,101 @@ async function processImageInChunks(imageBuffer, apiKey, dimensions, chunkHeight
     
     const text = await ocrSingleChunk(chunk.base64, apiKey, chunk.index);
     
+    const lines = text.split('\n');
+    console.log(`[OCR] Chunk ${chunk.index + 1} DEBUG:`);
+    console.log(`  - Total lines: ${lines.length}`);
+    console.log(`  - Text length: ${text.length}`);
+    console.log(`  - First 5 lines: ${JSON.stringify(lines.slice(0, 5))}`);
+    console.log(`  - Last 5 lines: ${JSON.stringify(lines.slice(-5))}`);
+    
     chunkTexts.push({
       index: chunk.index,
-      yOffset: chunk.yOffset,
-      height: chunk.height,
       text: text
     });
   }
   
-  const mergedText = mergeChunkTexts(chunkTexts, overlap);
+  const mergedText = mergeChunkTexts(chunkTexts);
   
-  console.log(`[OCR] Final merged text length: ${mergedText.length}`);
+  const finalLines = mergedText.split('\n');
+  console.log(`[OCR] Final merged total lines: ${finalLines.length}`);
   
   return mergedText;
 }
 
-function mergeChunkTexts(chunkTexts, overlap) {
-  if (chunkTexts.length === 0) return '';
-  if (chunkTexts.length === 1) return chunkTexts[0].text;
+function normalizeLine(line) {
+  return line.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function findStrictSuffixPrefixOverlap(linesA, linesB, minK) {
+  const maxK = Math.min(50, linesA.length, linesB.length);
   
-  const allLines = [];
+  const normalizedSuffixA = linesA.slice(-maxK).map(normalizeLine);
+  const normalizedPrefixB = linesB.slice(0, maxK).map(normalizeLine);
   
-  for (let i = 0; i < chunkTexts.length; i++) {
-    const chunk = chunkTexts[i];
-    const nextChunk = chunkTexts[i + 1];
+  let bestK = 0;
+  
+  for (let k = minK; k <= maxK; k++) {
+    const suffixStart = normalizedSuffixA.length - k;
+    let match = true;
     
-    if (!chunk.text || !chunk.text.trim()) {
-      console.log(`[OCR] Chunk ${i + 1} is empty, skipping`);
-      continue;
-    }
-    
-    const lines = chunk.text.split('\n');
-    
-    if (!nextChunk || !nextChunk.text || !nextChunk.text.trim()) {
-      allLines.push(...lines);
-      continue;
-    }
-    
-    const nextLines = nextChunk.text.split('\n');
-    const nextFirstLines = nextLines.slice(0, 20).map(l => l.trim()).filter(l => l.length > 3);
-    
-    let cutIndex = lines.length;
-    
-    for (let j = lines.length - 1; j >= Math.max(0, lines.length - 25); j--) {
-      const line = lines[j].trim();
-      if (line.length <= 3) continue;
+    for (let i = 0; i < k; i++) {
+      const lineFromA = normalizedSuffixA[suffixStart + i];
+      const lineFromB = normalizedPrefixB[i];
       
-      const foundInNext = nextFirstLines.some(nextLine => {
-        if (line.length >= 10 && nextLine.length >= 10) {
-          return line === nextLine;
-        }
-        if (line.length >= 6 && nextLine.length >= 6) {
-          return line.substring(0, Math.min(line.length, 50)) === nextLine.substring(0, Math.min(nextLine.length, 50));
-        }
-        return false;
-      });
+      if (lineFromA.length < 2 && lineFromB.length < 2) {
+        continue;
+      }
       
-      if (foundInNext) {
-        cutIndex = j;
-        console.log(`[OCR] Overlap found at chunk ${i + 1}, line ${j}: "${line.substring(0, 40)}"`);
+      if (lineFromA !== lineFromB) {
+        match = false;
         break;
       }
     }
     
-    allLines.push(...lines.slice(0, cutIndex));
+    if (match) {
+      bestK = k;
+    }
   }
   
-  return allLines.join('\n');
+  return bestK;
+}
+
+function mergeChunkTexts(chunkTexts) {
+  if (chunkTexts.length === 0) return '';
+  if (chunkTexts.length === 1) return chunkTexts[0].text;
+  
+  const MIN_K = 3;
+  
+  let mergedLines = chunkTexts[0].text.split('\n');
+  
+  for (let i = 1; i < chunkTexts.length; i++) {
+    const chunkB = chunkTexts[i].text;
+    
+    if (!chunkB || !chunkB.trim()) {
+      console.log(`[OCR] Merge: Chunk ${i + 1} is empty, skipping`);
+      continue;
+    }
+    
+    const linesB = chunkB.split('\n');
+    
+    const k = findStrictSuffixPrefixOverlap(mergedLines, linesB, MIN_K);
+    
+    console.log(`[OCR] Merge chunk ${i} -> ${i + 1}:`);
+    console.log(`  - Lines in A (merged so far): ${mergedLines.length}`);
+    console.log(`  - Lines in B: ${linesB.length}`);
+    console.log(`  - Strict suffix/prefix overlap k: ${k}`);
+    
+    if (k >= MIN_K) {
+      console.log(`  - Removing first ${k} lines from chunk B (overlap)`);
+      const newLines = linesB.slice(k);
+      mergedLines = mergedLines.concat(newLines);
+      console.log(`  - After merge: ${mergedLines.length} lines`);
+    } else {
+      console.log(`  - No sufficient overlap (k < ${MIN_K}), appending all of chunk B`);
+      mergedLines = mergedLines.concat(linesB);
+      console.log(`  - After merge: ${mergedLines.length} lines`);
+    }
+  }
+  
+  return mergedLines.join('\n');
 }
