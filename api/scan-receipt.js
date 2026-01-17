@@ -78,6 +78,8 @@ For each item find:
 - Size (include W for women's, C for toddler, Y for youth)
 - SALE/Final price (the lower price, not crossed-out original)
 
+IMPORTANT: Keep ALL items exactly as they appear, even if the same item/size appears multiple times.
+
 Return ONLY valid JSON:
 {
   "items": [
@@ -120,7 +122,12 @@ If no Nike products found:
     }
 
     if (result.items && Array.isArray(result.items)) {
-      result.items = postProcessItems(result.items);
+      result.items = result.items.map(item => ({
+        name: (item.name || 'Nike Product').trim(),
+        sku: normalizeSkuCode(item.sku),
+        size: normalizeSize(item.size),
+        price: parseFloat(item.price) || 0
+      })).filter(item => item.sku && item.price > 0);
     }
 
     return res.status(200).json(result);
@@ -137,8 +144,7 @@ If no Nike products found:
 function buildNikeParsingPrompt(ocrText) {
   return `You are an expert Nike receipt parser. Extract ALL products from this Nike order OCR text.
 
-CRITICAL: This text may come from a VERY LONG receipt (30-40+ items) that was scanned in chunks.
-Due to chunking, some items may appear TWICE (duplicated in overlap regions). You MUST deduplicate.
+IMPORTANT: Keep ALL items exactly as they appear on the receipt. If the same item appears 5 times, return it 5 times. Do NOT deduplicate real items.
 
 ## NIKE PRODUCT CATEGORIES TO RECOGNIZE:
 
@@ -162,11 +168,6 @@ Examples: BQ9646-002, DV3853-001, 553558-161, CU4150-002
 - Use the FINAL/SALE price (the lower price after discount)
 - If you see "$110.00" crossed out and "$48.99" below it, use $48.99
 
-## DEDUPLICATION RULES:
-1. Each unique SKU + Size = ONE item only
-2. Same SKU + same size + same price appearing twice = count ONCE
-3. Same SKU with DIFFERENT sizes = DIFFERENT items (count each)
-
 Return ONLY valid JSON:
 {
   "items": [
@@ -187,43 +188,7 @@ OCR TEXT:
 ${ocrText}
 ---
 
-Parse all items and return JSON. Remember to DEDUPLICATE.`;
-}
-
-function postProcessItems(items) {
-  const seen = new Map();
-  const processed = [];
-  
-  for (const item of items) {
-    const sku = normalizeSkuCode(item.sku);
-    const size = normalizeSize(item.size);
-    const price = parseFloat(item.price) || 0;
-    const name = (item.name || 'Nike Product').trim();
-    
-    if (!sku || price <= 0) {
-      continue;
-    }
-    
-    const key = `${sku}-${size}-${price.toFixed(2)}`;
-    
-    if (seen.has(key)) {
-      console.log(`[Parser] Skipping duplicate: ${key}`);
-      continue;
-    }
-    
-    seen.set(key, true);
-    
-    processed.push({
-      name: name,
-      sku: sku,
-      size: size,
-      price: price
-    });
-  }
-  
-  console.log(`[Parser] Processed ${processed.length} unique items from ${items.length} raw items`);
-  
-  return processed;
+Parse all items and return JSON. Keep every item, even duplicates.`;
 }
 
 function normalizeSkuCode(sku) {

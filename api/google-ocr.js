@@ -234,61 +234,83 @@ async function processImageInChunks(imageBuffer, apiKey, dimensions, chunkHeight
   
   console.log(`[OCR] Created ${chunks.length} physical chunks`);
   
-  const allBlocks = [];
+  const chunkResults = [];
   
   for (const chunk of chunks) {
     console.log(`[OCR] OCR processing chunk ${chunk.index + 1}/${chunks.length}...`);
     
     const chunkBlocks = await ocrChunkWithBlocks(chunk.base64, apiKey);
     
-    for (const block of chunkBlocks) {
-      allBlocks.push({
-        globalMinY: block.minY + chunk.yOffset,
-        globalMaxY: block.maxY + chunk.yOffset,
-        text: block.text,
-        chunkIndex: chunk.index
-      });
-    }
+    const blocksWithGlobalY = chunkBlocks.map(block => ({
+      globalMinY: block.minY + chunk.yOffset,
+      globalMaxY: block.maxY + chunk.yOffset,
+      localMinY: block.minY,
+      localMaxY: block.maxY,
+      text: block.text,
+      chunkIndex: chunk.index,
+      chunkHeight: chunk.height,
+      chunkYOffset: chunk.yOffset
+    }));
+    
+    chunkResults.push({
+      chunkIndex: chunk.index,
+      yOffset: chunk.yOffset,
+      height: chunk.height,
+      blocks: blocksWithGlobalY
+    });
     
     console.log(`[OCR] Chunk ${chunk.index + 1} returned ${chunkBlocks.length} blocks`);
   }
   
-  const deduplicatedBlocks = deduplicateBlocks(allBlocks, overlap);
+  const finalBlocks = dedupeOverlapOnly(chunkResults, overlap);
   
-  deduplicatedBlocks.sort((a, b) => a.globalMinY - b.globalMinY);
+  finalBlocks.sort((a, b) => a.globalMinY - b.globalMinY);
   
-  const mergedText = deduplicatedBlocks.map(b => b.text).join('\n');
+  const mergedText = finalBlocks.map(b => b.text).join('\n');
   
   console.log(`[OCR] Final merged text length: ${mergedText.length}`);
   
   return mergedText;
 }
 
-function deduplicateBlocks(blocks, overlap) {
-  if (blocks.length === 0) return [];
+function dedupeOverlapOnly(chunkResults, overlap) {
+  if (chunkResults.length === 0) return [];
+  if (chunkResults.length === 1) return chunkResults[0].blocks;
   
-  const seen = new Map();
-  const result = [];
+  const finalBlocks = [];
   
-  for (const block of blocks) {
-    const textKey = block.text.trim().substring(0, 100);
-    const yBucket = Math.floor(block.globalMinY / 50);
-    const key = `${textKey}-${yBucket}`;
+  for (let i = 0; i < chunkResults.length; i++) {
+    const chunk = chunkResults[i];
+    const nextChunk = chunkResults[i + 1];
     
-    if (seen.has(key)) {
-      const existing = seen.get(key);
-      if (block.chunkIndex < existing.chunkIndex) {
-        const idx = result.indexOf(existing);
-        if (idx !== -1) {
-          result[idx] = block;
+    for (const block of chunk.blocks) {
+      if (nextChunk) {
+        const overlapStartGlobal = nextChunk.yOffset;
+        const overlapEndGlobal = nextChunk.yOffset + overlap;
+        
+        const blockInOverlapZone = block.globalMinY >= overlapStartGlobal && block.globalMinY < overlapEndGlobal;
+        
+        if (blockInOverlapZone) {
+          const duplicateInNextChunk = nextChunk.blocks.find(nextBlock => {
+            const nextBlockInOverlapZone = nextBlock.localMinY < overlap;
+            if (!nextBlockInOverlapZone) return false;
+            
+            const textMatch = block.text.trim().substring(0, 80) === nextBlock.text.trim().substring(0, 80);
+            const yClose = Math.abs(block.globalMinY - nextBlock.globalMinY) < 100;
+            
+            return textMatch && yClose;
+          });
+          
+          if (duplicateInNextChunk) {
+            console.log(`[OCR] Skipping overlap duplicate from chunk ${i + 1}: "${block.text.substring(0, 50)}..."`);
+            continue;
+          }
         }
-        seen.set(key, block);
       }
-    } else {
-      seen.set(key, block);
-      result.push(block);
+      
+      finalBlocks.push(block);
     }
   }
   
-  return result;
+  return finalBlocks;
 }
