@@ -1570,6 +1570,9 @@ function App() {
         // UPSERT to Supabase - database handles duplicates
         const savedPending = await upsertPendingCosts(salesWithOrderId);
         if (savedPending.length > 0) {
+          // Create payout map from original data
+          const payoutMap = new Map(salesWithOrderId.map(s => [s.id, s.payout]));
+          
           // Update local state with saved items
           setPendingCosts(prev => {
             const existingIds = new Set(prev.map(p => p.orderId));
@@ -1586,7 +1589,8 @@ function App() {
                 saleDate: item.sale_date,
                 orderId: item.order_id || '',
                 orderNumber: item.order_number || '',
-                image: imageMap.get(item.order_id) || ''
+                image: imageMap.get(item.order_id) || '',
+                payout: payoutMap.get(item.order_id) || 0
               }));
             return [...prev, ...newItems];
           });
@@ -2444,6 +2448,9 @@ function App() {
       // UPSERT to Supabase - database handles duplicates via UNIQUE constraint
       const savedPending = await upsertPendingCosts(itemsWithOrderId);
       if (savedPending.length > 0) {
+        // Create payout map from original data
+        const payoutMap = new Map(itemsWithOrderId.map(item => [item.orderId || item.id, item.payout]));
+        
         // Refresh pending costs from what was actually saved/updated
         setPendingCosts(prev => {
           const existingIds = new Set(prev.map(p => p.orderId));
@@ -2460,7 +2467,8 @@ function App() {
               saleDate: item.sale_date,
               orderId: item.order_id,
               orderNumber: item.order_number,
-              image: imageMap.get(item.order_id) || ''
+              image: imageMap.get(item.order_id) || '',
+              payout: payoutMap.get(item.order_id) || 0
             }));
           return [...prev, ...newItems];
         });
