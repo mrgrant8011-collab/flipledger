@@ -21,6 +21,15 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'No image or text provided' });
     }
 
+    // If we have OCR text, parse it directly with JavaScript (no Claude deduplication)
+    if (mode === 'text' && text) {
+      console.log(`[Parser] Parsing OCR text directly with JavaScript`);
+      const result = parseNikeReceiptJS(text);
+      console.log(`[Parser] JS parser found ${result.items.length} items`);
+      return res.status(200).json(result);
+    }
+
+    // For image-only mode, use Claude
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
@@ -28,59 +37,40 @@ export default async function handler(req, res) {
 
     const anthropic = new Anthropic({ apiKey });
 
-    let response;
-    let expectedCount = 0;
-
-    if (mode === 'text' && text) {
-      expectedCount = countItemsInOCR(text);
-      console.log(`[Parser] Pre-counted ${expectedCount} items in OCR text`);
-      
-      response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 8192,
-        messages: [
-          {
-            role: 'user',
-            content: buildNikeParsingPrompt(text, expectedCount)
-          }
-        ],
-      });
-    } else {
-      let base64Data = image;
-      let mediaType = 'image/jpeg';
-      
-      if (image.startsWith('data:')) {
-        const matches = image.match(/^data:(.+);base64,(.+)$/);
-        if (matches) {
-          mediaType = matches[1];
-          base64Data = matches[2];
-        }
+    let base64Data = image;
+    let mediaType = 'image/jpeg';
+    
+    if (image.startsWith('data:')) {
+      const matches = image.match(/^data:(.+);base64,(.+)$/);
+      if (matches) {
+        mediaType = matches[1];
+        base64Data = matches[2];
       }
-
-      response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 8192,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: mediaType,
-                  data: base64Data,
-                },
-              },
-              {
-                type: 'text',
-                text: buildNikeParsingPrompt('', 0)
-              }
-            ],
-          }
-        ],
-      });
     }
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8192,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: mediaType,
+                data: base64Data,
+              },
+            },
+            {
+              type: 'text',
+              text: `Extract ALL items from this Nike receipt. Return JSON with items array. Each item needs: name, sku, size, price. Do NOT deduplicate - if same item appears multiple times, list it multiple times.`
+            }
+          ],
+        }
+      ],
+    });
 
     const content = response.content[0].text;
     
@@ -90,49 +80,23 @@ export default async function handler(req, res) {
       if (jsonMatch) {
         result = JSON.parse(jsonMatch[0]);
       } else {
-        throw new Error('No JSON found in response');
+        throw new Error('No JSON found');
       }
     } catch (parseError) {
-      console.error('Failed to parse Claude response:', content);
       return res.status(500).json({ 
         error: 'Failed to parse receipt', 
-        message: 'Could not extract items. Please try a clearer screenshot.' 
+        message: 'Could not extract items.' 
       });
-    }
-
-    if (result.error) {
-      return res.status(400).json(result);
     }
 
     if (result.items && Array.isArray(result.items)) {
-      // NO FILTERING - keep ALL items, mark incomplete ones with needsReview
-      result.items = result.items.map(item => {
-        const sku = normalizeSkuCode(item.sku);
-        const size = normalizeSize(item.size);
-        const price = parseFloat(item.price) || 0;
-        const name = (item.name || 'Nike Product').trim();
-        
-        const needsReview = !sku || !size || price <= 0;
-        
-        return {
-          name,
-          sku: sku || 'UNKNOWN',
-          size: size || 'UNKNOWN',
-          price,
-          needsReview
-        };
-      });
-      
-      const validCount = result.items.filter(i => !i.needsReview).length;
-      const reviewCount = result.items.filter(i => i.needsReview).length;
-      
-      console.log(`[Parser] Returning ${result.items.length} total items (${validCount} valid, ${reviewCount} need review)`);
-      
-      if (expectedCount > 0 && result.items.length !== expectedCount) {
-        console.warn(`[Parser] WARNING: Expected ${expectedCount} items but got ${result.items.length}`);
-        result.countMismatch = true;
-        result.expectedCount = expectedCount;
-      }
+      result.items = result.items.map(item => ({
+        name: (item.name || 'Nike Product').trim(),
+        sku: normalizeSkuCode(item.sku) || 'UNKNOWN',
+        size: normalizeSize(item.size) || 'UNKNOWN',
+        price: parseFloat(item.price) || 0,
+        needsReview: !item.sku || !item.size || !item.price
+      }));
     }
 
     return res.status(200).json(result);
@@ -141,74 +105,101 @@ export default async function handler(req, res) {
     console.error('Receipt scan error:', error);
     return res.status(500).json({ 
       error: 'Scan failed', 
-      message: error.message || 'Failed to scan receipt. Please try again.' 
+      message: error.message || 'Failed to scan receipt.' 
     });
   }
 }
 
-function countItemsInOCR(text) {
-  const styleMatches = text.match(/Style\s+[A-Z0-9]{5,8}-\d{3}/gi) || [];
-  const salePriceMatches = text.match(/\$\d+\.\d{2}\s+\$\d+\.\d{2}/g) || [];
-  const sizeMatches = text.match(/\bSize\s+\d+\.?\d*[CY]?\b/gi) || [];
+// JavaScript-based Nike receipt parser - NO DEDUPLICATION
+function parseNikeReceiptJS(ocrText) {
+  const items = [];
+  const lines = ocrText.split('\n');
   
-  const count = Math.max(styleMatches.length, salePriceMatches.length, sizeMatches.length);
-  console.log(`[Parser] Found ${styleMatches.length} Style codes, ${salePriceMatches.length} price pairs, ${sizeMatches.length} sizes`);
+  let currentItem = null;
   
-  return count;
-}
-
-function buildNikeParsingPrompt(ocrText, expectedCount) {
-  let countInstruction = '';
-  if (expectedCount > 0) {
-    countInstruction = `
-MANDATORY ITEM COUNT: There are EXACTLY ${expectedCount} items in this receipt.
-Your items array MUST contain exactly ${expectedCount} entries.
-Each "Style XXXXXX-XXX" line = one item. Count them - there are ${expectedCount}.
-`;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    // Detect Style line - this marks a new item
+    const styleMatch = line.match(/^Style\s+([A-Z0-9]{5,8}-\d{3})$/i);
+    if (styleMatch) {
+      // Save previous item if exists
+      if (currentItem && currentItem.sku) {
+        items.push({ ...currentItem });
+        console.log(`[JSParser] Added item: ${currentItem.sku} size ${currentItem.size} @ $${currentItem.price}`);
+      }
+      
+      // Start new item
+      currentItem = {
+        name: '',
+        sku: styleMatch[1].toUpperCase(),
+        size: '',
+        price: 0,
+        needsReview: false
+      };
+      
+      // Look backwards for name and price
+      for (let j = i - 1; j >= Math.max(0, i - 15); j--) {
+        const prevLine = lines[j].trim();
+        
+        // Find product name (Air Jordan, Nike, etc.)
+        if (!currentItem.name && /^(Air Jordan|Nike|Jordan)\s+/i.test(prevLine)) {
+          // Combine with next line if it continues
+          let fullName = prevLine;
+          if (j + 1 < i && !lines[j + 1].trim().startsWith('$') && !lines[j + 1].trim().match(/^Style/i)) {
+            const nextPart = lines[j + 1].trim();
+            if (nextPart && !nextPart.match(/^\d/) && !nextPart.match(/^(Women|Men|Size|Style|\$)/i)) {
+              fullName += ' ' + nextPart;
+            }
+          }
+          currentItem.name = fullName.replace(/"/g, '');
+        }
+        
+        // Find price (format: $XX.XX $XXX.XX - first is sale price)
+        const priceMatch = prevLine.match(/^\$(\d+\.\d{2})\s+\$\d+\.\d{2}$/);
+        if (priceMatch && currentItem.price === 0) {
+          currentItem.price = parseFloat(priceMatch[1]);
+        }
+        
+        // Find size
+        const sizeMatch = prevLine.match(/^Size\s+(\d+\.?\d*[CY]?)$/i);
+        if (sizeMatch && !currentItem.size) {
+          currentItem.size = sizeMatch[1].toUpperCase();
+        }
+      }
+      
+      continue;
+    }
+    
+    // Also check for size after Style line
+    if (currentItem && !currentItem.size) {
+      const sizeMatch = line.match(/^Size\s+(\d+\.?\d*[CY]?)$/i);
+      if (sizeMatch) {
+        currentItem.size = sizeMatch[1].toUpperCase();
+      }
+    }
   }
-
-  const basePrompt = `You are parsing a Nike receipt for a BULK RESELLER.
-
-${countInstruction}
-
-CRITICAL RULES:
-1. This is a BULK ORDER - multiple pairs of the SAME shoe were purchased
-2. Each "Style XXXXXX-XXX" line = ONE item in your output
-3. If Style 305381-100 appears 6 times, output 6 separate items
-4. NEVER combine. NEVER deduplicate. Every Style line = one JSON object.
-5. Even if two items are completely identical, output them separately.
-
-PARSING:
-- Use the FIRST price (sale price), not the crossed-out original
-- Size formats: "Size 11", "11", "7C", "5Y"
-- SKU format: XXXXXX-XXX (e.g., 305381-100, IB2255-100)
-
-OUTPUT FORMAT:
-{
-  "items": [
-    {"name": "Air Jordan 8 Retro", "sku": "305381-100", "size": "11", "price": 119.97},
-    {"name": "Air Jordan 8 Retro", "sku": "305381-100", "size": "11", "price": 119.97},
-    {"name": "Air Jordan 8 Retro", "sku": "305381-100", "size": "12", "price": 119.97}
-  ],
-  "subtotal": 0,
-  "tax": 0,
-  "total": 0
-}
-
-Same SKU 3 times = 3 separate items in array.`;
-
-  if (ocrText && ocrText.trim()) {
-    return `${basePrompt}
-
----
-OCR TEXT:
-${ocrText}
----
-
-Return exactly ${expectedCount > 0 ? expectedCount : 'all'} items.`;
+  
+  // Don't forget the last item
+  if (currentItem && currentItem.sku) {
+    items.push({ ...currentItem });
+    console.log(`[JSParser] Added item: ${currentItem.sku} size ${currentItem.size} @ $${currentItem.price}`);
   }
   
-  return basePrompt;
+  console.log(`[JSParser] Total items parsed: ${items.length}`);
+  
+  // Extract order info
+  const orderMatch = ocrText.match(/T\d{10,}[A-Z]+/);
+  const totalMatch = ocrText.match(/\$[\d,]+\.\d{2}$/m);
+  
+  return {
+    items: items,
+    subtotal: 0,
+    tax: 0,
+    total: totalMatch ? parseFloat(totalMatch[0].replace(/[$,]/g, '')) : 0,
+    orderNumber: orderMatch ? orderMatch[0] : '',
+    orderDate: ''
+  };
 }
 
 function normalizeSkuCode(sku) {
