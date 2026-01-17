@@ -3,6 +3,20 @@ import * as XLSX from 'xlsx';
 import Tesseract from 'tesseract.js';
 import { supabase } from './supabase';
 import { NIKE_DESKTOP_EXAMPLE, NIKE_MOBILE_EXAMPLE } from './nike-examples';
+import { 
+  safeSavePendingCost, 
+  safeSaveSale, 
+  safeSaveInventory,
+  safeBulkSavePendingCosts,
+  safeBulkSaveInventory,
+  safeConfirmSale,
+  safeDeletePendingCost,
+  safeDeleteSale,
+  safeDeleteInventory,
+  safeUpdateSale,
+  safeUpdateInventory,
+  checkOrderExists
+} from './safeDatabase';
 
 // Auth Component - Login/Signup Page
 function AuthPage({ onLogin }) {
@@ -1437,7 +1451,7 @@ function App() {
     );
   }
 
-  // Fetch StockX sales - Filter by selected year
+  // Fetch StockX sales - Filter by selected year - SAFE VERSION
   const fetchStockXSales = async () => {
     if (!stockxToken) return;
     setStockxSyncing(true);
@@ -1495,33 +1509,45 @@ function App() {
           return;
         }
         
-        // Filter out duplicates
-        const existingIds = new Set([
-          ...pendingCosts.map(p => p.id),
-          ...sales.map(s => s.orderId || s.id)
-        ]);
+        // SAFE: Use centralized bulk save with automatic duplicate detection
+        const itemsToSave = yearFiltered.map(s => ({
+          name: s.name,
+          sku: s.sku || '',
+          size: s.size || '',
+          sale_price: s.salePrice || 0,
+          platform: s.platform || 'StockX',
+          fees: s.fees || (s.salePrice - s.payout) || 0,
+          payout: s.payout || null,
+          sale_date: s.saleDate || null,
+          order_id: s.id, // StockX order number for duplicate prevention
+          image: s.image || null
+        }));
         
-        const newSales = yearFiltered.filter(s => !existingIds.has(s.id));
+        const result = await safeBulkSavePendingCosts(user.id, itemsToSave);
         
-        if (newSales.length > 0) {
-          // Save to Supabase
-          const savedPending = await bulkSavePendingToSupabase(newSales);
-          if (savedPending.length > 0) {
-            setPendingCosts(prev => [...prev, ...savedPending.map(item => ({
-              id: item.id,
-              name: item.name,
-              sku: item.sku,
-              size: item.size,
-              salePrice: parseFloat(item.sale_price) || 0,
-              platform: item.platform,
-              fees: parseFloat(item.fees) || 0,
-              saleDate: item.sale_date
-            }))]);
-          }
-          alert(`✓ Synced ${newSales.length} sales from ${selectedYear}!${yearFiltered.length - newSales.length > 0 ? `\n${yearFiltered.length - newSales.length} already existed` : ''}`);
-        } else {
-          alert(`All ${yearFiltered.length} sales from ${selectedYear} already imported.`);
+        // Update local state with saved items
+        if (result.saved.length > 0) {
+          setPendingCosts(prev => [...prev, ...result.saved.map(item => ({
+            id: item.id,
+            name: item.name,
+            sku: item.sku,
+            size: item.size,
+            salePrice: parseFloat(item.sale_price) || 0,
+            platform: item.platform,
+            fees: parseFloat(item.fees) || 0,
+            saleDate: item.sale_date,
+            payout: parseFloat(item.payout) || 0,
+            orderId: item.order_id
+          }))]);
         }
+        
+        // Show result message
+        const msg = [];
+        if (result.saved.length > 0) msg.push(`✓ ${result.saved.length} new sales synced`);
+        if (result.duplicates.length > 0) msg.push(`${result.duplicates.length} already existed`);
+        if (result.errors.length > 0) msg.push(`${result.errors.length} errors`);
+        alert(msg.join('\n') || 'Sync complete');
+        
       } else {
         alert(`No completed sales found for ${selectedYear}.`);
       }
@@ -1638,87 +1664,138 @@ function App() {
 
   const confirmSaleWithCost = async (saleId, cost, channel = 'StockX Standard') => {
     const sale = pendingCosts.find(s => s.id === saleId);
-    if (!sale || !cost) return;
-    
-    // CHECK: Don't add if this order already exists in sales
-    const alreadyExists = sales.some(s => s.orderId === sale.id || s.id === sale.id);
-    if (alreadyExists) {
-      console.log('Sale already exists, skipping:', sale.id);
-      setPendingCosts(prev => prev.filter(s => s.id !== saleId)); // Remove from pending anyway
-      deletePendingFromSupabase(saleId);
+    if (!sale) {
+      alert('Sale not found');
+      return;
+    }
+    if (!cost && cost !== 0) {
+      alert('Cost is required');
       return;
     }
     
     const costNum = parseFloat(cost);
-    const profit = sale.payout - costNum;
-    const newSale = { 
-      name: sale.name,
-      sku: sale.sku,
-      size: sale.size,
-      cost: costNum, 
-      salePrice: sale.salePrice,
-      platform: sale.platform || channel,
-      fees: sale.fees || (sale.salePrice - sale.payout),
-      profit: profit,
-      saleDate: sale.saleDate
-    };
-    
-    // Save to Supabase first
-    const id = await saveSaleToSupabase(newSale, true);
-    if (id) {
-      setSales(prev => [...prev, { 
-        ...newSale, 
-        id,
-        orderId: sale.id
-      }]);
+    if (isNaN(costNum) || costNum < 0) {
+      alert('Cost must be a valid non-negative number');
+      return;
     }
-    setPendingCosts(prev => prev.filter(s => s.id !== saleId));
-    // Delete from Supabase
-    deletePendingFromSupabase(saleId);
+    
+    // SAFE: Use centralized confirm sale function
+    const result = await safeConfirmSale(user.id, saleId, costNum);
+    
+    if (result.success) {
+      // Update local state
+      setSales(prev => [...prev, {
+        id: result.sale.id,
+        name: result.sale.name,
+        sku: result.sale.sku,
+        size: result.sale.size,
+        cost: parseFloat(result.sale.cost) || 0,
+        salePrice: parseFloat(result.sale.sale_price) || 0,
+        platform: result.sale.platform,
+        fees: parseFloat(result.sale.fees) || 0,
+        profit: parseFloat(result.sale.profit) || 0,
+        saleDate: result.sale.sale_date,
+        orderId: result.sale.order_id
+      }]);
+      setPendingCosts(prev => prev.filter(s => s.id !== saleId));
+    } else if (result.duplicate) {
+      // Already confirmed - just remove from pending view
+      setPendingCosts(prev => prev.filter(s => s.id !== saleId));
+      console.log('Sale was already confirmed:', result.error);
+    } else {
+      alert('Error confirming sale: ' + result.error);
+    }
   };
 
   const addPurchase = async () => { 
-    if (!formData.name || !formData.cost) return; 
-    const newItem = { 
-      name: formData.name, 
-      sku: formData.sku || '', 
-      size: formData.size || '', 
-      cost: parseFloat(formData.cost), 
-      date: formData.date || new Date().toISOString().split('T')[0],
-      sold: false
-    };
-    // Save to Supabase first
-    const id = await saveInventoryToSupabase(newItem, true);
-    if (id) {
-      setPurchases([...purchases, { ...newItem, id }]); 
+    if (!formData.name || !formData.cost) {
+      alert('Name and cost are required');
+      return;
     }
-    setModal(null); 
-    setFormData({}); 
+    
+    const costNum = parseFloat(formData.cost);
+    if (isNaN(costNum) || costNum < 0) {
+      alert('Cost must be a valid non-negative number');
+      return;
+    }
+    
+    // SAFE: Use centralized save function
+    const result = await safeSaveInventory(user.id, {
+      name: formData.name,
+      sku: formData.sku || '',
+      size: formData.size || '',
+      cost: costNum,
+      date: formData.date || new Date().toISOString().split('T')[0]
+    });
+    
+    if (result.success) {
+      setPurchases([...purchases, {
+        id: result.data.id,
+        name: result.data.name,
+        sku: result.data.sku,
+        size: result.data.size,
+        cost: parseFloat(result.data.cost) || 0,
+        date: result.data.date,
+        sold: result.data.sold || false
+      }]);
+      setModal(null);
+      setFormData({});
+    } else {
+      alert('Error adding item: ' + result.error);
+    }
   };
 
   const addSale = async () => { 
-    if (!formData.saleName || !formData.salePrice || !formData.saleCost) return; 
-    const price = parseFloat(formData.salePrice); 
-    const cost = parseFloat(formData.saleCost); 
-    const fees = calcFees(price, formData.platform || 'StockX Standard'); 
-    const newSale = { 
-      name: formData.saleName, 
-      sku: formData.saleSku || '', 
-      size: formData.saleSize || '', 
-      cost, 
-      salePrice: price, 
-      platform: formData.platform || 'StockX Standard', 
-      fees, 
-      profit: price - cost - fees, 
-      saleDate: formData.saleDate || new Date().toISOString().split('T')[0]
-    };
-    // Save to Supabase first
-    const id = await saveSaleToSupabase(newSale, true);
-    if (id) {
-      setSales([...sales, { ...newSale, id }]); 
+    if (!formData.saleName || !formData.salePrice || !formData.saleCost) {
+      alert('Name, sale price, and cost are required');
+      return;
     }
-    setModal(null); 
-    setFormData({}); 
+    
+    const price = parseFloat(formData.salePrice);
+    const cost = parseFloat(formData.saleCost);
+    
+    if (isNaN(price) || price <= 0) {
+      alert('Sale price must be greater than zero');
+      return;
+    }
+    if (isNaN(cost) || cost < 0) {
+      alert('Cost must be a valid non-negative number');
+      return;
+    }
+    
+    const fees = calcFees(price, formData.platform || 'StockX Standard');
+    
+    // SAFE: Use centralized save function
+    const result = await safeSaveSale(user.id, {
+      name: formData.saleName,
+      sku: formData.saleSku || '',
+      size: formData.saleSize || '',
+      cost: cost,
+      sale_price: price,
+      platform: formData.platform || 'StockX Standard',
+      fees: fees,
+      profit: price - cost - fees,
+      sale_date: formData.saleDate || new Date().toISOString().split('T')[0]
+    });
+    
+    if (result.success) {
+      setSales([...sales, {
+        id: result.data.id,
+        name: result.data.name,
+        sku: result.data.sku,
+        size: result.data.size,
+        cost: parseFloat(result.data.cost) || 0,
+        salePrice: parseFloat(result.data.sale_price) || 0,
+        platform: result.data.platform,
+        fees: parseFloat(result.data.fees) || 0,
+        profit: parseFloat(result.data.profit) || 0,
+        saleDate: result.data.sale_date
+      }]);
+      setModal(null);
+      setFormData({});
+    } else {
+      alert('Error adding sale: ' + result.error);
+    }
   };
 
   const addExpense = async () => { 
@@ -2305,18 +2382,17 @@ function App() {
     });
   };
 
-  // Import StockX sales
+  // Import StockX sales - SAFE VERSION
   const importStockxSales = async () => {
     const filtered = filterStockxData();
     
-    const newPending = filtered.map((row, idx) => {
+    const itemsToSave = filtered.map((row) => {
       const orderNum = row['Order Number'] || row['Order Id'] || row['Order #'] || '';
       const salePrice = parseFloat((row['Price'] || row['Sale Price'] || row['Order Total'] || '0').replace(/[$,]/g, '')) || 0;
       const payout = parseFloat((row['Final Payout Amount'] || row['Payout'] || row['Total Payout'] || '0').replace(/[$,]/g, '')) || 0;
       let productName = row['Item'] || row['Product Name'] || row['Product'] || row['Name'] || 'Unknown Item';
       
       // Generate image URL from product name
-      // Add "Air" prefix for Jordan products if not already there
       let nameForSlug = productName;
       if (/^Jordan\s/i.test(nameForSlug) && !/^Air\s+Jordan/i.test(nameForSlug)) {
         nameForSlug = 'Air ' + nameForSlug;
@@ -2344,46 +2420,49 @@ function App() {
         : '';
       
       return {
-        id: orderNum || Date.now() + Math.random(),
         name: productName,
         sku: row['Style'] || row['SKU'] || row['Style Code'] || '',
         size: String(row['Sku Size'] || row['Size'] || row['Product Size'] || ''),
-        salePrice,
-        payout,
-        saleDate: row['_parsedDate'] || '',
+        sale_price: salePrice,
+        payout: payout,
+        fees: salePrice - payout,
+        sale_date: row['_parsedDate'] || null,
         platform: 'StockX',
-        source: 'csv',
-        image
+        order_id: orderNum || `stockx_csv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        image: image
       };
     });
     
-    const existingIds = new Set([...pendingCosts.map(p => p.id), ...sales.map(s => s.orderId || s.id)]);
-    const uniqueNew = newPending.filter(p => !existingIds.has(p.id));
+    // SAFE: Use centralized bulk save with automatic duplicate detection
+    const result = await safeBulkSavePendingCosts(user.id, itemsToSave);
     
-    if (uniqueNew.length > 0) {
-      // Save to Supabase
-      const savedPending = await bulkSavePendingToSupabase(uniqueNew);
-      if (savedPending.length > 0) {
-        setPendingCosts([...pendingCosts, ...savedPending.map(item => ({
-          id: item.id,
-          name: item.name,
-          sku: item.sku,
-          size: item.size,
-          salePrice: parseFloat(item.sale_price) || 0,
-          platform: item.platform,
-          fees: parseFloat(item.fees) || 0,
-          saleDate: item.sale_date
-        }))]);
-        alert(`Imported ${savedPending.length} StockX sales!${newPending.length - uniqueNew.length > 0 ? ` (${newPending.length - uniqueNew.length} duplicates skipped)` : ''}`);
-      }
-    } else {
-      alert(`All ${newPending.length} StockX sales already imported.`);
+    // Update local state with saved items
+    if (result.saved.length > 0) {
+      setPendingCosts(prev => [...prev, ...result.saved.map(item => ({
+        id: item.id,
+        name: item.name,
+        sku: item.sku,
+        size: item.size,
+        salePrice: parseFloat(item.sale_price) || 0,
+        platform: item.platform,
+        fees: parseFloat(item.fees) || 0,
+        saleDate: item.sale_date,
+        payout: parseFloat(item.payout) || 0,
+        orderId: item.order_id
+      }))]);
     }
+    
+    // Show result message
+    const msg = [];
+    if (result.saved.length > 0) msg.push(`✓ ${result.saved.length} StockX sales imported`);
+    if (result.duplicates.length > 0) msg.push(`${result.duplicates.length} duplicates skipped`);
+    if (result.errors.length > 0) msg.push(`${result.errors.length} errors`);
+    alert(msg.join('\n') || 'Import complete');
     
     setStockxImport({ show: false, data: [], year: 'all', month: 'all', headers: [] });
   };
 
-  // Import eBay sales
+  // Import eBay sales - SAFE VERSION
   const importEbaySales = async () => {
     const filtered = filterEbayData();
     const parseAmount = (val) => {
@@ -2393,7 +2472,7 @@ function App() {
     
     console.log('eBay CSV import starting:', filtered.length, 'rows');
     
-    const newPending = filtered.map((row, idx) => {
+    const itemsToSave = filtered.map((row) => {
       // SOLD: Use 'Gross amount' or 'Gross transaction amount'
       let salePrice = parseAmount(row['Gross amount']) || parseAmount(row['Gross transaction amount']) || parseAmount(row['Item subtotal']);
       
@@ -2418,80 +2497,52 @@ function App() {
          Math.abs(parseAmount(row['Promoted Listing Standard fee'])) +
          parseFloat(row['_adFee'] || 0));
       
+      const orderNum = row['Order number'] || '';
+      
       return {
-        id: 'ebay_' + (row['Order number'] || Date.now() + Math.random()),
-        orderId: row['Order number'] || '',
-        orderNumber: row['Order number'] || '',
         name: row['Item title'] || 'Unknown Item',
         sku: row['Custom label'] || '',
         size: '',
-        salePrice: salePrice,
+        sale_price: salePrice,
         payout: payout,
         fees: fees,
-        saleDate: row['_parsedDate'] || '',
+        sale_date: row['_parsedDate'] || null,
         platform: 'eBay',
-        source: 'csv',
-        buyer: row['Buyer name'] || row['Buyer username'] || ''
+        order_id: orderNum ? `ebay_${orderNum}` : `ebay_csv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        order_number: orderNum
       };
     });
     
-    console.log('eBay import:', newPending.length, 'items processed');
+    console.log('eBay import:', itemsToSave.length, 'items to process');
     
-    // Update existing or add new
-    const existingMap = new Map();
-    pendingCosts.forEach(s => {
-      if (s.orderNumber) existingMap.set(s.orderNumber, s);
-      if (s.orderId) existingMap.set(s.orderId, s);
-    });
-    sales.forEach(s => {
-      if (s.orderNumber) existingMap.set(s.orderNumber, s);
-      if (s.orderId) existingMap.set(s.orderId, s);
-    });
+    // SAFE: Use centralized bulk save with automatic duplicate detection
+    const result = await safeBulkSavePendingCosts(user.id, itemsToSave);
     
-    const updates = [];
-    const newItems = [];
-    
-    for (const item of newPending) {
-      if (existingMap.has(item.orderNumber) || existingMap.has(item.orderId)) {
-        updates.push(item);
-      } else {
-        newItems.push(item);
-      }
+    // Update local state with saved items
+    if (result.saved.length > 0) {
+      setPendingCosts(prev => [...prev, ...result.saved.map(item => ({
+        id: item.id,
+        name: item.name,
+        sku: item.sku,
+        size: item.size,
+        salePrice: parseFloat(item.sale_price) || 0,
+        platform: item.platform,
+        fees: parseFloat(item.fees) || 0,
+        saleDate: item.sale_date,
+        payout: parseFloat(item.payout) || 0,
+        orderId: item.order_id,
+        orderNumber: item.order_number
+      }))]);
     }
     
-    const updatedPending = pendingCosts.map(existing => {
-      const update = newPending.find(n => n.orderNumber === existing.orderNumber || n.orderId === existing.orderId);
-      if (update) {
-        return { ...existing, payout: update.payout, salePrice: update.salePrice, fees: update.fees };
-      }
-      return existing;
-    });
-    
-    // Save new items to Supabase
-    if (newItems.length > 0) {
-      const savedItems = await bulkSavePendingToSupabase(newItems);
-      if (savedItems.length > 0) {
-        const formattedSaved = savedItems.map(item => ({
-          id: item.id,
-          name: item.name,
-          sku: item.sku,
-          size: item.size,
-          salePrice: parseFloat(item.sale_price) || 0,
-          platform: item.platform,
-          fees: parseFloat(item.fees) || 0,
-          saleDate: item.sale_date
-        }));
-        setPendingCosts([...updatedPending, ...formattedSaved]);
-      } else {
-        setPendingCosts(updatedPending);
-      }
-    } else {
-      setPendingCosts(updatedPending);
-    }
+    // Show result message
+    const msg = [];
+    if (result.saved.length > 0) msg.push(`✓ ${result.saved.length} eBay sales imported`);
+    if (result.duplicates.length > 0) msg.push(`${result.duplicates.length} duplicates skipped`);
+    if (result.errors.length > 0) msg.push(`${result.errors.length} errors`);
+    alert(msg.join('\n') || 'Import complete');
     
     setEbayImport({ show: false, data: [], year: 'all', month: 'all', headers: [] });
-    
-    alert(`eBay Import: ${updates.length} updated, ${newItems.length} new items added.`);
   };
 
   const printTaxPackage = () => {
