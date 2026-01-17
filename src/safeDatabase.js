@@ -1135,6 +1135,200 @@ export const safeDeleteMileage = async (userId, id) => {
 };
 
 // ============================================================
+// BULK SAVE SALES (for backup/restore)
+// ============================================================
+
+/**
+ * SAFE: Bulk save sales
+ * 
+ * @param {string} userId - User's UUID
+ * @param {Array} items - Array of sale objects
+ * @returns {Object} { saved: Array, errors: Array }
+ */
+export const safeBulkSaveSales = async (userId, items) => {
+  const results = {
+    saved: [],
+    errors: []
+  };
+  
+  if (!userId || !items || items.length === 0) {
+    return results;
+  }
+  
+  console.log(`[SafeDB] Bulk saving ${items.length} sales...`);
+  
+  for (const item of items) {
+    // Transform item format if needed (backup may have different field names)
+    const saleData = {
+      name: item.name,
+      sku: item.sku || '',
+      size: item.size || '',
+      cost: item.cost ?? 0,
+      sale_price: item.salePrice ?? item.sale_price ?? 0,
+      platform: item.platform || 'Other',
+      fees: item.fees || 0,
+      profit: item.profit || 0,
+      sale_date: item.saleDate || item.sale_date || null,
+      order_id: item.orderId || item.order_id || null,
+      image: item.image || null
+    };
+    
+    const result = await safeSaveSale(userId, saleData);
+    
+    if (result.success) {
+      results.saved.push(result.data);
+    } else {
+      results.errors.push({ item, error: result.error });
+    }
+  }
+  
+  console.log(`[SafeDB] Bulk sales save complete: ${results.saved.length} saved, ${results.errors.length} errors`);
+  
+  return results;
+};
+
+// ============================================================
+// BULK DELETE OPERATIONS
+// ============================================================
+
+/**
+ * SAFE: Bulk delete pending costs
+ * 
+ * @param {string} userId - User's UUID
+ * @param {Array} ids - Array of pending cost IDs to delete
+ * @returns {Object} { success: boolean, deleted: number, error?: string }
+ */
+export const safeBulkDeletePending = async (userId, ids) => {
+  try {
+    if (!userId || !ids || ids.length === 0) {
+      return { success: true, deleted: 0 };
+    }
+    
+    const { error } = await supabase
+      .from('pending_costs')
+      .delete()
+      .eq('user_id', userId)
+      .in('id', ids);
+    
+    if (error) throw error;
+    
+    console.log(`[SafeDB] Bulk deleted ${ids.length} pending costs`);
+    return { success: true, deleted: ids.length };
+  } catch (error) {
+    console.error('[SafeDB] Error bulk deleting pending:', error);
+    return { success: false, deleted: 0, error: error.message };
+  }
+};
+
+/**
+ * SAFE: Delete ALL pending costs for a user
+ * 
+ * @param {string} userId - User's UUID
+ * @returns {Object} { success: boolean, error?: string }
+ */
+export const safeDeleteAllPending = async (userId) => {
+  try {
+    if (!userId) {
+      return { success: false, error: 'User ID is required' };
+    }
+    
+    const { error } = await supabase
+      .from('pending_costs')
+      .delete()
+      .eq('user_id', userId);
+    
+    if (error) throw error;
+    
+    console.log(`[SafeDB] Deleted all pending costs for user`);
+    return { success: true };
+  } catch (error) {
+    console.error('[SafeDB] Error deleting all pending:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * SAFE: Delete ALL inventory for a user
+ * 
+ * @param {string} userId - User's UUID
+ * @returns {Object} { success: boolean, error?: string }
+ */
+export const safeDeleteAllInventory = async (userId) => {
+  try {
+    if (!userId) {
+      return { success: false, error: 'User ID is required' };
+    }
+    
+    const { error } = await supabase
+      .from('inventory')
+      .delete()
+      .eq('user_id', userId);
+    
+    if (error) throw error;
+    
+    console.log(`[SafeDB] Deleted all inventory for user`);
+    return { success: true };
+  } catch (error) {
+    console.error('[SafeDB] Error deleting all inventory:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * SAFE: Delete ALL sales for a user
+ * 
+ * @param {string} userId - User's UUID
+ * @returns {Object} { success: boolean, error?: string }
+ */
+export const safeDeleteAllSales = async (userId) => {
+  try {
+    if (!userId) {
+      return { success: false, error: 'User ID is required' };
+    }
+    
+    const { error } = await supabase
+      .from('sales')
+      .delete()
+      .eq('user_id', userId);
+    
+    if (error) throw error;
+    
+    console.log(`[SafeDB] Deleted all sales for user`);
+    return { success: true };
+  } catch (error) {
+    console.error('[SafeDB] Error deleting all sales:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * SAFE: Delete ALL expenses for a user
+ * 
+ * @param {string} userId - User's UUID
+ * @returns {Object} { success: boolean, error?: string }
+ */
+export const safeDeleteAllExpenses = async (userId) => {
+  try {
+    if (!userId) {
+      return { success: false, error: 'User ID is required' };
+    }
+    
+    const { error } = await supabase
+      .from('expenses')
+      .delete()
+      .eq('user_id', userId);
+    
+    if (error) throw error;
+    
+    console.log(`[SafeDB] Deleted all expenses for user`);
+    return { success: true };
+  } catch (error) {
+    console.error('[SafeDB] Error deleting all expenses:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// ============================================================
 // UTILITY: Check order existence (for UI display)
 // ============================================================
 

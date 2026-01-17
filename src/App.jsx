@@ -9,6 +9,7 @@ import {
   safeSaveInventory,
   safeBulkSavePendingCosts,
   safeBulkSaveInventory,
+  safeBulkSaveSales,
   safeConfirmSale,
   safeDeletePendingCost,
   safeDeleteSale,
@@ -21,6 +22,11 @@ import {
   safeDeleteStorageFee,
   safeSaveMileage,
   safeDeleteMileage,
+  safeBulkDeletePending,
+  safeDeleteAllPending,
+  safeDeleteAllInventory,
+  safeDeleteAllSales,
+  safeDeleteAllExpenses,
   checkOrderExists
 } from './safeDatabase';
 import { syncStockXSales, syncEbaySales, transformPendingForDisplay } from './syncModule';
@@ -990,14 +996,23 @@ function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // ============ SUPABASE SYNC FUNCTIONS ============
+  // ============ LEGACY FUNCTION WRAPPERS (now use safeDatabase.js) ============
+  // These are kept for backward compatibility but delegate to safe functions
 
-  // Save inventory item to Supabase
   const saveInventoryToSupabase = async (item, isNew = true) => {
-    if (!user) return;
-    try {
-      const record = {
-        user_id: user.id,
+    if (!user) return null;
+    if (isNew) {
+      const result = await safeSaveInventory(user.id, {
+        name: item.name,
+        sku: item.sku,
+        size: item.size,
+        cost: item.cost,
+        quantity: item.quantity || 1,
+        date: item.date
+      });
+      return result.success ? result.data.id : null;
+    } else {
+      const result = await safeUpdateInventory(user.id, item.id, {
         name: item.name,
         sku: item.sku,
         size: item.size,
@@ -1005,52 +1020,20 @@ function App() {
         quantity: item.quantity || 1,
         date: item.date,
         sold: item.sold || false
-      };
-
-      if (isNew) {
-        const { data, error } = await supabase
-          .from('inventory')
-          .insert(record)
-          .select()
-          .single();
-        if (error) throw error;
-        return data.id;
-      } else {
-        const { error } = await supabase
-          .from('inventory')
-          .update(record)
-          .eq('id', item.id)
-          .eq('user_id', user.id);
-        if (error) throw error;
-        return item.id;
-      }
-    } catch (error) {
-      console.error('Error saving inventory:', error);
-      return null;
+      });
+      return result.success ? item.id : null;
     }
   };
 
-  // Delete inventory item from Supabase
   const deleteInventoryFromSupabase = async (id) => {
     if (!user) return;
-    try {
-      const { error } = await supabase
-        .from('inventory')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', user.id);
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error deleting inventory:', error);
-    }
+    await safeDeleteInventory(user.id, id);
   };
 
-  // Save sale to Supabase
   const saveSaleToSupabase = async (item, isNew = true) => {
-    if (!user) return;
-    try {
-      const record = {
-        user_id: user.id,
+    if (!user) return null;
+    if (isNew) {
+      const result = await safeSaveSale(user.id, {
         name: item.name,
         sku: item.sku,
         size: item.size,
@@ -1060,107 +1043,33 @@ function App() {
         fees: item.fees,
         profit: item.profit,
         sale_date: item.saleDate
-      };
-
-      if (isNew) {
-        const { data, error } = await supabase
-          .from('sales')
-          .insert(record)
-          .select()
-          .single();
-        if (error) throw error;
-        return data.id;
-      } else {
-        const { error } = await supabase
-          .from('sales')
-          .update(record)
-          .eq('id', item.id)
-          .eq('user_id', user.id);
-        if (error) throw error;
-        return item.id;
-      }
-    } catch (error) {
-      console.error('Error saving sale:', error);
-      return null;
-    }
-  };
-
-  // Delete sale from Supabase
-  const deleteSaleFromSupabase = async (id) => {
-    if (!user) return;
-    try {
-      const { error } = await supabase
-        .from('sales')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', user.id);
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error deleting sale:', error);
-    }
-  };
-
-  // NOTE: Expense operations now use centralized safeSaveExpense and safeDeleteExpense from safeDatabase.js
-
-  // Save pending cost to Supabase
-  const savePendingToSupabase = async (item, isNew = true) => {
-    if (!user) return;
-    try {
-      const record = {
-        user_id: user.id,
+      });
+      return result.success ? result.data.id : null;
+    } else {
+      const result = await safeUpdateSale(user.id, item.id, {
         name: item.name,
         sku: item.sku,
         size: item.size,
+        cost: item.cost,
         sale_price: item.salePrice,
         platform: item.platform,
         fees: item.fees,
+        profit: item.profit,
         sale_date: item.saleDate
-      };
-
-      if (isNew) {
-        const { data, error } = await supabase
-          .from('pending_costs')
-          .insert(record)
-          .select()
-          .single();
-        if (error) throw error;
-        return data.id;
-      } else {
-        const { error } = await supabase
-          .from('pending_costs')
-          .update(record)
-          .eq('id', item.id)
-          .eq('user_id', user.id);
-        if (error) throw error;
-        return item.id;
-      }
-    } catch (error) {
-      console.error('Error saving pending:', error);
-      return null;
+      });
+      return result.success ? item.id : null;
     }
   };
 
-  // Delete pending cost from Supabase
-  const deletePendingFromSupabase = async (id) => {
+  const deleteSaleFromSupabase = async (id) => {
     if (!user) return;
-    try {
-      const { error } = await supabase
-        .from('pending_costs')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', user.id);
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error deleting pending:', error);
-    }
+    await safeDeleteSale(user.id, id);
   };
 
-  // Bulk save pending costs to Supabase
-  const bulkSavePendingToSupabase = async (items) => {
-    if (!user || items.length === 0) return [];
-    try {
-      const records = items.map(item => ({
-        user_id: user.id,
+  const savePendingToSupabase = async (item, isNew = true) => {
+    if (!user) return null;
+    if (isNew) {
+      const result = await safeSavePendingCost(user.id, {
         name: item.name,
         sku: item.sku,
         size: item.size,
@@ -1168,23 +1077,50 @@ function App() {
         platform: item.platform,
         fees: item.fees,
         sale_date: item.saleDate,
-        payout: item.payout || null,
-        image: item.image || null
-      }));
-
-      const { data, error } = await supabase
-        .from('pending_costs')
-        .insert(records)
-        .select();
-      if (error) throw error;
-      return data;
-    } catch (error) {
-      console.error('Error bulk saving pending:', error);
-      return [];
+        order_id: item.orderId || null
+      });
+      return result.success ? result.data.id : null;
+    } else {
+      // For updates, we just delete and re-add since pending costs don't have an update function
+      await safeDeletePendingCost(user.id, item.id);
+      const result = await safeSavePendingCost(user.id, {
+        name: item.name,
+        sku: item.sku,
+        size: item.size,
+        sale_price: item.salePrice,
+        platform: item.platform,
+        fees: item.fees,
+        sale_date: item.saleDate,
+        order_id: item.orderId || null
+      });
+      return result.success ? result.data.id : null;
     }
   };
 
-  // Bulk save inventory items to Supabase
+  const deletePendingFromSupabase = async (id) => {
+    if (!user) return;
+    await safeDeletePendingCost(user.id, id);
+  };
+
+  const bulkSavePendingToSupabase = async (items) => {
+    if (!user || items.length === 0) return [];
+    // Transform to safeDatabase format
+    const transformedItems = items.map(item => ({
+      name: item.name,
+      sku: item.sku || '',
+      size: item.size || '',
+      sale_price: item.salePrice ?? item.sale_price ?? 0,
+      platform: item.platform || 'Other',
+      fees: item.fees || 0,
+      sale_date: item.saleDate || item.sale_date || null,
+      payout: item.payout || null,
+      image: item.image || null,
+      order_id: item.orderId || item.order_id || null
+    }));
+    const result = await safeBulkSavePendingCosts(user.id, transformedItems);
+    return result.saved || [];
+  };
+
   const bulkSaveInventoryToSupabase = async (items) => {
     console.log('bulkSaveInventoryToSupabase called with:', items);
     console.log('Current user:', user);
@@ -1192,137 +1128,63 @@ function App() {
       console.log('No user or empty items, returning []');
       return [];
     }
-    try {
-      const records = items.map(item => ({
-        user_id: user.id,
-        name: item.name,
-        sku: item.sku,
-        size: item.size,
-        cost: item.cost,
-        quantity: item.quantity || 1,
-        date: item.date,
-        sold: item.sold || false
-      }));
-      console.log('Inserting records:', records);
-
-      const { data, error } = await supabase
-        .from('inventory')
-        .insert(records)
-        .select();
-      
-      console.log('Supabase response - data:', data, 'error:', error);
-      if (error) throw error;
-      return data || [];
-    } catch (error) {
-      console.error('Error bulk saving inventory:', error);
-      return [];
-    }
+    // Transform to safeDatabase format
+    const transformedItems = items.map(item => ({
+      name: item.name,
+      sku: item.sku || '',
+      size: item.size || '',
+      cost: item.cost ?? 0,
+      quantity: item.quantity || 1,
+      date: item.date || new Date().toISOString().split('T')[0]
+    }));
+    console.log('Saving via safeBulkSaveInventory:', transformedItems);
+    const result = await safeBulkSaveInventory(user.id, transformedItems);
+    console.log('safeBulkSaveInventory result:', result);
+    return result.saved || [];
   };
 
-  // Bulk save sales to Supabase
   const bulkSaveSalesToSupabase = async (items) => {
     if (!user || items.length === 0) return [];
-    try {
-      const records = items.map(item => ({
-        user_id: user.id,
-        name: item.name,
-        sku: item.sku,
-        size: item.size,
-        cost: item.cost,
-        sale_price: item.salePrice,
-        platform: item.platform,
-        fees: item.fees,
-        profit: item.profit,
-        sale_date: item.saleDate
-      }));
-
-      const { data, error } = await supabase
-        .from('sales')
-        .insert(records)
-        .select();
-      if (error) throw error;
-      return data;
-    } catch (error) {
-      console.error('Error bulk saving sales:', error);
-      return [];
-    }
+    const result = await safeBulkSaveSales(user.id, items);
+    return result.saved || [];
   };
 
-  // Bulk delete pending costs from Supabase
   const bulkDeletePendingFromSupabase = async (ids) => {
     if (!user || ids.length === 0) return;
-    try {
-      const { error } = await supabase
-        .from('pending_costs')
-        .delete()
-        .eq('user_id', user.id)
-        .in('id', ids);
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error bulk deleting pending:', error);
-    }
+    await safeBulkDeletePending(user.id, ids);
   };
 
-  // Delete ALL pending costs for user from Supabase
   const deleteAllPendingFromSupabase = async () => {
     if (!user) return;
-    try {
-      const { error } = await supabase
-        .from('pending_costs')
-        .delete()
-        .eq('user_id', user.id);
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error deleting all pending:', error);
-    }
+    await safeDeleteAllPending(user.id);
   };
 
-  // Update inventory item in Supabase (for edits)
   const updateInventoryInSupabase = async (item) => {
     if (!user) return;
-    try {
-      const { error } = await supabase
-        .from('inventory')
-        .update({
-          name: item.name,
-          sku: item.sku,
-          size: item.size,
-          cost: item.cost,
-          quantity: item.quantity || 1,
-          date: item.date,
-          sold: item.sold || false
-        })
-        .eq('id', item.id)
-        .eq('user_id', user.id);
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error updating inventory:', error);
-    }
+    await safeUpdateInventory(user.id, item.id, {
+      name: item.name,
+      sku: item.sku,
+      size: item.size,
+      cost: item.cost,
+      quantity: item.quantity || 1,
+      date: item.date,
+      sold: item.sold || false
+    });
   };
 
-  // Update sale in Supabase (for edits)
   const updateSaleInSupabase = async (item) => {
     if (!user) return;
-    try {
-      const { error } = await supabase
-        .from('sales')
-        .update({
-          name: item.name,
-          sku: item.sku,
-          size: item.size,
-          cost: item.cost,
-          sale_price: item.salePrice,
-          platform: item.platform,
-          fees: item.fees,
-          profit: item.profit,
-          sale_date: item.saleDate
-        })
-        .eq('id', item.id)
-        .eq('user_id', user.id);
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error updating sale:', error);
-    }
+    await safeUpdateSale(user.id, item.id, {
+      name: item.name,
+      sku: item.sku,
+      size: item.size,
+      cost: item.cost,
+      sale_price: item.salePrice,
+      platform: item.platform,
+      fees: item.fees,
+      profit: item.profit,
+      sale_date: item.saleDate
+    });
   };
 
   // ============ LOCAL STORAGE BACKUP (for settings/tokens) ============
@@ -1837,15 +1699,21 @@ function App() {
         throw new Error(result.message || result.error);
       }
       
-      // Keep ALL items - NO deduplication (bulk orders have repeats)
-      const items = (result.items || []).map(item => ({
+      // Extract items and remove duplicates
+      const seenItems = new Set();
+      const items = (result.items || []).filter(item => {
+        const key = `${item.sku}-${item.size}-${item.price}`;
+        if (seenItems.has(key)) return false;
+        seenItems.add(key);
+        return true;
+      }).map(item => ({
         name: item.name || 'Nike Product',
         sku: item.sku || '',
         size: item.size || '',
         price: parseFloat(item.price) || 0
       }));
       
-      console.log('Found', items.length, 'items (no deduplication)');
+      console.log('Found', items.length, 'unique items');
       
       // Distribute tax if present
       if (result.tax && result.tax > 0 && items.length > 0) {
@@ -5036,12 +4904,12 @@ Let me know if you need anything else.`;
                         if (confirmRestore) {
                           // Clear existing data in Supabase first, then restore
                           try {
-                            // Delete all existing data for this user
+                            // Delete all existing data for this user using safe functions
                             if (user) {
-                              await supabase.from('inventory').delete().eq('user_id', user.id);
-                              await supabase.from('sales').delete().eq('user_id', user.id);
-                              await supabase.from('expenses').delete().eq('user_id', user.id);
-                              await supabase.from('pending_costs').delete().eq('user_id', user.id);
+                              await safeDeleteAllInventory(user.id);
+                              await safeDeleteAllSales(user.id);
+                              await safeDeleteAllExpenses(user.id);
+                              await safeDeleteAllPending(user.id);
                             }
                             
                             // Restore inventory
