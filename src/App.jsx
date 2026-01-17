@@ -17,6 +17,7 @@ import {
   safeUpdateInventory,
   checkOrderExists
 } from './safeDatabase';
+import { syncStockXSales, syncEbaySales, transformPendingForDisplay } from './syncModule';
 
 // Auth Component - Login/Signup Page
 function AuthPage({ onLogin }) {
@@ -1451,110 +1452,34 @@ function App() {
     );
   }
 
-  // Fetch StockX sales - Filter by selected year - SAFE VERSION
+  // Fetch StockX sales - Filter by selected year - SAFE VERSION v2.0
   const fetchStockXSales = async () => {
     if (!stockxToken) return;
     setStockxSyncing(true);
+    
     try {
-      const selectedYear = stockxApiFilter.year;
-      
-      const response = await fetch(`/api/stockx-sales`, {
-        headers: {
-          'Authorization': `Bearer ${stockxToken}`
-        }
+      const result = await syncStockXSales(user.id, stockxToken, {
+        year: stockxApiFilter.year,
+        month: stockxApiFilter.month
       });
-      const data = await response.json();
-      console.log('StockX API Response:', data);
       
-      if (data.sales && data.sales.length > 0) {
-        // Generate image URLs from product names
-        const salesWithImages = data.sales.map(s => {
-          // Add "Air" prefix for Jordan products if not already there
-          let nameForSlug = s.name || '';
-          if (/^Jordan\s/i.test(nameForSlug) && !/^Air\s+Jordan/i.test(nameForSlug)) {
-            nameForSlug = 'Air ' + nameForSlug;
-          }
-          
-          const slug = nameForSlug
-            .replace(/\(Women's\)/gi, 'W')
-            .replace(/\(Men's\)/gi, '')
-            .replace(/\(GS\)/gi, 'GS')
-            .replace(/\(PS\)/gi, 'PS')
-            .replace(/\(TD\)/gi, 'TD')
-            .replace(/\([^)]*\)/g, '')
-            .replace(/'/g, '')
-            .replace(/"/g, '')
-            .replace(/&/g, 'and')
-            .replace(/\+/g, 'Plus')
-            .replace(/[^a-zA-Z0-9\s-]/g, '')
-            .trim()
-            .replace(/\s+/g, '-')
-            .replace(/-+/g, '-')
-            .replace(/^-|-$/g, '');
-          
-          const image = slug 
-            ? `https://images.stockx.com/images/${slug}.jpg?fit=fill&bg=FFFFFF&w=300&h=214&fm=webp&auto=compress&q=90&dpr=2&trim=color`
-            : '';
-          
-          return { ...s, image };
-        });
-        
-        // Filter by selected year
-        const yearFiltered = salesWithImages.filter(s => s.saleDate && s.saleDate.startsWith(selectedYear));
-        console.log(`Filtered to ${selectedYear}: ${yearFiltered.length} of ${salesWithImages.length}`);
-        
-        if (yearFiltered.length === 0) {
-          alert(`No completed sales found for ${selectedYear}.`);
-          setStockxSyncing(false);
-          return;
-        }
-        
-        // SAFE: Use centralized bulk save with automatic duplicate detection
-        const itemsToSave = yearFiltered.map(s => ({
-          name: s.name,
-          sku: s.sku || '',
-          size: s.size || '',
-          sale_price: s.salePrice || 0,
-          platform: s.platform || 'StockX',
-          fees: s.fees || (s.salePrice - s.payout) || 0,
-          payout: s.payout || null,
-          sale_date: s.saleDate || null,
-          order_id: s.id, // StockX order number for duplicate prevention
-          image: s.image || null
-        }));
-        
-        const result = await safeBulkSavePendingCosts(user.id, itemsToSave);
-        
-        // Update local state with saved items
+      if (result.success) {
         if (result.saved.length > 0) {
-          setPendingCosts(prev => [...prev, ...result.saved.map(item => ({
-            id: item.id,
-            name: item.name,
-            sku: item.sku,
-            size: item.size,
-            salePrice: parseFloat(item.sale_price) || 0,
-            platform: item.platform,
-            fees: parseFloat(item.fees) || 0,
-            saleDate: item.sale_date,
-            payout: parseFloat(item.payout) || 0,
-            orderId: item.order_id
-          }))]);
+          setPendingCosts(prev => [...prev, ...result.saved.map(transformPendingForDisplay)]);
         }
         
-        // Show result message
         const msg = [];
         if (result.saved.length > 0) msg.push(`✓ ${result.saved.length} new sales synced`);
         if (result.duplicates.length > 0) msg.push(`${result.duplicates.length} already existed`);
         if (result.errors.length > 0) msg.push(`${result.errors.length} errors`);
-        alert(msg.join('\n') || 'Sync complete');
-        
+        alert(msg.join('\n') || 'Sync complete - no new sales');
       } else {
-        alert(`No completed sales found for ${selectedYear}.`);
+        alert('Sync failed: ' + result.error);
       }
     } catch (error) {
-      console.error('Failed to fetch StockX sales:', error);
-      alert('Failed to sync: ' + error.message);
+      alert('Sync failed: ' + error.message);
     }
+    
     setStockxSyncing(false);
   };
 
@@ -4515,89 +4440,30 @@ Let me know if you need anything else.`;
                           onClick={async () => {
                             setEbaySyncing(true);
                             try {
-                              // Build date range based on selected year/month
-                              const year = parseInt(ebayApiFilter.year);
-                              let startDate, endDate;
-                              
-                              if (ebayApiFilter.month === 'all') {
-                                // Full year
-                                startDate = `${year}-01-01T00:00:00.000Z`;
-                                endDate = `${year}-12-31T23:59:59.000Z`;
-                              } else {
-                                // Specific month
-                                const month = parseInt(ebayApiFilter.month);
-                                const lastDay = new Date(year, month, 0).getDate();
-                                startDate = `${year}-${ebayApiFilter.month}-01T00:00:00.000Z`;
-                                endDate = `${year}-${ebayApiFilter.month}-${lastDay}T23:59:59.000Z`;
-                              }
-                              
-                              let token = localStorage.getItem('flipledger_ebay_token');
-                              let res = await fetch(`/api/ebay-sales?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`, {
-                                headers: { 'Authorization': `Bearer ${token}` }
+                              const result = await syncEbaySales(user.id, ebayToken, {
+                                year: ebayApiFilter.year,
+                                month: ebayApiFilter.month,
+                                refreshToken: localStorage.getItem('flipledger_ebay_refresh'),
+                                onTokenRefresh: (newToken) => {
+                                  localStorage.setItem('flipledger_ebay_token', newToken);
+                                  setEbayToken(newToken);
+                                }
                               });
                               
-                              // Try refresh if failed
-                              if (!res.ok) {
-                                const refreshToken = localStorage.getItem('flipledger_ebay_refresh');
-                                if (refreshToken) {
-                                  const refreshRes = await fetch('/api/ebay-refresh', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ refresh_token: refreshToken })
-                                  });
-                                  const refreshData = await refreshRes.json();
-                                  if (refreshData.access_token) {
-                                    token = refreshData.access_token;
-                                    localStorage.setItem('flipledger_ebay_token', token);
-                                    res = await fetch(`/api/ebay-sales?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`, {
-                                      headers: { 'Authorization': `Bearer ${token}` }
-                                    });
-                                  }
+                              if (result.success) {
+                                if (result.saved.length > 0) {
+                                  setPendingCosts(prev => [...prev, ...result.saved.map(transformPendingForDisplay)]);
                                 }
-                              }
-                              
-                              const data = await res.json();
-                              
-                              if (data.success && data.sales?.length > 0) {
-                                const newPending = data.sales.map(s => ({
-                                  ...s,
-                                  id: s.id || 'ebay_' + s.orderId,
-                                  platform: 'eBay',
-                                  source: 'api'
-                                }));
                                 
-                                // Check for duplicates
-                                const existingIds = new Set();
-                                [...sales, ...pendingCosts].forEach(s => {
-                                  if (s.id) existingIds.add(s.id);
-                                  if (s.orderId) existingIds.add(s.orderId);
-                                  if (s.orderNumber) existingIds.add(s.orderNumber);
-                                });
-                                
-                                const fresh = newPending.filter(s => !existingIds.has(s.id) && !existingIds.has(s.orderId));
-                                
-                                if (fresh.length > 0) {
-                                  // Save to Supabase
-                                  const savedPending = await bulkSavePendingToSupabase(fresh);
-                                  if (savedPending.length > 0) {
-                                    setPendingCosts(prev => [...prev, ...savedPending.map(item => ({
-                                      id: item.id,
-                                      name: item.name,
-                                      sku: item.sku,
-                                      size: item.size,
-                                      salePrice: parseFloat(item.sale_price) || 0,
-                                      platform: item.platform,
-                                      fees: parseFloat(item.fees) || 0,
-                                      saleDate: item.sale_date
-                                    }))]);
-                                    const withImages = fresh.filter(s => s.image).length;
-                                    alert(`✓ Imported ${savedPending.length} eBay sales (${withImages} with images)`);
-                                  }
-                                } else {
-                                  alert('All caught up! No new sales to import.');
+                                const msg = [];
+                                if (result.saved.length > 0) {
+                                  const withImages = result.saved.filter(s => s.image).length;
+                                  msg.push(`✓ ${result.saved.length} eBay sales synced (${withImages} with images)`);
                                 }
+                                if (result.duplicates.length > 0) msg.push(`${result.duplicates.length} already existed`);
+                                alert(msg.join('\n') || 'All caught up - no new sales');
                               } else {
-                                alert(`No sales found for ${ebayApiFilter.month === 'all' ? ebayApiFilter.year : ebayApiFilter.month + '/' + ebayApiFilter.year}.`);
+                                alert('Sync failed: ' + result.error);
                               }
                             } catch (err) {
                               alert('Sync failed: ' + err.message);
