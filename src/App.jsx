@@ -1184,11 +1184,28 @@ function App() {
     }
   };
 
-  // Bulk save pending costs to Supabase
-  const bulkSavePendingToSupabase = async (items) => {
+  // UPSERT pending costs to Supabase (shared function for all write paths)
+  // Uses ON CONFLICT to prevent duplicates at database level
+  const upsertPendingCosts = async (items) => {
     if (!user || items.length === 0) return [];
+    
+    // Filter out items without order_id - these cannot be deduplicated
+    const validItems = items.filter(item => {
+      const orderId = item.orderId || item.id;
+      if (!orderId) {
+        console.warn('Skipping item without order_id:', item.name);
+        return false;
+      }
+      return true;
+    });
+    
+    if (validItems.length === 0) {
+      console.error('No valid items to save - all missing order_id');
+      return [];
+    }
+    
     try {
-      const records = items.map(item => ({
+      const records = validItems.map(item => ({
         user_id: user.id,
         name: item.name,
         sku: item.sku,
@@ -1197,21 +1214,31 @@ function App() {
         platform: item.platform,
         fees: item.fees,
         sale_date: item.saleDate,
-        order_id: item.orderId || item.id || null,
+        order_id: item.orderId || item.id,
         order_number: item.orderNumber || null
       }));
 
+      // UPSERT: Insert new, update existing (based on user_id + order_id)
       const { data, error } = await supabase
         .from('pending_costs')
-        .insert(records)
+        .upsert(records, { 
+          onConflict: 'user_id,order_id',
+          ignoreDuplicates: false // Update existing rows
+        })
         .select();
+      
       if (error) throw error;
+      
+      console.log(`Upserted ${data.length} pending costs`);
       return data;
     } catch (error) {
-      console.error('Error bulk saving pending:', error);
+      console.error('Error upserting pending costs:', error);
       return [];
     }
   };
+  
+  // Alias for backwards compatibility
+  const bulkSavePendingToSupabase = upsertPendingCosts;
 
   // Bulk save inventory items to Supabase
   const bulkSaveInventoryToSupabase = async (items) => {
@@ -1531,37 +1558,37 @@ function App() {
           return;
         }
         
-        // Filter out duplicates - check by id (which is the order number from StockX)
-        const existingIds = new Set([
-          ...pendingCosts.map(p => p.orderId).filter(Boolean),
-          ...pendingCosts.map(p => p.orderNumber).filter(Boolean),
-          ...pendingCosts.map(p => p.id),
-          ...sales.map(s => s.orderId).filter(Boolean),
-          ...sales.map(s => s.id)
-        ]);
+        // Add orderId field (StockX API uses 'id' as order number)
+        const salesWithOrderId = yearFiltered.map(s => ({
+          ...s,
+          orderId: s.id // Map id to orderId for upsert
+        }));
         
-        const newSales = yearFiltered.filter(s => !existingIds.has(s.id));
-        
-        if (newSales.length > 0) {
-          // Save to Supabase
-          const savedPending = await bulkSavePendingToSupabase(newSales);
-          if (savedPending.length > 0) {
-            setPendingCosts(prev => [...prev, ...savedPending.map(item => ({
-              id: item.id,
-              name: item.name,
-              sku: item.sku,
-              size: item.size,
-              salePrice: parseFloat(item.sale_price) || 0,
-              platform: item.platform,
-              fees: parseFloat(item.fees) || 0,
-              saleDate: item.sale_date,
-              orderId: item.order_id || '',
-              orderNumber: item.order_number || ''
-            }))]);
-          }
-          alert(`✓ Synced ${newSales.length} sales from ${selectedYear}!${yearFiltered.length - newSales.length > 0 ? `\n${yearFiltered.length - newSales.length} already existed` : ''}`);
+        // UPSERT to Supabase - database handles duplicates
+        const savedPending = await upsertPendingCosts(salesWithOrderId);
+        if (savedPending.length > 0) {
+          // Update local state with saved items
+          setPendingCosts(prev => {
+            const existingIds = new Set(prev.map(p => p.orderId));
+            const newItems = savedPending
+              .filter(item => !existingIds.has(item.order_id))
+              .map(item => ({
+                id: item.id,
+                name: item.name,
+                sku: item.sku,
+                size: item.size,
+                salePrice: parseFloat(item.sale_price) || 0,
+                platform: item.platform,
+                fees: parseFloat(item.fees) || 0,
+                saleDate: item.sale_date,
+                orderId: item.order_id || '',
+                orderNumber: item.order_number || ''
+              }));
+            return [...prev, ...newItems];
+          });
+          alert(`✓ Synced ${savedPending.length} sales from ${selectedYear}!`);
         } else {
-          alert(`All ${yearFiltered.length} sales from ${selectedYear} already imported.`);
+          alert(`All sales from ${selectedYear} already imported.`);
         }
       } else {
         alert(`No completed sales found for ${selectedYear}.`);
@@ -2386,6 +2413,7 @@ function App() {
       
       return {
         id: orderNum || Date.now() + Math.random(),
+        orderId: orderNum, // Required for deduplication
         name: productName,
         sku: row['Style'] || row['SKU'] || row['Style Code'] || '',
         size: String(row['Sku Size'] || row['Size'] || row['Product Size'] || ''),
@@ -2398,45 +2426,47 @@ function App() {
       };
     });
     
-    // Simple duplicate check - match order numbers
-    const existingOrderNumbers = new Set();
-    pendingCosts.forEach(p => {
-      if (p.orderId) existingOrderNumbers.add(p.orderId);
-    });
-    sales.forEach(s => {
-      if (s.orderId) existingOrderNumbers.add(s.orderId);
-    });
-    
-    console.log('Existing order numbers:', existingOrderNumbers.size);
-    console.log('Sample:', [...existingOrderNumbers].slice(0, 3));
-    
-    const uniqueNew = newPending.filter(p => !existingOrderNumbers.has(p.id));
-    
-    console.log('New items:', newPending.length, '→ After filter:', uniqueNew.length);
-    
-    if (uniqueNew.length > 0) {
-      // Save to Supabase
-      const savedPending = await bulkSavePendingToSupabase(uniqueNew);
-      if (savedPending.length > 0) {
-        setPendingCosts([...pendingCosts, ...savedPending.map(item => ({
-          id: item.id,
-          name: item.name,
-          sku: item.sku,
-          size: item.size,
-          salePrice: parseFloat(item.sale_price) || 0,
-          platform: item.platform,
-          fees: parseFloat(item.fees) || 0,
-          saleDate: item.sale_date
-        }))]);
-        alert(`Imported ${savedPending.length} StockX sales!${newPending.length - uniqueNew.length > 0 ? ` (${newPending.length - uniqueNew.length} duplicates skipped)` : ''}`);
-      }
-    } else {
-      alert(`All ${newPending.length} StockX sales already imported.`);
+    // Filter items missing order numbers (can't dedupe without it)
+    const itemsWithOrderId = newPending.filter(p => p.orderId);
+    const skipped = newPending.length - itemsWithOrderId.length;
+    if (skipped > 0) {
+      console.warn(`Skipped ${skipped} items without order number`);
     }
     
-    setStockxImport({ show: false, data: [], year: 'all', month: 'all', headers: [] });
+    if (itemsWithOrderId.length > 0) {
+      // UPSERT to Supabase - database handles duplicates via UNIQUE constraint
+      const savedPending = await upsertPendingCosts(itemsWithOrderId);
+      if (savedPending.length > 0) {
+        // Refresh pending costs from what was actually saved/updated
+        setPendingCosts(prev => {
+          const existingIds = new Set(prev.map(p => p.orderId));
+          const newItems = savedPending
+            .filter(item => !existingIds.has(item.order_id))
+            .map(item => ({
+              id: item.id,
+              name: item.name,
+              sku: item.sku,
+              size: item.size,
+              salePrice: parseFloat(item.sale_price) || 0,
+              platform: item.platform,
+              fees: parseFloat(item.fees) || 0,
+              saleDate: item.sale_date,
+              orderId: item.order_id,
+              orderNumber: item.order_number
+            }));
+          return [...prev, ...newItems];
+        });
+        alert(`Imported ${savedPending.length} StockX sales!${skipped > 0 ? ` (${skipped} skipped - no order number)` : ''}`);
+      }
+    } else {
+      alert('No valid items to import - all missing order numbers');
+    }
+    
+    setStockxCsvData(null);
+    setStockxCsvMonth('');
   };
 
+  // eBay CSV processing
   // Import eBay sales
   const importEbaySales = async () => {
     const filtered = filterEbayData();
