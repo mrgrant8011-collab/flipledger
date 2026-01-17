@@ -16,12 +16,22 @@ export default async function handler(req, res) {
   }
 }
 
+/**
+ * Nike Receipt Parser
+ * 
+ * Item boundary: Style line /^Style\s+([A-Z0-9]+-\d{3})$/i
+ * For each Style line, look back up to 8 lines:
+ *   - size: /^Size\s+/i
+ *   - price: /^\$\d+\.\d{2}/
+ *   - name: line directly above price line
+ * Never dedupe.
+ */
 function parseNikeReceiptJS(ocrText) {
   const lines = ocrText.split('\n').map(l => l.trim());
   const items = [];
   
   for (let i = 0; i < lines.length; i++) {
-    // Find Style line = 1 item
+    // Item boundary = Style line
     const styleMatch = lines[i].match(/^Style\s+([A-Z0-9]+-\d{3})$/i);
     if (!styleMatch) continue;
     
@@ -29,25 +39,30 @@ function parseNikeReceiptJS(ocrText) {
     let size = '';
     let price = 0;
     let name = '';
+    let priceLineIndex = -1;
     
-    // Look backwards for size, price, name
+    // Look back up to 8 lines for size, price
     for (let j = i - 1; j >= Math.max(0, i - 8); j--) {
       const line = lines[j];
       if (!line) continue;
       
-      // Size: "Size XX"
+      // size: /^Size\s+/i
       if (!size && /^Size\s+/i.test(line)) {
         size = line.replace(/^Size\s+/i, '');
       }
       
-      // Price: "$XX.XX" - grab first number
+      // price: /^\$\d+\.\d{2}/
       if (!price && /^\$\d+\.\d{2}/.test(line)) {
-        price = parseFloat(line.match(/^\$(\d+\.\d{2})/)[1]);
-        // Name is the line right before price
-        if (j > 0 && lines[j-1]) {
-          name = lines[j-1].replace(/"/g, '');
-        }
+        const m = line.match(/^\$(\d+\.\d{2})/);
+        price = parseFloat(m[1]);
+        priceLineIndex = j;
       }
+    }
+    
+    // name: line directly above price line
+    if (priceLineIndex > 0) {
+      name = lines[priceLineIndex - 1] || '';
+      name = name.replace(/"/g, '');
     }
     
     items.push({ name: name || 'Nike Product', sku, size, price });
