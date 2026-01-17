@@ -70,28 +70,7 @@ export default async function handler(req, res) {
               },
               {
                 type: 'text',
-                text: `Extract ALL items from this Nike order screenshot.
-
-For each item find:
-- Product name
-- Style code/SKU (format: XX0000-000)
-- Size (include W for women's, C for toddler, Y for youth)
-- SALE/Final price (the lower price, not crossed-out original)
-
-CRITICAL: Keep ALL items exactly as they appear. If the same item/size appears 5 times, return it 5 times. Do NOT remove duplicates.
-
-Return ONLY valid JSON:
-{
-  "items": [
-    {"name": "Product Name", "sku": "XX0000-000", "size": "10", "price": 48.99}
-  ],
-  "subtotal": 0,
-  "tax": 0,
-  "total": 0
-}
-
-If no Nike products found:
-{"error": "invalid", "message": "Could not find Nike products."}`
+                text: buildNikeParsingPrompt('')
               }
             ],
           }
@@ -129,7 +108,7 @@ If no Nike products found:
         price: parseFloat(item.price) || 0
       })).filter(item => item.sku && item.price > 0);
       
-      console.log(`[Parser] Returning ${result.items.length} items (no deduplication)`);
+      console.log(`[Parser] Returning ${result.items.length} items (NO deduplication applied)`);
     }
 
     return res.status(200).json(result);
@@ -144,40 +123,40 @@ If no Nike products found:
 }
 
 function buildNikeParsingPrompt(ocrText) {
-  return `You are an expert Nike receipt parser. Extract ALL products from this Nike order OCR text.
+  const basePrompt = `You are a Nike receipt parser for a BULK RESELLER who buys multiple pairs of the SAME shoe.
 
-CRITICAL RULES:
-1. Keep ALL items exactly as they appear on the receipt
-2. If the same item appears 5 times, return it 5 times
-3. Do NOT deduplicate or remove any items
-4. Every line item on the receipt = one item in your response
+CRITICAL RULES - READ CAREFULLY:
+1. This is a BULK ORDER. The customer bought MULTIPLE PAIRS of the same shoe.
+2. If you see "Air Jordan 8 Retro" appearing 4 times in the text, return 4 SEPARATE items.
+3. If you see the same SKU (e.g., 305381-100) appearing 6 times, return 6 SEPARATE items.
+4. NEVER deduplicate. NEVER combine. NEVER say "appears X times".
+5. Each product block in the receipt = ONE item in your JSON array.
+6. Count the number of "Style" or "Size" lines - that's how many items there are.
 
-## NIKE PRODUCT CATEGORIES TO RECOGNIZE:
+HOW TO COUNT ITEMS:
+- Count how many times you see a price like "$87.97" or "$119.97"
+- Count how many times you see "Style XXXXXX-XXX"
+- Count how many times you see "Size X"
+- These counts should match your items array length.
 
-### SHOES:
-- Men's shoes: Sizes like 7, 7.5, 8, 8.5, 9, 9.5, 10, 10.5, 11, 11.5, 12, 13, 14, 15
-- Women's shoes: Sizes like 5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10, 10.5, 11, 12
-  - Often marked as "(Women's)" or "W" in name
-- TD (Toddler): Sizes like 4C, 5C, 6C, 7C, 8C, 9C, 10C
-- PS (Preschool): Sizes like 10.5C, 11C, 12C, 13C, 1Y, 2Y, 3Y
-- GS (Grade School): Sizes like 3.5Y, 4Y, 5Y, 6Y, 7Y
+NIKE PRODUCT CATEGORIES:
+- Men's shoes: Sizes 7-15
+- Women's shoes: Sizes 5-12, often marked with "W" or "(Women's)"
+- TD (Toddler): Sizes 4C-10C
+- PS (Preschool): Sizes 10.5C-3Y
+- GS (Grade School): Sizes 3.5Y-7Y
+- Clothing: S, M, L, XL, XXL, 2XL, 3XL
 
-### CLOTHING:
-- Men's clothing: Sizes like S, M, L, XL, XXL, 2XL, 3XL
-- Women's clothing: Sizes like XS, S, M, L, XL, 1X, 2X, 3X
+SKU FORMAT: 6-7 alphanumeric characters + dash + 3 digits (e.g., 305381-100, IB2255-100)
 
-## NIKE STYLE CODES (SKU):
-Pattern: 6-7 alphanumeric + dash + 3 digits
-Examples: BQ9646-002, DV3853-001, 553558-161, CU4150-002
+PRICE: Use the SALE price (lower price), not the crossed-out original price.
 
-## PRICE EXTRACTION:
-- Use the FINAL/SALE price (the lower price after discount)
-- If you see "$110.00" crossed out and "$48.99" below it, use $48.99
-
-Return ONLY valid JSON:
+Return ONLY valid JSON in this exact format:
 {
   "items": [
-    {"name": "Nike Air Pegasus Wave", "sku": "BQ9646-002", "size": "10", "price": 48.99}
+    {"name": "Air Jordan 8 Retro White and True Red", "sku": "305381-100", "size": "11", "price": 119.97},
+    {"name": "Air Jordan 8 Retro White and True Red", "sku": "305381-100", "size": "11", "price": 119.97},
+    {"name": "Air Jordan 8 Retro White and True Red", "sku": "305381-100", "size": "12", "price": 119.97}
   ],
   "subtotal": 0,
   "tax": 0,
@@ -186,15 +165,25 @@ Return ONLY valid JSON:
   "orderDate": ""
 }
 
+Notice in the example above: same shoe, same SKU, appears 3 times = 3 items in array.
+
 If no Nike products found:
-{"error": "invalid", "message": "Could not find Nike products in the text."}
+{"error": "invalid", "message": "Could not find Nike products."}`;
+
+  if (ocrText && ocrText.trim()) {
+    return `${basePrompt}
 
 ---
-OCR TEXT:
+OCR TEXT FROM RECEIPT:
 ${ocrText}
 ---
 
-Parse ALL items. Keep every single item, even if identical to another. Do NOT deduplicate.`;
+Parse every single item. Remember: this is a BULK order. Same item appearing multiple times = multiple entries in the items array.`;
+  }
+  
+  return `${basePrompt}
+
+Extract ALL items from this Nike receipt image. Remember: this is a BULK order. Same item appearing multiple times = multiple entries in the items array.`;
 }
 
 function normalizeSkuCode(sku) {
