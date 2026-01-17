@@ -764,7 +764,7 @@ function App() {
   const [formData, setFormData] = useState({});
   const [settings, setSettings] = useState({ stockxLevel: 9, stockxProcessing: 3, stockxQuickShip: false, stockxDirectFee: 5, stockxDirectProcessing: 3, stockxFlexFee: 5, stockxFlexProcessing: 3, stockxFlexFulfillment: 5, goatFee: 9.5, goatProcessing: 2.9, ebayFee: 12.9, mileageRate: 0.67 });
   const [pendingCosts, setPendingCosts] = useState([]);
-  const [savedReceipts, setSavedReceipts] = useState([]);
+  // Scanned receipts tracked in Supabase (scanned_receipts table)
   
   // Connection state
   const [stockxConnected, setStockxConnected] = useState(false);
@@ -788,7 +788,7 @@ function App() {
   const [selectedPendingItem, setSelectedPendingItem] = useState(null);
   const [showInvCsvImport, setShowInvCsvImport] = useState(false);
   const [selectedInvLookup, setSelectedInvLookup] = useState(new Set());
-  const [nikeReceipt, setNikeReceipt] = useState({ scanning: false, items: [], image: null, date: '', orderNum: '' });
+  const [nikeReceipt, setNikeReceipt] = useState({ scanning: false, items: [], image: null, date: '', orderNum: '', tax: 0, manualTax: '', editingItem: null });
   const [showNikeExample, setShowNikeExample] = useState(false);
 
   const ITEMS_PER_PAGE = 50;
@@ -855,7 +855,8 @@ function App() {
             platform: item.platform || '',
             fees: parseFloat(item.fees) || 0,
             profit: parseFloat(item.profit) || 0,
-            saleDate: item.sale_date || ''
+            saleDate: item.sale_date || '',
+            orderId: item.order_id || ''
           })));
         }
 
@@ -893,8 +894,8 @@ function App() {
             platform: item.platform || '',
             fees: parseFloat(item.fees) || 0,
             saleDate: item.sale_date || '',
-            payout: parseFloat(item.payout) || 0,
-            image: item.image || ''
+            orderId: item.order_id || '',
+            orderNumber: item.order_number || ''
           })));
         }
 
@@ -1004,7 +1005,8 @@ function App() {
         platform: item.platform,
         fees: item.fees,
         profit: item.profit,
-        sale_date: item.saleDate
+        sale_date: item.saleDate,
+        order_id: item.orderId || null
       };
 
       if (isNew) {
@@ -1042,6 +1044,40 @@ function App() {
       if (error) throw error;
     } catch (error) {
       console.error('Error deleting sale:', error);
+    }
+  };
+
+  // Check if receipt was already scanned (Supabase)
+  const checkReceiptExists = async (transactionId) => {
+    if (!user || !transactionId) return false;
+    try {
+      const { data, error } = await supabase
+        .from('scanned_receipts')
+        .select('id, created_at')
+        .eq('user_id', user.id)
+        .eq('transaction_id', transactionId)
+        .single();
+      if (error && error.code !== 'PGRST116') throw error; // PGRST116 = not found (ok)
+      return data || null;
+    } catch (error) {
+      console.error('Error checking receipt:', error);
+      return null;
+    }
+  };
+
+  // Save scanned receipt to Supabase
+  const saveScannedReceipt = async (transactionId) => {
+    if (!user || !transactionId) return;
+    try {
+      const { error } = await supabase
+        .from('scanned_receipts')
+        .insert({
+          user_id: user.id,
+          transaction_id: transactionId
+        });
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error saving receipt:', error);
     }
   };
 
@@ -1148,11 +1184,28 @@ function App() {
     }
   };
 
-  // Bulk save pending costs to Supabase
-  const bulkSavePendingToSupabase = async (items) => {
+  // UPSERT pending costs to Supabase (shared function for all write paths)
+  // Uses ON CONFLICT to prevent duplicates at database level
+  const upsertPendingCosts = async (items) => {
     if (!user || items.length === 0) return [];
+    
+    // Filter out items without order_id - these cannot be deduplicated
+    const validItems = items.filter(item => {
+      const orderId = item.orderId || item.id;
+      if (!orderId) {
+        console.warn('Skipping item without order_id:', item.name);
+        return false;
+      }
+      return true;
+    });
+    
+    if (validItems.length === 0) {
+      console.error('No valid items to save - all missing order_id');
+      return [];
+    }
+    
     try {
-      const records = items.map(item => ({
+      const records = validItems.map(item => ({
         user_id: user.id,
         name: item.name,
         sku: item.sku,
@@ -1161,21 +1214,31 @@ function App() {
         platform: item.platform,
         fees: item.fees,
         sale_date: item.saleDate,
-        payout: item.payout || null,
-        image: item.image || null
+        order_id: item.orderId || item.id,
+        order_number: item.orderNumber || null
       }));
 
+      // UPSERT: Insert new, update existing (based on user_id + order_id)
       const { data, error } = await supabase
         .from('pending_costs')
-        .insert(records)
+        .upsert(records, { 
+          onConflict: 'user_id,order_id',
+          ignoreDuplicates: false // Update existing rows
+        })
         .select();
+      
       if (error) throw error;
+      
+      console.log(`Upserted ${data.length} pending costs`);
       return data;
     } catch (error) {
-      console.error('Error bulk saving pending:', error);
+      console.error('Error upserting pending costs:', error);
       return [];
     }
   };
+  
+  // Alias for backwards compatibility
+  const bulkSavePendingToSupabase = upsertPendingCosts;
 
   // Bulk save inventory items to Supabase
   const bulkSaveInventoryToSupabase = async (items) => {
@@ -1495,32 +1558,37 @@ function App() {
           return;
         }
         
-        // Filter out duplicates
-        const existingIds = new Set([
-          ...pendingCosts.map(p => p.id),
-          ...sales.map(s => s.orderId || s.id)
-        ]);
+        // Add orderId field (StockX API uses 'id' as order number)
+        const salesWithOrderId = yearFiltered.map(s => ({
+          ...s,
+          orderId: s.id // Map id to orderId for upsert
+        }));
         
-        const newSales = yearFiltered.filter(s => !existingIds.has(s.id));
-        
-        if (newSales.length > 0) {
-          // Save to Supabase
-          const savedPending = await bulkSavePendingToSupabase(newSales);
-          if (savedPending.length > 0) {
-            setPendingCosts(prev => [...prev, ...savedPending.map(item => ({
-              id: item.id,
-              name: item.name,
-              sku: item.sku,
-              size: item.size,
-              salePrice: parseFloat(item.sale_price) || 0,
-              platform: item.platform,
-              fees: parseFloat(item.fees) || 0,
-              saleDate: item.sale_date
-            }))]);
-          }
-          alert(`✓ Synced ${newSales.length} sales from ${selectedYear}!${yearFiltered.length - newSales.length > 0 ? `\n${yearFiltered.length - newSales.length} already existed` : ''}`);
+        // UPSERT to Supabase - database handles duplicates
+        const savedPending = await upsertPendingCosts(salesWithOrderId);
+        if (savedPending.length > 0) {
+          // Update local state with saved items
+          setPendingCosts(prev => {
+            const existingIds = new Set(prev.map(p => p.orderId));
+            const newItems = savedPending
+              .filter(item => !existingIds.has(item.order_id))
+              .map(item => ({
+                id: item.id,
+                name: item.name,
+                sku: item.sku,
+                size: item.size,
+                salePrice: parseFloat(item.sale_price) || 0,
+                platform: item.platform,
+                fees: parseFloat(item.fees) || 0,
+                saleDate: item.sale_date,
+                orderId: item.order_id || '',
+                orderNumber: item.order_number || ''
+              }));
+            return [...prev, ...newItems];
+          });
+          alert(`✓ Synced ${savedPending.length} sales from ${selectedYear}!`);
         } else {
-          alert(`All ${yearFiltered.length} sales from ${selectedYear} already imported.`);
+          alert(`All sales from ${selectedYear} already imported.`);
         }
       } else {
         alert(`No completed sales found for ${selectedYear}.`);
@@ -1660,7 +1728,8 @@ function App() {
       platform: sale.platform || channel,
       fees: sale.fees || (sale.salePrice - sale.payout),
       profit: profit,
-      saleDate: sale.saleDate
+      saleDate: sale.saleDate,
+      orderId: sale.orderId || sale.id
     };
     
     // Save to Supabase first
@@ -1668,8 +1737,7 @@ function App() {
     if (id) {
       setSales(prev => [...prev, { 
         ...newSale, 
-        id,
-        orderId: sale.id
+        id
       }]);
     }
     setPendingCosts(prev => prev.filter(s => s.id !== saleId));
@@ -1795,21 +1863,15 @@ function App() {
         throw new Error(result.message || result.error);
       }
       
-      // Extract items and remove duplicates
-      const seenItems = new Set();
-      const items = (result.items || []).filter(item => {
-        const key = `${item.sku}-${item.size}-${item.price}`;
-        if (seenItems.has(key)) return false;
-        seenItems.add(key);
-        return true;
-      }).map(item => ({
+      // Items are already correctly counted from OCR regex - no deduplication needed
+      const items = (result.items || []).map(item => ({
         name: item.name || 'Nike Product',
         sku: item.sku || '',
         size: item.size || '',
         price: parseFloat(item.price) || 0
       }));
       
-      console.log('Found', items.length, 'unique items');
+      console.log('Found', items.length, 'items (counted from OCR)');
       
       // Distribute tax if present
       if (result.tax && result.tax > 0 && items.length > 0) {
@@ -1821,12 +1883,18 @@ function App() {
         console.log('Distributed $' + result.tax + ' tax across items');
       }
       
+      // Extract transaction ID for reference (no duplicate check - keep it simple)
+      const transactionId = result.transactionId || result.orderNumber || '';
+      
       setNikeReceipt({ 
         scanning: false, 
         items, 
         image: imageBase64, 
-        date: result.orderDate || '', 
-        orderNum: result.orderNumber || '',
+        date: result.receiptDate || result.orderDate || '', 
+        orderNum: transactionId,
+        tax: result.tax || 0,
+        manualTax: '',
+        editingItem: null,
         error: items.length === 0 ? 'No items found. Make sure this is a Nike order screenshot.' : null
       });
       
@@ -1848,26 +1916,26 @@ function App() {
   
   // Add scanned items to inventory
   const addNikeItemsToInventory = async () => {
-    const itemsToSave = nikeReceipt.items.map((item) => ({
-      name: item.name,
-      sku: item.sku,
-      size: item.size,
-      cost: item.price,
-      date: nikeReceipt.date || new Date().toISOString().split('T')[0],
-      sold: false
-    }));
+    // Get manual tax if entered
+    const manualTax = parseFloat(nikeReceipt.manualTax) || 0;
+    const subtotal = nikeReceipt.items.reduce((sum, item) => sum + item.price, 0);
     
-    // Save receipt
-    if (nikeReceipt.image) {
-      setSavedReceipts(prev => [...prev, {
-        id: nikeReceipt.orderNum || Date.now().toString(),
-        image: nikeReceipt.image,
-        date: nikeReceipt.date,
-        items: nikeReceipt.items.length,
-        total: nikeReceipt.items.reduce((sum, item) => sum + item.price, 0),
-        createdAt: new Date().toISOString()
-      }]);
-    }
+    // Distribute tax proportionally across items
+    const itemsToSave = nikeReceipt.items.map((item) => {
+      let finalCost = item.price;
+      if (manualTax > 0 && subtotal > 0) {
+        const taxShare = (item.price / subtotal) * manualTax;
+        finalCost = Math.round((item.price + taxShare) * 100) / 100;
+      }
+      return {
+        name: item.name,
+        sku: item.sku,
+        size: item.size,
+        cost: finalCost,
+        date: nikeReceipt.date || new Date().toISOString().split('T')[0],
+        sold: false
+      };
+    });
     
     // Save to Supabase
     const savedItems = await bulkSaveInventoryToSupabase(itemsToSave);
@@ -1883,7 +1951,7 @@ function App() {
       }));
       setPurchases(prev => [...prev, ...newItems]);
     }
-    setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '' });
+    setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '', tax: 0, manualTax: '', editingItem: null });
   };
 
   const exportCSV = (data, filename, headers) => {
@@ -2345,6 +2413,7 @@ function App() {
       
       return {
         id: orderNum || Date.now() + Math.random(),
+        orderId: orderNum, // Required for deduplication
         name: productName,
         sku: row['Style'] || row['SKU'] || row['Style Code'] || '',
         size: String(row['Sku Size'] || row['Size'] || row['Product Size'] || ''),
@@ -2357,32 +2426,47 @@ function App() {
       };
     });
     
-    const existingIds = new Set([...pendingCosts.map(p => p.id), ...sales.map(s => s.orderId || s.id)]);
-    const uniqueNew = newPending.filter(p => !existingIds.has(p.id));
-    
-    if (uniqueNew.length > 0) {
-      // Save to Supabase
-      const savedPending = await bulkSavePendingToSupabase(uniqueNew);
-      if (savedPending.length > 0) {
-        setPendingCosts([...pendingCosts, ...savedPending.map(item => ({
-          id: item.id,
-          name: item.name,
-          sku: item.sku,
-          size: item.size,
-          salePrice: parseFloat(item.sale_price) || 0,
-          platform: item.platform,
-          fees: parseFloat(item.fees) || 0,
-          saleDate: item.sale_date
-        }))]);
-        alert(`Imported ${savedPending.length} StockX sales!${newPending.length - uniqueNew.length > 0 ? ` (${newPending.length - uniqueNew.length} duplicates skipped)` : ''}`);
-      }
-    } else {
-      alert(`All ${newPending.length} StockX sales already imported.`);
+    // Filter items missing order numbers (can't dedupe without it)
+    const itemsWithOrderId = newPending.filter(p => p.orderId);
+    const skipped = newPending.length - itemsWithOrderId.length;
+    if (skipped > 0) {
+      console.warn(`Skipped ${skipped} items without order number`);
     }
     
-    setStockxImport({ show: false, data: [], year: 'all', month: 'all', headers: [] });
+    if (itemsWithOrderId.length > 0) {
+      // UPSERT to Supabase - database handles duplicates via UNIQUE constraint
+      const savedPending = await upsertPendingCosts(itemsWithOrderId);
+      if (savedPending.length > 0) {
+        // Refresh pending costs from what was actually saved/updated
+        setPendingCosts(prev => {
+          const existingIds = new Set(prev.map(p => p.orderId));
+          const newItems = savedPending
+            .filter(item => !existingIds.has(item.order_id))
+            .map(item => ({
+              id: item.id,
+              name: item.name,
+              sku: item.sku,
+              size: item.size,
+              salePrice: parseFloat(item.sale_price) || 0,
+              platform: item.platform,
+              fees: parseFloat(item.fees) || 0,
+              saleDate: item.sale_date,
+              orderId: item.order_id,
+              orderNumber: item.order_number
+            }));
+          return [...prev, ...newItems];
+        });
+        alert(`Imported ${savedPending.length} StockX sales!${skipped > 0 ? ` (${skipped} skipped - no order number)` : ''}`);
+      }
+    } else {
+      alert('No valid items to import - all missing order numbers');
+    }
+    
+    setStockxCsvData(null);
+    setStockxCsvMonth('');
   };
 
+  // eBay CSV processing
   // Import eBay sales
   const importEbaySales = async () => {
     const filtered = filterEbayData();
@@ -2982,7 +3066,8 @@ function App() {
             if (search) {
               matchesSearch = p.name?.toLowerCase().includes(search) || 
                              p.sku?.toLowerCase().includes(search) || 
-                             p.size?.toString().toLowerCase().includes(search);
+                             p.size?.toString().toLowerCase().includes(search) ||
+                             p.date?.includes(search);
             }
             
             const matchesFilter = filter === 'all' || (filter === 'instock' && !p.sold) || (filter === 'sold' && p.sold);
@@ -3131,65 +3216,193 @@ function App() {
               <div style={{ padding: 24, background: 'rgba(239,68,68,0.1)', border: `2px solid rgba(239,68,68,0.3)`, borderRadius: 16, textAlign: 'center', marginBottom: 16 }}>
                 <div style={{ fontSize: 36, marginBottom: 12 }}>😕</div>
                 <p style={{ margin: '0 0 12px', color: c.red, fontWeight: 600 }}>{nikeReceipt.error}</p>
-                <button onClick={() => setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '' })} style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer' }}>Try Again</button>
+                <button onClick={() => setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '', tax: 0, manualTax: '', editingItem: null })} style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, color: '#fff', cursor: 'pointer' }}>Try Again</button>
               </div>
             )}
             
             {/* Scanned Items Review */}
             {nikeReceipt.items.length > 0 && (
               <div style={{ background: 'rgba(249,115,22,0.05)', border: `2px solid rgba(249,115,22,0.3)`, borderRadius: 16, overflow: 'hidden' }}>
+                {/* Header */}
                 <div style={{ padding: '16px 20px', background: 'rgba(249,115,22,0.1)', borderBottom: `1px solid rgba(249,115,22,0.2)`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#F97316' }}>📸 Found {nikeReceipt.items.length} Items</h3>
-                    {nikeReceipt.date && <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>{nikeReceipt.date} • {nikeReceipt.orderNum || 'Nike Order'}</p>}
+                    {nikeReceipt.date && <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>{nikeReceipt.date} {nikeReceipt.orderNum ? `• ${nikeReceipt.orderNum}` : ''}</p>}
                   </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '' })} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, color: c.textMuted, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
-                    <button onClick={addNikeItemsToInventory} style={{ padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>✓ Add All to Inventory</button>
-                  </div>
+                  <button onClick={() => setNikeReceipt({ scanning: false, items: [], image: null, date: '', orderNum: '', tax: 0, manualTax: '', editingItem: null })} style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, color: c.textMuted, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
                 </div>
                 
-                <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                {/* TAX INPUT - REQUIRED - AT TOP */}
+                <div style={{ padding: '20px', background: nikeReceipt.tax > 0 ? 'rgba(34,197,94,0.1)' : 'rgba(251,191,36,0.15)', borderBottom: `2px solid ${nikeReceipt.tax > 0 ? 'rgba(34,197,94,0.3)' : 'rgba(251,191,36,0.4)'}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12 }}>
+                    <span style={{ fontSize: 20 }}>{nikeReceipt.tax > 0 || nikeReceipt.manualTax === '0' ? '✅' : '💰'}</span>
+                    <div style={{ flex: 1 }}>
+                      <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: nikeReceipt.tax > 0 || nikeReceipt.manualTax === '0' ? c.green : c.gold }}>
+                        {nikeReceipt.tax > 0 ? `Tax Detected: ${fmt(nikeReceipt.tax)}` : nikeReceipt.manualTax === '0' ? 'No Tax' : 'Enter Sales Tax'}
+                      </h4>
+                      <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>
+                        {nikeReceipt.tax > 0 ? 'Tax will be distributed across all items' : nikeReceipt.manualTax === '0' ? 'Tax set to $0' : 'Enter the tax from your receipt (or $0 if none)'}
+                      </p>
+                    </div>
+                  </div>
+                  {nikeReceipt.tax === 0 && (
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                      <span style={{ fontSize: 18, color: c.gold }}>$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={nikeReceipt.manualTax}
+                        onChange={(e) => setNikeReceipt(prev => ({ ...prev, manualTax: e.target.value }))}
+                        style={{ flex: 1, padding: '14px 16px', background: 'rgba(0,0,0,0.4)', border: `2px solid rgba(251,191,36,0.5)`, borderRadius: 10, color: '#fff', fontSize: 18, fontWeight: 700 }}
+                      />
+                      <button 
+                        onClick={() => setNikeReceipt(prev => ({ ...prev, manualTax: '0' }))}
+                        style={{ padding: '14px 20px', background: nikeReceipt.manualTax === '0' ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.1)', border: `1px solid ${nikeReceipt.manualTax === '0' ? c.green : c.border}`, borderRadius: 10, color: nikeReceipt.manualTax === '0' ? c.green : c.textMuted, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                      >No Tax</button>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Items List */}
+                <div style={{ maxHeight: 350, overflowY: 'auto' }}>
                   {nikeReceipt.items.map((item, idx) => (
-                    <div key={idx} style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 16 }}>
-                      <div style={{ width: 36, height: 36, background: 'rgba(249,115,22,0.2)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: '#F97316' }}>{idx + 1}</div>
-                      <div style={{ flex: 1 }}>
-                        <h4 style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{item.name}</h4>
-                        <div style={{ display: 'flex', gap: 12, fontSize: 12, color: c.textMuted }}>
+                    <div key={idx} style={{ padding: '14px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ width: 32, height: 32, background: 'rgba(249,115,22,0.2)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: '#F97316' }}>{idx + 1}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <h4 style={{ margin: '0 0 2px', fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</h4>
+                        <div style={{ display: 'flex', gap: 8, fontSize: 11, color: c.textMuted }}>
                           <span style={{ color: '#F97316', fontWeight: 600 }}>{item.sku}</span>
                           {item.size && <span>Size {item.size}</span>}
                         </div>
                       </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: c.green }}>{fmt(item.price)}</div>
-                        <div style={{ fontSize: 10, color: c.textDim }}>Cost</div>
-                      </div>
-                      {/* Edit button for manual corrections */}
+                      <div style={{ fontSize: 16, fontWeight: 800, color: c.green }}>{fmt(item.price)}</div>
                       <button
-                        onClick={() => {
-                          const newSku = prompt('Edit Style Code:', item.sku);
-                          if (newSku !== null) {
-                            const newSize = prompt('Edit Size:', item.size);
-                            if (newSize !== null) {
-                              const newPrice = prompt('Edit Price:', item.price);
-                              if (newPrice !== null) {
-                                setNikeReceipt(prev => ({
-                                  ...prev,
-                                  items: prev.items.map((it, i) => i === idx ? { ...it, sku: newSku, size: newSize, price: parseFloat(newPrice) || it.price } : it)
-                                }));
-                              }
-                            }
-                          }
-                        }}
-                        style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: c.textMuted, fontSize: 11, cursor: 'pointer' }}
-                      >✏️ Edit</button>
+                        onClick={() => setNikeReceipt(prev => ({ ...prev, editingItem: idx }))}
+                        style={{ padding: '6px 10px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: c.textMuted, fontSize: 10, cursor: 'pointer' }}
+                      >✏️</button>
                     </div>
                   ))}
                 </div>
                 
-                <div style={{ padding: '16px 20px', background: 'rgba(0,0,0,0.2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 13, color: c.textMuted }}>Total Cost</span>
-                  <span style={{ fontSize: 20, fontWeight: 800, color: '#fff' }}>{fmt(nikeReceipt.items.reduce((sum, item) => sum + item.price, 0))}</span>
+                {/* PURCHASE DATE INPUT */}
+                <div style={{ padding: '16px 20px', background: 'rgba(59,130,246,0.1)', borderBottom: `1px solid rgba(59,130,246,0.2)` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontSize: 18 }}>📅</span>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ display: 'block', fontSize: 12, color: c.textMuted, marginBottom: 6, fontWeight: 600 }}>PURCHASE DATE</label>
+                      <input
+                        type="date"
+                        value={nikeReceipt.date || new Date().toISOString().split('T')[0]}
+                        onChange={(e) => setNikeReceipt(prev => ({ ...prev, date: e.target.value }))}
+                        style={{ padding: '10px 14px', background: 'rgba(0,0,0,0.4)', border: `1px solid rgba(59,130,246,0.4)`, borderRadius: 8, color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+                      />
+                    </div>
+                    <div style={{ fontSize: 11, color: c.textMuted, maxWidth: 150 }}>Change if different from today</div>
+                  </div>
+                </div>
+                
+                {/* Summary & Add Button */}
+                <div style={{ padding: '20px', background: 'rgba(0,0,0,0.3)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 13, color: c.textMuted }}>
+                    <span>Subtotal ({nikeReceipt.items.length} items)</span>
+                    <span>{fmt(nikeReceipt.items.reduce((sum, item) => sum + item.price, 0))}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, fontSize: 13, color: c.gold }}>
+                    <span>Tax</span>
+                    <span>{fmt(nikeReceipt.tax > 0 ? nikeReceipt.tax : (parseFloat(nikeReceipt.manualTax) || 0))}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 16, borderTop: `1px solid ${c.border}` }}>
+                    <div>
+                      <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 4 }}>TOTAL COST</div>
+                      <div style={{ fontSize: 28, fontWeight: 800, color: '#fff' }}>{fmt(nikeReceipt.items.reduce((sum, item) => sum + item.price, 0) + (nikeReceipt.tax > 0 ? nikeReceipt.tax : (parseFloat(nikeReceipt.manualTax) || 0)))}</div>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        if (nikeReceipt.tax === 0 && nikeReceipt.manualTax === '') {
+                          alert('Please enter the tax amount from your receipt.\n\nEnter $0 if there was no tax.');
+                          return;
+                        }
+                        addNikeItemsToInventory();
+                      }}
+                      style={{ padding: '16px 32px', ...btnPrimary, fontSize: 15, fontWeight: 700 }}
+                    >✓ Add All to Inventory</button>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* EDIT ITEM MODAL */}
+            {nikeReceipt.editingItem !== undefined && nikeReceipt.editingItem !== null && (
+              <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+                <div style={{ background: c.card, borderRadius: 16, padding: 24, width: '90%', maxWidth: 400, border: `1px solid ${c.border}` }}>
+                  <h3 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 700, color: '#F97316' }}>✏️ Edit Item {nikeReceipt.editingItem + 1}</h3>
+                  
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontSize: 12, color: c.textMuted, marginBottom: 6 }}>PRODUCT NAME</label>
+                    <input
+                      type="text"
+                      value={nikeReceipt.items[nikeReceipt.editingItem]?.name || ''}
+                      onChange={(e) => setNikeReceipt(prev => ({
+                        ...prev,
+                        items: prev.items.map((it, i) => i === prev.editingItem ? { ...it, name: e.target.value } : it)
+                      }))}
+                      style={{ width: '100%', padding: '12px 14px', background: 'rgba(0,0,0,0.3)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#fff', fontSize: 14, boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontSize: 12, color: c.textMuted, marginBottom: 6 }}>STYLE CODE (SKU)</label>
+                    <input
+                      type="text"
+                      value={nikeReceipt.items[nikeReceipt.editingItem]?.sku || ''}
+                      onChange={(e) => setNikeReceipt(prev => ({
+                        ...prev,
+                        items: prev.items.map((it, i) => i === prev.editingItem ? { ...it, sku: e.target.value } : it)
+                      }))}
+                      style={{ width: '100%', padding: '12px 14px', background: 'rgba(0,0,0,0.3)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#F97316', fontSize: 14, fontWeight: 600, boxSizing: 'border-box' }}
+                    />
+                  </div>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, color: c.textMuted, marginBottom: 6 }}>SIZE</label>
+                      <input
+                        type="text"
+                        value={nikeReceipt.items[nikeReceipt.editingItem]?.size || ''}
+                        onChange={(e) => setNikeReceipt(prev => ({
+                          ...prev,
+                          items: prev.items.map((it, i) => i === prev.editingItem ? { ...it, size: e.target.value } : it)
+                        }))}
+                        style={{ width: '100%', padding: '12px 14px', background: 'rgba(0,0,0,0.3)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#fff', fontSize: 14, boxSizing: 'border-box' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, color: c.textMuted, marginBottom: 6 }}>PRICE ($)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={nikeReceipt.items[nikeReceipt.editingItem]?.price || ''}
+                        onChange={(e) => setNikeReceipt(prev => ({
+                          ...prev,
+                          items: prev.items.map((it, i) => i === prev.editingItem ? { ...it, price: parseFloat(e.target.value) || 0 } : it)
+                        }))}
+                        style={{ width: '100%', padding: '12px 14px', background: 'rgba(0,0,0,0.3)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.green, fontSize: 14, fontWeight: 700, boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <button
+                      onClick={() => setNikeReceipt(prev => ({ ...prev, editingItem: null }))}
+                      style={{ flex: 1, padding: '14px', background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 10, color: c.textMuted, fontSize: 14, cursor: 'pointer' }}
+                    >Cancel</button>
+                    <button
+                      onClick={() => setNikeReceipt(prev => ({ ...prev, editingItem: null }))}
+                      style={{ flex: 1, padding: '14px', ...btnPrimary, fontSize: 14 }}
+                    >Save Changes</button>
+                  </div>
                 </div>
               </div>
             )}
@@ -3215,7 +3428,7 @@ function App() {
           <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
             <input 
               type="text" 
-              placeholder="🔍 Search by name, SKU, or size..." 
+              placeholder="🔍 Search by name, SKU, size, or date..." 
               value={formData.inventorySearch || ''} 
               onChange={e => { setFormData(prev => ({ ...prev, inventorySearch: e.target.value })); setInventoryPage(1); }}
               style={{ flex: 1, minWidth: 200, padding: 14, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 14 }} 
@@ -3296,15 +3509,18 @@ function App() {
             <span style={{ fontSize: 13, color: selectedInventory.size > 0 ? c.green : c.textMuted, fontWeight: selectedInventory.size > 0 ? 700 : 400 }}>{selectedInventory.size > 0 ? `${selectedInventory.size} selected` : 'None selected'}</span>
           </div>
 
-          {/* BULK DELETE BAR */}
+          {/* BULK ACTION BAR */}
           {selectedInventory.size > 0 && (
-            <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(239,68,68,0.15)', border: `1px solid rgba(239,68,68,0.3)`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontWeight: 700, color: c.red, fontSize: 14 }}>
-                🗑️ {selectedInventory.size} item{selectedInventory.size > 1 ? 's' : ''} selected
+            <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(59,130,246,0.15)', border: `1px solid rgba(59,130,246,0.3)`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontWeight: 700, color: '#60a5fa', fontSize: 14 }}>
+                📦 {selectedInventory.size} item{selectedInventory.size > 1 ? 's' : ''} selected
               </span>
               <div style={{ display: 'flex', gap: 12 }}>
                 <button onClick={() => setSelectedInventory(new Set())} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>
                   Clear Selection
+                </button>
+                <button onClick={() => setModal('bulkEdit')} style={{ padding: '8px 20px', background: 'rgba(59,130,246,0.2)', border: '1px solid rgba(59,130,246,0.4)', borderRadius: 8, color: '#60a5fa', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                  ✏️ Bulk Edit
                 </button>
                 <button onClick={async () => {
                   if (confirm(`Delete ${selectedInventory.size} item${selectedInventory.size > 1 ? 's' : ''}? This cannot be undone.`)) {
@@ -4523,7 +4739,13 @@ Let me know if you need anything else.`;
                                   if (s.orderNumber) existingIds.add(s.orderNumber);
                                 });
                                 
-                                const fresh = newPending.filter(s => !existingIds.has(s.id) && !existingIds.has(s.orderId));
+                                const fresh = newPending.filter(s => {
+                                  // Block if ANY identifier matches
+                                  if (existingIds.has(s.id)) return false;
+                                  if (s.orderId && existingIds.has(s.orderId)) return false;
+                                  if (s.orderNumber && existingIds.has(s.orderNumber)) return false;
+                                  return true;
+                                });
                                 
                                 if (fresh.length > 0) {
                                   // Save to Supabase
@@ -5190,7 +5412,7 @@ Let me know if you need anything else.`;
         <div style={{ background: 'linear-gradient(180deg, #111 0%, #0a0a0a 100%)', border: `1px solid ${c.border}`, borderRadius: 20, width: 420, maxHeight: '90vh', overflow: 'auto' }}>
           <div style={{ padding: '18px 22px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, background: '#111' }}>
             <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, fontStyle: 'italic' }}>
-              {modal === 'purchase' ? 'ADD PURCHASE' : modal === 'bulkAdd' ? 'BULK ADD ITEMS' : modal === 'sale' ? 'RECORD SALE' : modal === 'editSale' ? 'EDIT SALE' : modal === 'editInventory' ? 'EDIT INVENTORY' : modal === 'expense' ? 'ADD EXPENSE' : modal === 'editExpense' ? 'EDIT EXPENSE' : modal === 'storage' ? 'ADD STORAGE FEE' : 'LOG MILEAGE'}
+              {modal === 'purchase' ? 'ADD PURCHASE' : modal === 'bulkAdd' ? 'BULK ADD ITEMS' : modal === 'bulkEdit' ? 'BULK EDIT ITEMS' : modal === 'sale' ? 'RECORD SALE' : modal === 'editSale' ? 'EDIT SALE' : modal === 'editInventory' ? 'EDIT INVENTORY' : modal === 'expense' ? 'ADD EXPENSE' : modal === 'editExpense' ? 'EDIT EXPENSE' : modal === 'storage' ? 'ADD STORAGE FEE' : 'LOG MILEAGE'}
             </h3>
             <button onClick={() => setModal(null)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: 8, width: 32, height: 32, color: '#fff', fontSize: 18, cursor: 'pointer' }}>×</button>
           </div>
@@ -5204,6 +5426,72 @@ Let me know if you need anything else.`;
                 <input type="number" value={formData.cost || ''} onChange={e => setFormData({ ...formData, cost: e.target.value })} placeholder="Cost *" style={{ ...inputStyle, flex: 1 }} />
               </div>
               <input type="date" value={formData.date || ''} onChange={e => setFormData({ ...formData, date: e.target.value })} style={inputStyle} />
+            </>}
+            {/* BULK EDIT MODAL */}
+            {modal === 'bulkEdit' && <>
+              <div style={{ marginBottom: 20, padding: 16, background: 'rgba(59,130,246,0.1)', borderRadius: 12, border: '1px solid rgba(59,130,246,0.2)' }}>
+                <p style={{ margin: 0, fontSize: 14, color: '#93c5fd' }}>
+                  ✏️ Editing <strong>{selectedInventory.size}</strong> item{selectedInventory.size > 1 ? 's' : ''}
+                </p>
+                <p style={{ margin: '8px 0 0', fontSize: 12, color: c.textMuted }}>
+                  Only fill in fields you want to change. Empty fields will be left unchanged.
+                </p>
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: c.textMuted, marginBottom: 6 }}>📅 DATE</label>
+                <input type="date" value={formData.bulkEditDate || ''} onChange={e => setFormData({ ...formData, bulkEditDate: e.target.value })} style={inputStyle} />
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: c.textMuted, marginBottom: 6 }}>SKU (STYLE CODE)</label>
+                <input value={formData.bulkEditSku || ''} onChange={e => setFormData({ ...formData, bulkEditSku: e.target.value })} placeholder="Leave empty to keep existing" style={inputStyle} />
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: c.textMuted, marginBottom: 6 }}>COST</label>
+                <input type="number" step="0.01" value={formData.bulkEditCost || ''} onChange={e => setFormData({ ...formData, bulkEditCost: e.target.value })} placeholder="Leave empty to keep existing" style={inputStyle} />
+              </div>
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: c.textMuted, marginBottom: 6 }}>STATUS</label>
+                <select value={formData.bulkEditStatus || ''} onChange={e => setFormData({ ...formData, bulkEditStatus: e.target.value })} style={{ ...inputStyle, cursor: 'pointer' }}>
+                  <option value="">-- Keep existing --</option>
+                  <option value="instock">In Stock</option>
+                  <option value="sold">Sold</option>
+                </select>
+              </div>
+              <button 
+                onClick={async () => {
+                  const updates = {};
+                  if (formData.bulkEditDate) updates.date = formData.bulkEditDate;
+                  if (formData.bulkEditSku) updates.sku = formData.bulkEditSku;
+                  if (formData.bulkEditCost) updates.cost = parseFloat(formData.bulkEditCost);
+                  if (formData.bulkEditStatus) updates.sold = formData.bulkEditStatus === 'sold';
+                  
+                  if (Object.keys(updates).length === 0) {
+                    alert('Please fill in at least one field to update.');
+                    return;
+                  }
+                  
+                  // Update in Supabase and local state
+                  for (const id of selectedInventory) {
+                    const item = purchases.find(p => p.id === id);
+                    if (item) {
+                      const updatedItem = { ...item, ...updates };
+                      await updateInventoryInSupabase(updatedItem);
+                    }
+                  }
+                  
+                  setPurchases(prev => prev.map(p => 
+                    selectedInventory.has(p.id) ? { ...p, ...updates } : p
+                  ));
+                  
+                  setSelectedInventory(new Set());
+                  setFormData({});
+                  setModal(null);
+                  alert(`✅ Updated ${selectedInventory.size} item${selectedInventory.size > 1 ? 's' : ''}!`);
+                }}
+                style={{ width: '100%', padding: 14, ...btnPrimary, fontSize: 15, fontWeight: 700 }}
+              >
+                ✓ Apply to {selectedInventory.size} Item{selectedInventory.size > 1 ? 's' : ''}
+              </button>
             </>}
             {modal === 'purchase' && <>
               {formData.image && (
@@ -5241,9 +5529,9 @@ Let me know if you need anything else.`;
             {modal === 'bulkAdd' && <>
               <input value={formData.bulkName || ''} onChange={e => setFormData({ ...formData, bulkName: e.target.value })} placeholder="Product name *" style={{ ...inputStyle, marginBottom: 12 }} />
               <input value={formData.bulkSku || ''} onChange={e => setFormData({ ...formData, bulkSku: e.target.value })} placeholder="Style Code (e.g., DH6927-111)" style={{ ...inputStyle, marginBottom: 12 }} />
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: c.textMuted, display: 'block', marginBottom: 6 }}>PURCHASE DATE</label>
-                <input type="date" value={formData.bulkDate || ''} onChange={e => setFormData({ ...formData, bulkDate: e.target.value })} style={inputStyle} />
+              <div style={{ marginBottom: 16, padding: 14, background: 'rgba(59,130,246,0.1)', borderRadius: 10, border: '1px solid rgba(59,130,246,0.2)' }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: '#93c5fd', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>📅 PURCHASE DATE <span style={{ fontWeight: 400, color: c.textMuted }}>(required)</span></label>
+                <input type="date" value={formData.bulkDate || new Date().toISOString().split('T')[0]} onChange={e => setFormData({ ...formData, bulkDate: e.target.value })} style={{ ...inputStyle, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(59,130,246,0.4)' }} />
               </div>
               
               {/* Same cost for all toggle */}
