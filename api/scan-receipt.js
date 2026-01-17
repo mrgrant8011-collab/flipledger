@@ -1,7 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 export default async function handler(req, res) {
-  // CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -32,52 +31,17 @@ export default async function handler(req, res) {
     let response;
 
     if (mode === 'text' && text) {
-      // TEXT MODE: OCR text already extracted, just structure it
       response = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
+        max_tokens: 8192,
         messages: [
           {
             role: 'user',
-            content: `You are parsing OCR text from a Nike order screenshot. Extract all products.
-
-The text may have OCR errors, duplicate sections (from overlapping image chunks), and messy formatting. Do your best to extract accurate data.
-
-For each item, find:
-- Product name (e.g., "Nike Air Pegasus Wave", "Air Jordan 1 Low")
-- Style Code/SKU (format: letters + numbers + dash + 3 digits, like BQ9646-002, 553558-611)
-- Size (number like 10, 10.5, 11)
-- Price - Use the SALE/FINAL price (the lower one they actually paid), NOT the original price
-
-CRITICAL RULES:
-1. Each unique SKU + Size combination = ONE item (even if text repeats due to chunk overlap)
-2. If you see "$48.99" and "$110.00" near each other, use $48.99 (the sale price)
-3. Look for "Final Price" amounts - those are the correct prices
-4. Style codes look like: BQ9646-002, DV3853-001, 553558-161, CU4150-002, FN7344-100
-5. Remove duplicates - same SKU + same size + same price = count once
-
-Here is the OCR text:
----
-${text}
----
-
-Return ONLY valid JSON:
-{
-  "items": [
-    {"name": "Nike Air Pegasus Wave", "sku": "BQ9646-002", "size": "10", "price": 48.99}
-  ],
-  "subtotal": 0,
-  "tax": 0,
-  "total": 0
-}
-
-If you cannot find any Nike products, return:
-{"error": "invalid", "message": "Could not find Nike products in the text."}`
+            content: buildNikeParsingPrompt(text)
           }
         ],
       });
     } else {
-      // IMAGE MODE: Original image-based scanning
       let base64Data = image;
       let mediaType = 'image/jpeg';
       
@@ -91,7 +55,7 @@ If you cannot find any Nike products, return:
 
       response = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
+        max_tokens: 8192,
         messages: [
           {
             role: 'user',
@@ -106,13 +70,19 @@ If you cannot find any Nike products, return:
               },
               {
                 type: 'text',
-                text: `Extract all items from this Nike order screenshot.
+                text: `Extract ALL items from this Nike order screenshot.
 
-For each item find: name, style code (SKU), size, and SALE price (lower price, not crossed out).
+For each item find:
+- Product name
+- Style code/SKU (format: XX0000-000)
+- Size (include W for women's, C for toddler, Y for youth)
+- SALE/Final price (the lower price, not crossed-out original)
 
-Return JSON:
+Return ONLY valid JSON:
 {
-  "items": [{"name": "Product Name", "sku": "XX0000-000", "size": "10", "price": 48.99}],
+  "items": [
+    {"name": "Product Name", "sku": "XX0000-000", "size": "10", "price": 48.99}
+  ],
   "subtotal": 0,
   "tax": 0,
   "total": 0
@@ -127,10 +97,8 @@ If no Nike products found:
       });
     }
 
-    // Parse Claude's response
     const content = response.content[0].text;
     
-    // Try to extract JSON from response
     let result;
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -151,6 +119,10 @@ If no Nike products found:
       return res.status(400).json(result);
     }
 
+    if (result.items && Array.isArray(result.items)) {
+      result.items = postProcessItems(result.items);
+    }
+
     return res.status(200).json(result);
 
   } catch (error) {
@@ -160,4 +132,119 @@ If no Nike products found:
       message: error.message || 'Failed to scan receipt. Please try again.' 
     });
   }
+}
+
+function buildNikeParsingPrompt(ocrText) {
+  return `You are an expert Nike receipt parser. Extract ALL products from this Nike order OCR text.
+
+CRITICAL: This text may come from a VERY LONG receipt (30-40+ items) that was scanned in chunks.
+Due to chunking, some items may appear TWICE (duplicated in overlap regions). You MUST deduplicate.
+
+## NIKE PRODUCT CATEGORIES TO RECOGNIZE:
+
+### SHOES:
+- Men's shoes: Sizes like 7, 7.5, 8, 8.5, 9, 9.5, 10, 10.5, 11, 11.5, 12, 13, 14, 15
+- Women's shoes: Sizes like 5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10, 10.5, 11, 12
+  - Often marked as "(Women's)" or "W" in name
+- TD (Toddler): Sizes like 4C, 5C, 6C, 7C, 8C, 9C, 10C
+- PS (Preschool): Sizes like 10.5C, 11C, 12C, 13C, 1Y, 2Y, 3Y
+- GS (Grade School): Sizes like 3.5Y, 4Y, 5Y, 6Y, 7Y
+
+### CLOTHING:
+- Men's clothing: Sizes like S, M, L, XL, XXL, 2XL, 3XL
+- Women's clothing: Sizes like XS, S, M, L, XL, 1X, 2X, 3X
+
+## NIKE STYLE CODES (SKU):
+Pattern: 6-7 alphanumeric + dash + 3 digits
+Examples: BQ9646-002, DV3853-001, 553558-161, CU4150-002
+
+## PRICE EXTRACTION:
+- Use the FINAL/SALE price (the lower price after discount)
+- If you see "$110.00" crossed out and "$48.99" below it, use $48.99
+
+## DEDUPLICATION RULES:
+1. Each unique SKU + Size = ONE item only
+2. Same SKU + same size + same price appearing twice = count ONCE
+3. Same SKU with DIFFERENT sizes = DIFFERENT items (count each)
+
+Return ONLY valid JSON:
+{
+  "items": [
+    {"name": "Nike Air Pegasus Wave", "sku": "BQ9646-002", "size": "10", "price": 48.99}
+  ],
+  "subtotal": 0,
+  "tax": 0,
+  "total": 0,
+  "orderNumber": "",
+  "orderDate": ""
+}
+
+If no Nike products found:
+{"error": "invalid", "message": "Could not find Nike products in the text."}
+
+---
+OCR TEXT:
+${ocrText}
+---
+
+Parse all items and return JSON. Remember to DEDUPLICATE.`;
+}
+
+function postProcessItems(items) {
+  const seen = new Map();
+  const processed = [];
+  
+  for (const item of items) {
+    const sku = normalizeSkuCode(item.sku);
+    const size = normalizeSize(item.size);
+    const price = parseFloat(item.price) || 0;
+    const name = (item.name || 'Nike Product').trim();
+    
+    if (!sku || price <= 0) {
+      continue;
+    }
+    
+    const key = `${sku}-${size}-${price.toFixed(2)}`;
+    
+    if (seen.has(key)) {
+      console.log(`[Parser] Skipping duplicate: ${key}`);
+      continue;
+    }
+    
+    seen.set(key, true);
+    
+    processed.push({
+      name: name,
+      sku: sku,
+      size: size,
+      price: price
+    });
+  }
+  
+  console.log(`[Parser] Processed ${processed.length} unique items from ${items.length} raw items`);
+  
+  return processed;
+}
+
+function normalizeSkuCode(sku) {
+  if (!sku) return '';
+  
+  let normalized = String(sku).trim().toUpperCase();
+  normalized = normalized.replace(/\s+/g, '').replace(/[-–—]/g, '-');
+  
+  const match = normalized.match(/^([A-Z0-9]{5,8})-?(\d{3})$/);
+  if (match) {
+    return `${match[1]}-${match[2]}`;
+  }
+  
+  return sku.trim();
+}
+
+function normalizeSize(size) {
+  if (!size) return '';
+  
+  let normalized = String(size).trim().toUpperCase();
+  normalized = normalized.replace(/^SIZE\s*/i, '');
+  
+  return normalized;
 }
