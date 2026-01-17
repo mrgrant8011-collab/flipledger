@@ -16,58 +16,36 @@ export default async function handler(req, res) {
   }
 }
 
-/**
- * DETERMINISTIC NIKE RECEIPT PARSER
- * 
- * NO AI structuring. OCR text only.
- * 
- * Item boundary: valid Nike style line
- *   /^\s*Style\s+([A-Z0-9]{2,8}-\d{3})\s*$/i
- * 
- * Junk lines ignored:
- *   "Shop Similar", "IMAGE", "UNAVAILABLE"
- * 
- * For each Style line, look backwards for:
- *   - size: nearest "Size ..." line
- *   - price: nearest "$xx.xx" line above size/style
- *   - name: nearest non-empty, non-junk line above price
- * 
- * NEVER dedupe. Repeats expected.
- */
 function parseNikeReceiptJS(ocrText) {
   const lines = ocrText.split('\n').map(l => l.trim());
   const items = [];
   
-  // Valid Nike style pattern: Style XXXXXX-XXX (2-8 alphanumeric + dash + 3 digits)
+  // Valid Nike style: Style + 2-8 alphanumeric + dash + 3 digits
   const validStyleRegex = /^\s*Style\s+([A-Z0-9]{2,8}-\d{3})\s*$/i;
   
-  // Junk lines to ignore
-  const junkPatterns = [
-    /^Shop Similar$/i,
-    /^IMAGE$/i,
-    /^UNAVAILABLE$/i
-  ];
+  // Junk lines
+  const junkRegex = /^(shop similar|image|unavailable)$/i;
   
-  const isJunk = (line) => junkPatterns.some(p => p.test(line));
+  // Category lines to skip for name
+  const categoryRegex = /^(men'?s?|women'?s?|boy'?s?|girl'?s?|baby|toddler|kid'?s?)\s*(shoes|basketball|running|lifestyle)?$/i;
   
-  // Track rejected style-like lines for debugging
-  const rejectedStyles = [];
-  let styleCount = 0;
+  const rejectedStyleLines = [];
+  let validStyleCount = 0;
   
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     
-    // Check for style-like lines that don't match valid pattern
+    // Track rejected style-like lines
     if (/^Style\s+/i.test(line) && !validStyleRegex.test(line)) {
-      rejectedStyles.push({ line: i, text: line });
+      rejectedStyleLines.push(`Line ${i}: "${line}"`);
       continue;
     }
     
-    // Item boundary = valid Style line
+    // Item boundary = valid Style line only
     const styleMatch = line.match(validStyleRegex);
     if (!styleMatch) continue;
     
-    styleCount++;
+    validStyleCount++;
     const sku = styleMatch[1].toUpperCase();
     
     let size = '';
@@ -75,53 +53,55 @@ function parseNikeReceiptJS(ocrText) {
     let name = '';
     let priceLineIndex = -1;
     
-    // Look backwards up to 10 lines
-    for (let j = i - 1; j >= Math.max(0, i - 10); j--) {
-      const prevLine = lines[j];
-      if (!prevLine || isJunk(prevLine)) continue;
+    // Look ABOVE for size, price
+    for (let j = i - 1; j >= Math.max(0, i - 12); j--) {
+      const prev = lines[j];
+      if (!prev || junkRegex.test(prev)) continue;
       
-      // Size: "Size XX" (supports 7C, 5Y, 10.5, 11, 12, etc)
-      if (!size && /^Size\s+/i.test(prevLine)) {
-        size = prevLine.replace(/^Size\s+/i, '').toUpperCase();
+      // Size
+      if (!size && /^Size\s+/i.test(prev)) {
+        size = prev.replace(/^Size\s+/i, '').toUpperCase();
       }
       
-      // Price: "$XX.XX" (first dollar amount on line)
-      if (!price && /^\$\d+\.\d{2}/.test(prevLine)) {
-        const m = prevLine.match(/^\$(\d+\.\d{2})/);
-        price = parseFloat(m[1]);
+      // Price
+      if (!price && /^\$\d+\.\d{2}/.test(prev)) {
+        price = parseFloat(prev.match(/^\$(\d+\.\d{2})/)[1]);
         priceLineIndex = j;
       }
     }
     
-    // Name: non-empty, non-junk line directly above price
+    // Name = nearest non-empty, non-junk, non-category line ABOVE price
     if (priceLineIndex > 0) {
-      for (let j = priceLineIndex - 1; j >= Math.max(0, priceLineIndex - 3); j--) {
-        const nameLine = lines[j];
-        if (nameLine && !isJunk(nameLine) && !/^\$/.test(nameLine) && !/^Size\s+/i.test(nameLine) && !/^Style\s+/i.test(nameLine)) {
-          name = nameLine.replace(/^"|"$/g, '').trim();
-          break;
-        }
+      for (let j = priceLineIndex - 1; j >= Math.max(0, priceLineIndex - 5); j--) {
+        const n = lines[j];
+        if (!n) continue;
+        if (junkRegex.test(n)) continue;
+        if (categoryRegex.test(n)) continue;
+        if (/^\$/.test(n)) continue;
+        if (/^Size\s+/i.test(n)) continue;
+        if (/^Style\s+/i.test(n)) continue;
+        if (/\//.test(n) && n.length < 30) continue; // color lines like "Black/White"
+        
+        name = n.replace(/^"|"$/g, '').trim();
+        break;
       }
     }
     
     const needsReview = !name || !size || !price;
-    
-    items.push({ name: name || '', sku, size, price, needsReview });
+    items.push({ name, sku, size, price, needsReview });
   }
   
   const finalItemsCount = items.length;
   
-  // Logging
-  console.log(`[Parser] styleCount: ${styleCount}`);
+  // Logs
+  console.log(`[Parser] validStyleCount: ${validStyleCount}`);
   console.log(`[Parser] finalItemsCount: ${finalItemsCount}`);
-  
-  if (rejectedStyles.length > 0) {
-    console.log(`[Parser] Rejected style-like lines:`);
-    rejectedStyles.forEach(r => console.log(`  Line ${r.line}: "${r.text}"`));
+  if (rejectedStyleLines.length > 0) {
+    console.log(`[Parser] rejectedStyleLines:`);
+    rejectedStyleLines.forEach(r => console.log(`  ${r}`));
   }
-  
-  if (finalItemsCount !== styleCount) {
-    console.warn(`[Parser] WARNING: finalItemsCount (${finalItemsCount}) !== styleCount (${styleCount})`);
+  if (finalItemsCount !== validStyleCount) {
+    console.error(`[Parser] ERROR: finalItemsCount !== validStyleCount`);
   }
   
   return { items };
