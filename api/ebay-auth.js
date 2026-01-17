@@ -21,11 +21,16 @@ export default function handler(req, res) {
     });
   }
   
-  // Request minimal scopes for sales sync
+  // Request ALL scopes - fulfillment, finances, browse, inventory, and sell.item for Trading API
   const scopes = [
     'https://api.ebay.com/oauth/api_scope',
     'https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly',
-    'https://api.ebay.com/oauth/api_scope/sell.finances'
+    'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
+    'https://api.ebay.com/oauth/api_scope/sell.finances',
+    'https://api.ebay.com/oauth/api_scope/buy.browse',
+    'https://api.ebay.com/oauth/api_scope/sell.inventory.readonly',
+    'https://api.ebay.com/oauth/api_scope/sell.inventory',
+    'https://api.ebay.com/oauth/api_scope/sell.marketing.readonly'
   ].join(' ');
   
   // eBay OAuth URL

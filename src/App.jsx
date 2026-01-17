@@ -1564,6 +1564,9 @@ function App() {
           orderId: s.id // Map id to orderId for upsert
         }));
         
+        // Create a map of images by order ID
+        const imageMap = new Map(salesWithOrderId.map(s => [s.id, s.image]));
+        
         // UPSERT to Supabase - database handles duplicates
         const savedPending = await upsertPendingCosts(salesWithOrderId);
         if (savedPending.length > 0) {
@@ -1582,7 +1585,8 @@ function App() {
                 fees: parseFloat(item.fees) || 0,
                 saleDate: item.sale_date,
                 orderId: item.order_id || '',
-                orderNumber: item.order_number || ''
+                orderNumber: item.order_number || '',
+                image: imageMap.get(item.order_id) || ''
               }));
             return [...prev, ...newItems];
           });
@@ -2434,6 +2438,9 @@ function App() {
     }
     
     if (itemsWithOrderId.length > 0) {
+      // Create image map before upsert
+      const imageMap = new Map(itemsWithOrderId.map(item => [item.orderId || item.id, item.image]));
+      
       // UPSERT to Supabase - database handles duplicates via UNIQUE constraint
       const savedPending = await upsertPendingCosts(itemsWithOrderId);
       if (savedPending.length > 0) {
@@ -2452,7 +2459,8 @@ function App() {
               fees: parseFloat(item.fees) || 0,
               saleDate: item.sale_date,
               orderId: item.order_id,
-              orderNumber: item.order_number
+              orderNumber: item.order_number,
+              image: imageMap.get(item.order_id) || ''
             }));
           return [...prev, ...newItems];
         });
