@@ -17,71 +17,112 @@ export default async function handler(req, res) {
 }
 
 /**
- * RECEIPT PARSER - EXACT EXTRACTION ONLY
+ * DETERMINISTIC NIKE RECEIPT PARSER
  * 
- * NO paraphrasing, rewriting, summarizing, or cleaning
- * NO merging or deduplication
- * NO inferring missing fields
- * NO renaming products
+ * NO AI structuring. OCR text only.
  * 
- * Extraction:
- *   - name: EXACT from receipt
- *   - sku: EXACT Style code
- *   - size: EXACT Size value
- *   - price: EXACT sale price
+ * Item boundary: valid Nike style line
+ *   /^\s*Style\s+([A-Z0-9]{2,8}-\d{3})\s*$/i
  * 
- * Normalization allowed:
- *   - trim whitespace
- *   - remove quotes
- *   - size casing (7c → 7C)
- *   - currency ($87.97 → 87.97)
+ * Junk lines ignored:
+ *   "Shop Similar", "IMAGE", "UNAVAILABLE"
+ * 
+ * For each Style line, look backwards for:
+ *   - size: nearest "Size ..." line
+ *   - price: nearest "$xx.xx" line above size/style
+ *   - name: nearest non-empty, non-junk line above price
+ * 
+ * NEVER dedupe. Repeats expected.
  */
 function parseNikeReceiptJS(ocrText) {
   const lines = ocrText.split('\n').map(l => l.trim());
   const items = [];
   
+  // Valid Nike style pattern: Style XXXXXX-XXX (2-8 alphanumeric + dash + 3 digits)
+  const validStyleRegex = /^\s*Style\s+([A-Z0-9]{2,8}-\d{3})\s*$/i;
+  
+  // Junk lines to ignore
+  const junkPatterns = [
+    /^Shop Similar$/i,
+    /^IMAGE$/i,
+    /^UNAVAILABLE$/i
+  ];
+  
+  const isJunk = (line) => junkPatterns.some(p => p.test(line));
+  
+  // Track rejected style-like lines for debugging
+  const rejectedStyles = [];
+  let styleCount = 0;
+  
   for (let i = 0; i < lines.length; i++) {
-    // Item boundary = Style line
-    const styleMatch = lines[i].match(/^Style\s+([A-Z0-9]+-\d{3})$/i);
+    const line = lines[i];
+    
+    // Check for style-like lines that don't match valid pattern
+    if (/^Style\s+/i.test(line) && !validStyleRegex.test(line)) {
+      rejectedStyles.push({ line: i, text: line });
+      continue;
+    }
+    
+    // Item boundary = valid Style line
+    const styleMatch = line.match(validStyleRegex);
     if (!styleMatch) continue;
     
-    // EXACT extraction
-    const sku = styleMatch[1].toUpperCase(); // normalize casing only
+    styleCount++;
+    const sku = styleMatch[1].toUpperCase();
+    
     let size = '';
     let price = 0;
     let name = '';
     let priceLineIndex = -1;
     
-    // Look back up to 8 lines
-    for (let j = i - 1; j >= Math.max(0, i - 8); j--) {
-      const line = lines[j];
-      if (!line) continue;
+    // Look backwards up to 10 lines
+    for (let j = i - 1; j >= Math.max(0, i - 10); j--) {
+      const prevLine = lines[j];
+      if (!prevLine || isJunk(prevLine)) continue;
       
-      // size: EXACT, normalize casing only
-      if (!size && /^Size\s+/i.test(line)) {
-        size = line.replace(/^Size\s+/i, '').toUpperCase();
+      // Size: "Size XX" (supports 7C, 5Y, 10.5, 11, 12, etc)
+      if (!size && /^Size\s+/i.test(prevLine)) {
+        size = prevLine.replace(/^Size\s+/i, '').toUpperCase();
       }
       
-      // price: EXACT number
-      if (!price && /^\$\d+\.\d{2}/.test(line)) {
-        const m = line.match(/^\$(\d+\.\d{2})/);
+      // Price: "$XX.XX" (first dollar amount on line)
+      if (!price && /^\$\d+\.\d{2}/.test(prevLine)) {
+        const m = prevLine.match(/^\$(\d+\.\d{2})/);
         price = parseFloat(m[1]);
         priceLineIndex = j;
       }
     }
     
-    // name: EXACT line above price, only trim/remove quotes
+    // Name: non-empty, non-junk line directly above price
     if (priceLineIndex > 0) {
-      name = lines[priceLineIndex - 1] || '';
-      name = name.trim().replace(/^"|"$/g, '');
+      for (let j = priceLineIndex - 1; j >= Math.max(0, priceLineIndex - 3); j--) {
+        const nameLine = lines[j];
+        if (nameLine && !isJunk(nameLine) && !/^\$/.test(nameLine) && !/^Size\s+/i.test(nameLine) && !/^Style\s+/i.test(nameLine)) {
+          name = nameLine.replace(/^"|"$/g, '').trim();
+          break;
+        }
+      }
     }
     
-    // needsReview if any field missing
-    const needsReview = !name || !sku || !size || !price;
+    const needsReview = !name || !size || !price;
     
-    items.push({ name, sku, size, price, needsReview });
+    items.push({ name: name || '', sku, size, price, needsReview });
   }
   
-  console.log(`[Parser] Found ${items.length} items`);
+  const finalItemsCount = items.length;
+  
+  // Logging
+  console.log(`[Parser] styleCount: ${styleCount}`);
+  console.log(`[Parser] finalItemsCount: ${finalItemsCount}`);
+  
+  if (rejectedStyles.length > 0) {
+    console.log(`[Parser] Rejected style-like lines:`);
+    rejectedStyles.forEach(r => console.log(`  Line ${r.line}: "${r.text}"`));
+  }
+  
+  if (finalItemsCount !== styleCount) {
+    console.warn(`[Parser] WARNING: finalItemsCount (${finalItemsCount}) !== styleCount (${styleCount})`);
+  }
+  
   return { items };
 }
