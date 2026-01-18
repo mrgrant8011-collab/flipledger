@@ -32,7 +32,6 @@ export default async function handler(req, res) {
     let response;
 
     if (mode === 'text' && text) {
-      // TEXT MODE: OCR text already extracted, just structure it
       response = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 4096,
@@ -50,11 +49,10 @@ For each item, find:
 - Price - Use the SALE/FINAL price (the lower one they actually paid), NOT the original price
 
 CRITICAL RULES:
-1. Each unique SKU + Size combination = ONE item (even if text repeats due to chunk overlap)
+1. Each receipt line item = ONE item, even if SKU, size, and price repeat. Do NOT dedupe or merge.
 2. If you see "$48.99" and "$110.00" near each other, use $48.99 (the sale price)
 3. Look for "Final Price" amounts - those are the correct prices
 4. Style codes look like: BQ9646-002, DV3853-001, 553558-161, CU4150-002, FN7344-100
-5. Remove duplicates - same SKU + same size + same price = count once
 
 Here is the OCR text:
 ---
@@ -77,7 +75,6 @@ If you cannot find any Nike products, return:
         ],
       });
     } else {
-      // IMAGE MODE: Original image-based scanning
       let base64Data = image;
       let mediaType = 'image/jpeg';
       
@@ -108,7 +105,11 @@ If you cannot find any Nike products, return:
                 type: 'text',
                 text: `Extract all items from this Nike order screenshot.
 
-For each item find: name, style code (SKU), size, and SALE price (lower price, not crossed out).
+CRITICAL:
+- Treat EACH receipt line item as separate.
+- Do NOT merge, group, or deduplicate.
+
+For each item find: name, style code (SKU), size, and SALE price.
 
 Return JSON:
 {
@@ -127,10 +128,8 @@ If no Nike products found:
       });
     }
 
-    // Parse Claude's response
     const content = response.content[0].text;
-    
-    // Try to extract JSON from response
+
     let result;
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -139,11 +138,10 @@ If no Nike products found:
       } else {
         throw new Error('No JSON found in response');
       }
-    } catch (parseError) {
-      console.error('Failed to parse Claude response:', content);
-      return res.status(500).json({ 
-        error: 'Failed to parse receipt', 
-        message: 'Could not extract items. Please try a clearer screenshot.' 
+    } catch {
+      return res.status(500).json({
+        error: 'Failed to parse receipt',
+        message: 'Could not extract items. Please try again.'
       });
     }
 
@@ -154,10 +152,9 @@ If no Nike products found:
     return res.status(200).json(result);
 
   } catch (error) {
-    console.error('Receipt scan error:', error);
-    return res.status(500).json({ 
-      error: 'Scan failed', 
-      message: error.message || 'Failed to scan receipt. Please try again.' 
+    return res.status(500).json({
+      error: 'Scan failed',
+      message: error.message
     });
   }
 }
