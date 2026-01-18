@@ -1698,7 +1698,8 @@ function App() {
       if (result.error) {
         throw new Error(result.message || result.error);
       }
-      
+      // IMPORTANT: Do not dedupe receipt items. Each receipt line = one purchase.
+
       // Extract items (do NOT dedupe — each receipt line is a separate purchase)
 const items = (result.items || []).map(item => ({
   name: item.name || 'Nike Product',
