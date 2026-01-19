@@ -1,3 +1,4 @@
+import CopCheck from './CopCheck';
 import { useState, useEffect, Component } from 'react';
 import * as XLSX from 'xlsx';
 import Tesseract from 'tesseract.js';
