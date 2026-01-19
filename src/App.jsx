@@ -2454,6 +2454,7 @@ console.log('Found', items.length, 'items');
     { id: 'reports', label: 'CPA Reports', icon: '📊' },
     { type: 'divider' },
     { id: 'import', label: 'Import', icon: '📥', badge: pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length || null },
+   { id: 'copcheck', label: 'Cop Check', icon: '🔍' },
     { id: 'settings', label: 'Settings', icon: '⚙' },
   ];
 
@@ -5816,6 +5817,7 @@ Let me know if you need anything else.`;
         }
       `}</style>
       
+      {page === 'copcheck' && <CopCheck />}
       {/* NIKE EXAMPLE MODAL */}
       {showNikeExample && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }}>
