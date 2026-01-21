@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 
 const EXAMPLE_SKUS = ["DZ5485-612", "FQ1759-001", "DV1748-601", "IE0219", "HQ6916-300"];
+const STOCKX_SELLER_FEE = 0.095; // 9.5% seller fee
 
 function getLiquidityLabel(score) {
   if (score >= 70) return "High";
@@ -13,6 +14,14 @@ function getSpreadLabel(spreadPct) {
   if (spreadPct <= 5) return "Tight";
   if (spreadPct <= 10) return "Moderate";
   return "Wide";
+}
+
+function getVolumeLabel(sales72h) {
+  if (sales72h >= 20) return "Very High";
+  if (sales72h >= 10) return "High";
+  if (sales72h >= 5) return "Moderate";
+  if (sales72h >= 1) return "Low";
+  return "Dead";
 }
 
 // Particle component for celebrations
@@ -48,11 +57,21 @@ function Particles({ color, count = 30 }) {
 
 export default function CopCheck() {
   const [sku, setSku] = useState("");
+  const [cost, setCost] = useState("");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [countingScore, setCountingScore] = useState(0);
   const [jackpot, setJackpot] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Check for mobile
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Counting animation for score
   useEffect(() => {
@@ -68,7 +87,6 @@ export default function CopCheck() {
         if (current >= target) {
           setCountingScore(target);
           clearInterval(timer);
-          // Trigger jackpot effect for COP
           if (result.verdict === "COP") {
             setJackpot(true);
             setTimeout(() => setJackpot(false), 3000);
@@ -91,43 +109,37 @@ export default function CopCheck() {
     setJackpot(false);
 
     try {
-      const response = await fetch(`/api/stockx-market?sku=${encodeURIComponent(sku.trim())}`);
+      const response = await fetch(`/api/cop-check?sku=${encodeURIComponent(sku.trim())}`);
       const data = await response.json();
 
       if (!response.ok) {
-        if (response.status === 404 || data.error === "SKU_NOT_FOUND") {
-          setResult({
-            isUnknown: true,
-            name: "Unknown SKU",
-            verdict: "DROP",
-            overallLiquidityScore: 0,
-            medianSpreadPct: null,
-            sizesWithBidsPct: 0,
-            bestSizes: [],
-            avoidSizes: [],
-            variants: [],
-          });
-        } else {
-          setResult({
-            isUnknown: true,
-            name: "Error fetching data",
-            verdict: "DROP",
-            overallLiquidityScore: 0,
-            medianSpreadPct: null,
-            sizesWithBidsPct: 0,
-            bestSizes: [],
-            avoidSizes: [],
-            variants: [],
-          });
-        }
+        setResult({
+          isUnknown: true,
+          name: data.error === "SKU_NOT_FOUND" ? "Unknown SKU" : "Error fetching data",
+          verdict: "DROP",
+          overallLiquidityScore: 0,
+          medianSpreadPct: null,
+          sizesWithBidsPct: 0,
+          salesLast72Hours: 0,
+          estimated90DaySales: 0,
+          bestSizes: [],
+          avoidSizes: [],
+          variants: [],
+        });
       } else {
         setResult({
           isUnknown: false,
           name: data.title || "Unknown Product",
+          image: data.image || null,
           verdict: data.verdict || "DROP",
           overallLiquidityScore: data.overallLiquidityScore || 0,
           medianSpreadPct: data.medianSpreadPct,
           sizesWithBidsPct: data.sizesWithBidsPct || 0,
+          lowestAsk: data.lowestAsk || 0,
+          highestBid: data.highestBid || 0,
+          lastSale: data.lastSale || 0,
+          salesLast72Hours: data.salesLast72Hours || 0,
+          estimated90DaySales: data.estimated90DaySales || 0,
           bestSizes: data.bestSizes || [],
           avoidSizes: data.avoidSizes || [],
           variants: data.variants || [],
@@ -136,7 +148,6 @@ export default function CopCheck() {
         });
       }
       
-      // Dramatic reveal delay
       setTimeout(() => setShowResult(true), 300);
     } catch (err) {
       setResult({
@@ -146,6 +157,8 @@ export default function CopCheck() {
         overallLiquidityScore: 0,
         medianSpreadPct: null,
         sizesWithBidsPct: 0,
+        salesLast72Hours: 0,
+        estimated90DaySales: 0,
         bestSizes: [],
         avoidSizes: [],
         variants: [],
@@ -158,6 +171,7 @@ export default function CopCheck() {
 
   const handleClear = () => {
     setSku("");
+    setCost("");
     setResult(null);
     setShowResult(false);
     setCountingScore(0);
@@ -168,25 +182,23 @@ export default function CopCheck() {
     if (e.key === "Enter") handleCheck();
   };
 
+  // Calculate profit based on user cost
+  const calculateProfit = (bid) => {
+    if (!cost || !bid) return null;
+    const costNum = parseFloat(cost);
+    if (isNaN(costNum) || costNum <= 0) return null;
+    
+    const payout = bid * (1 - STOCKX_SELLER_FEE); // After StockX fees
+    const profit = payout - costNum;
+    const roi = ((profit / costNum) * 100);
+    
+    return { profit, roi, payout };
+  };
+
   const verdictColors = {
-    COP: { 
-      bg: "rgba(0, 255, 100, 0.15)", 
-      border: "#00ff64", 
-      text: "#00ff64", 
-      glow: "0 0 60px rgba(0, 255, 100, 0.6), 0 0 120px rgba(0, 255, 100, 0.4), inset 0 0 60px rgba(0, 255, 100, 0.2)" 
-    },
-    MAYBE: { 
-      bg: "rgba(255, 220, 0, 0.15)", 
-      border: "#ffdc00", 
-      text: "#ffdc00", 
-      glow: "0 0 60px rgba(255, 220, 0, 0.5), 0 0 120px rgba(255, 220, 0, 0.3), inset 0 0 60px rgba(255, 220, 0, 0.15)" 
-    },
-    DROP: { 
-      bg: "rgba(255, 50, 50, 0.15)", 
-      border: "#ff3232", 
-      text: "#ff3232", 
-      glow: "0 0 60px rgba(255, 50, 50, 0.5), 0 0 120px rgba(255, 50, 50, 0.3), inset 0 0 60px rgba(255, 50, 50, 0.15)" 
-    },
+    COP: { bg: "rgba(0, 255, 100, 0.15)", border: "#00ff64", text: "#00ff64" },
+    MAYBE: { bg: "rgba(255, 220, 0, 0.15)", border: "#ffdc00", text: "#ffdc00" },
+    DROP: { bg: "rgba(255, 50, 50, 0.15)", border: "#ff3232", text: "#ff3232" },
   };
 
   const liquidityColor = (score) => {
@@ -202,8 +214,20 @@ export default function CopCheck() {
     return "#ff3232";
   };
 
+  const volumeColor = (sales72h) => {
+    if (sales72h >= 10) return "#00ff64";
+    if (sales72h >= 5) return "#ffdc00";
+    return "#ff3232";
+  };
+
+  const profitColor = (profit) => {
+    if (profit > 0) return "#00ff64";
+    if (profit < 0) return "#ff3232";
+    return "#ffdc00";
+  };
+
   const formatCurrency = (value) => {
-    if (value === null || value === undefined) return "—";
+    if (value === null || value === undefined || value === 0) return "—";
     return `$${value.toLocaleString()}`;
   };
 
@@ -212,157 +236,55 @@ export default function CopCheck() {
     return `${value.toFixed(1)}%`;
   };
 
+  const profitData = result?.highestBid ? calculateProfit(result.highestBid) : null;
+
   return (
     <div style={styles.page}>
       <style>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        @keyframes pulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.6; transform: scale(0.98); }
-        }
-        @keyframes glowPulse {
-          0%, 100% { filter: brightness(1) drop-shadow(0 0 10px currentColor); }
-          50% { filter: brightness(1.4) drop-shadow(0 0 30px currentColor); }
-        }
-        @keyframes slideIn {
-          0% { opacity: 0; transform: translateY(40px) scale(0.9); }
-          100% { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @keyframes verdictSlam {
-          0% { transform: scale(3) rotate(-10deg); opacity: 0; filter: blur(20px); }
-          50% { transform: scale(0.9) rotate(2deg); filter: blur(0); }
-          70% { transform: scale(1.1) rotate(-1deg); }
-          100% { transform: scale(1) rotate(0deg); opacity: 1; }
-        }
-        @keyframes jackpotFlash {
-          0%, 100% { background: rgba(0, 255, 100, 0.05); }
-          25% { background: rgba(0, 255, 100, 0.2); }
-          50% { background: rgba(0, 255, 100, 0.05); }
-          75% { background: rgba(0, 255, 100, 0.15); }
-        }
-        @keyframes barPulse {
-          0%, 100% { opacity: 1; filter: brightness(1); }
-          50% { opacity: 0.8; filter: brightness(1.3); }
-        }
-        @keyframes barGrow {
-          0% { width: 0%; }
-        }
-        @keyframes liveDot {
-          0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 10px currentColor; }
-          50% { transform: scale(1.8); opacity: 0.6; box-shadow: 0 0 25px currentColor; }
-        }
-        @keyframes shimmer {
-          0% { left: -100%; }
-          100% { left: 200%; }
-        }
-        @keyframes textGlow {
-          0%, 100% { text-shadow: 0 0 20px currentColor, 0 0 40px currentColor; }
-          50% { text-shadow: 0 0 40px currentColor, 0 0 80px currentColor, 0 0 120px currentColor; }
-        }
-        @keyframes borderPulse {
-          0%, 100% { border-color: currentColor; }
-          50% { border-color: transparent; }
-        }
-        @keyframes float {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-5px); }
-        }
-        @keyframes particleFall {
-          0% { transform: translateY(-20px) rotate(0deg); opacity: 1; }
-          100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
-        }
-        @keyframes scoreCount {
-          0% { transform: scale(1); }
-          50% { transform: scale(1.1); }
-          100% { transform: scale(1); }
-        }
-        @keyframes slotSpin {
-          0% { transform: translateY(0); }
-          25% { transform: translateY(-20px); }
-          50% { transform: translateY(0); }
-          75% { transform: translateY(10px); }
-          100% { transform: translateY(0); }
-        }
-        @keyframes neonFlicker {
-          0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; }
-          20%, 24%, 55% { opacity: 0.6; }
-        }
-        @keyframes shake {
-          0%, 100% { transform: translateX(0); }
-          10%, 30%, 50%, 70%, 90% { transform: translateX(-2px); }
-          20%, 40%, 60%, 80% { transform: translateX(2px); }
-        }
-        @keyframes rainbow {
-          0% { filter: hue-rotate(0deg); }
-          100% { filter: hue-rotate(360deg); }
-        }
-        @keyframes scannerPulse {
-          0%, 100% { transform: scale(1); opacity: 0.8; }
-          50% { transform: scale(1.5); opacity: 0.2; }
-        }
-        @keyframes revealLine {
-          0% { width: 0; }
-          50% { width: 100%; }
-          100% { width: 0; left: 100%; }
-        }
-        @keyframes breathe {
-          0%, 100% { box-shadow: 0 0 30px currentColor, inset 0 0 30px rgba(255,255,255,0.05); }
-          50% { box-shadow: 0 0 60px currentColor, 0 0 100px currentColor, inset 0 0 50px rgba(255,255,255,0.1); }
-        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        @keyframes slideIn { 0% { opacity: 0; transform: translateY(20px); } 100% { opacity: 1; transform: translateY(0); } }
+        @keyframes verdictSlam { 0% { transform: scale(2); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes liveDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        @keyframes shimmer { 0% { left: -100%; } 100% { left: 200%; } }
+        @keyframes particleFall { 0% { transform: translateY(-20px); opacity: 1; } 100% { transform: translateY(100vh); opacity: 0; } }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+        @keyframes barGrow { 0% { width: 0%; } }
+        * { box-sizing: border-box; }
       `}</style>
       
-      {/* Jackpot Particles */}
       {jackpot && <Particles color="#00ff64" count={50} />}
       
-      <div style={{
-        ...styles.container,
-        ...(jackpot ? { animation: "shake 0.5s ease-in-out" } : {}),
-      }}>
+      <div style={styles.container}>
         {/* Header */}
         <div style={styles.header}>
-          <div style={styles.titleWrapper}>
-            <div style={styles.liveBadge}>
-              <span style={styles.liveDot}></span>
-              <span>LIVE</span>
-            </div>
+          <div style={styles.titleRow}>
+            <span style={styles.liveBadge}><span style={styles.liveDot}></span>LIVE</span>
             <h1 style={styles.title}>COP CHECK</h1>
-            <div style={styles.liveBadge}>
-              <span style={styles.liveDot}></span>
-              <span>24/7</span>
-            </div>
           </div>
-          <p style={styles.subtitle}>🎰 REAL-TIME MARKET SCANNER 🎰</p>
+          <p style={styles.subtitle}>REAL-TIME MARKET SCANNER</p>
         </div>
 
-        {/* Search Terminal */}
-        <div style={styles.searchTerminal}>
-          <div style={styles.terminalHeader}>
-            <div style={styles.terminalDots}>
-              <span style={styles.terminalDotRed}></span>
-              <span style={styles.terminalDotYellow}></span>
-              <span style={styles.terminalDotGreen}></span>
-            </div>
-            <span style={styles.terminalTitle}>💎 SKU SCANNER</span>
-            <div style={styles.terminalStatus}>
-              <span style={styles.statusPulse}></span>
-              <span>READY TO SCAN</span>
-            </div>
+        {/* Search Box */}
+        <div style={styles.searchBox}>
+          <div style={styles.inputGroup}>
+            <input
+              value={sku}
+              onChange={(e) => setSku(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Enter SKU..."
+              disabled={loading}
+              style={styles.input}
+            />
+            <input
+              value={cost}
+              onChange={(e) => setCost(e.target.value.replace(/[^0-9.]/g, ''))}
+              placeholder="Your cost $"
+              disabled={loading}
+              style={{...styles.input, ...styles.costInput}}
+            />
           </div>
-          <div style={styles.inputRow}>
-            <div style={styles.inputWrapper}>
-              <span style={styles.inputPrefix}>▶</span>
-              <input
-                value={sku}
-                onChange={(e) => setSku(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="DROP YOUR SKU HERE..."
-                disabled={loading}
-                style={styles.input}
-              />
-            </div>
+          <div style={styles.buttonRow}>
             <button
               onClick={handleCheck}
               disabled={loading || !sku.trim()}
@@ -371,387 +293,219 @@ export default function CopCheck() {
                 ...(loading || !sku.trim() ? styles.checkBtnDisabled : {}),
               }}
             >
-              {loading ? "🎰 SPINNING..." : "⚡ HIT IT"}
+              {loading ? "SCANNING..." : "⚡ HIT IT"}
             </button>
             {(sku || result) && (
-              <button onClick={handleClear} disabled={loading} style={styles.clearBtn}>
-                ✕
-              </button>
+              <button onClick={handleClear} disabled={loading} style={styles.clearBtn}>✕</button>
             )}
           </div>
 
-          <div style={styles.chipsRow}>
-            <span style={styles.chipsLabel}>🔥 HOT PICKS</span>
-            <div style={styles.chipsContainer}>
-              {EXAMPLE_SKUS.map((s) => (
-                <button key={s} onClick={() => setSku(s)} style={styles.chip}>
-                  {s}
-                </button>
-              ))}
-            </div>
+          {/* Quick SKUs */}
+          <div style={styles.quickSkus}>
+            {EXAMPLE_SKUS.slice(0, isMobile ? 3 : 5).map((s) => (
+              <button key={s} onClick={() => setSku(s)} style={styles.skuChip}>{s}</button>
+            ))}
           </div>
         </div>
 
-        {/* Loading - Casino Style */}
+        {/* Loading */}
         {loading && (
-          <div style={styles.loadingCard}>
-            <div style={styles.slotMachine}>
-              <div style={styles.slotWindow}>
-                <div style={styles.slotReel}>
-                  <span style={styles.slotItem}>💰</span>
-                  <span style={styles.slotItem}>🔥</span>
-                  <span style={styles.slotItem}>💎</span>
-                  <span style={styles.slotItem}>⚡</span>
-                </div>
-              </div>
-              <div style={styles.slotWindow}>
-                <div style={{...styles.slotReel, animationDelay: "0.1s"}}>
-                  <span style={styles.slotItem}>💎</span>
-                  <span style={styles.slotItem}>💰</span>
-                  <span style={styles.slotItem}>🔥</span>
-                  <span style={styles.slotItem}>⚡</span>
-                </div>
-              </div>
-              <div style={styles.slotWindow}>
-                <div style={{...styles.slotReel, animationDelay: "0.2s"}}>
-                  <span style={styles.slotItem}>⚡</span>
-                  <span style={styles.slotItem}>💎</span>
-                  <span style={styles.slotItem}>💰</span>
-                  <span style={styles.slotItem}>🔥</span>
-                </div>
-              </div>
-            </div>
-            <span style={styles.loadingText}>SCANNING FOR GEMS...</span>
-            <div style={styles.loadingBar}>
-              <div style={styles.loadingBarFill}></div>
-            </div>
+          <div style={styles.loadingBox}>
+            <div style={styles.spinner}></div>
+            <span style={styles.loadingText}>Scanning market...</span>
           </div>
         )}
 
         {/* Result */}
-        {result && !loading && (
-          <div style={{
-            ...styles.resultCard,
-            ...(jackpot ? { animation: "jackpotFlash 0.3s ease-in-out infinite" } : {}),
-          }}>
-            {/* Product Header */}
-            <div style={styles.productHeader}>
+        {result && !loading && showResult && (
+          <div style={styles.resultCard}>
+            {/* Product Info */}
+            <div style={styles.productRow}>
+              {result.image && (
+                <img src={result.image} alt="" style={styles.productImg} />
+              )}
               <div style={styles.productInfo}>
-                {result.isUnknown && <span style={styles.unknownBadge}>⚠ NOT FOUND</span>}
                 <span style={styles.productName}>{result.name}</span>
-              </div>
-              <div style={styles.productMeta}>
-                <span style={styles.skuLabel}>SKU</span>
-                <span style={styles.skuValue}>{sku.toUpperCase()}</span>
+                <span style={styles.productSku}>{sku.toUpperCase()}</span>
               </div>
             </div>
 
-            {/* VERDICT - THE BIG REVEAL */}
-            {showResult && (
-              <div 
-                style={{
-                  ...styles.verdictSection,
-                  background: verdictColors[result.verdict]?.bg,
-                  borderColor: verdictColors[result.verdict]?.border,
-                  boxShadow: verdictColors[result.verdict]?.glow,
-                  animation: "breathe 2s ease-in-out infinite",
-                }}
-              >
-                <div style={styles.verdictContent}>
-                  <div style={styles.verdictLeft}>
-                    <span style={styles.verdictLabel}>
-                      {result.verdict === "COP" && "🎰 JACKPOT 🎰"}
-                      {result.verdict === "MAYBE" && "⚠️ CAUTION ⚠️"}
-                      {result.verdict === "DROP" && "🚫 SKIP IT 🚫"}
-                    </span>
-                    <div 
-                      style={{ 
-                        ...styles.verdictValue, 
-                        color: verdictColors[result.verdict]?.text,
-                        animation: "verdictSlam 0.6s ease-out, textGlow 1.5s ease-in-out infinite",
-                      }}
-                    >
-                      {result.verdict === "COP" && "🔥 COP 🔥"}
-                      {result.verdict === "MAYBE" && "🤔 MAYBE"}
-                      {result.verdict === "DROP" && "❌ DROP"}
-                    </div>
-                    <span 
-                      style={{
-                        ...styles.verdictTag,
-                        background: verdictColors[result.verdict]?.bg,
-                        borderColor: verdictColors[result.verdict]?.border,
-                        color: verdictColors[result.verdict]?.text,
-                      }}
-                    >
-                      {result.verdict === "COP" && "💰 HIGH LIQUIDITY • BUY NOW 💰"}
-                      {result.verdict === "MAYBE" && "⚖️ MODERATE • PROCEED WITH CAUTION"}
-                      {result.verdict === "DROP" && "📉 LOW LIQUIDITY • WALK AWAY"}
+            {/* Verdict */}
+            <div style={{
+              ...styles.verdictBox,
+              background: verdictColors[result.verdict]?.bg,
+              borderColor: verdictColors[result.verdict]?.border,
+            }}>
+              <div style={styles.verdictMain}>
+                <span style={{
+                  ...styles.verdictText,
+                  color: verdictColors[result.verdict]?.text,
+                  animation: "verdictSlam 0.4s ease-out",
+                }}>
+                  {result.verdict === "COP" && "🔥 COP"}
+                  {result.verdict === "MAYBE" && "🤔 MAYBE"}
+                  {result.verdict === "DROP" && "❌ DROP"}
+                </span>
+                <div style={styles.scoreCircle}>
+                  <svg viewBox="0 0 100 100" style={styles.scoreSvg}>
+                    <circle cx="50" cy="50" r="42" fill="none" stroke="#1a1a2e" strokeWidth="6" />
+                    <circle 
+                      cx="50" cy="50" r="42" fill="none" 
+                      stroke={liquidityColor(result.overallLiquidityScore)}
+                      strokeWidth="6" strokeLinecap="round"
+                      strokeDasharray={`${countingScore * 2.64} 264`}
+                      transform="rotate(-90 50 50)"
+                      style={{ filter: `drop-shadow(0 0 8px ${liquidityColor(result.overallLiquidityScore)})` }}
+                    />
+                  </svg>
+                  <span style={{...styles.scoreNum, color: liquidityColor(result.overallLiquidityScore)}}>{countingScore}</span>
+                </div>
+              </div>
+              <span style={styles.verdictHint}>
+                {result.verdict === "COP" && "High liquidity • Buy with confidence"}
+                {result.verdict === "MAYBE" && "Moderate liquidity • Proceed carefully"}
+                {result.verdict === "DROP" && "Low liquidity • Skip this one"}
+              </span>
+            </div>
+
+            {/* Profit Calculator - Only show if cost entered */}
+            {profitData && (
+              <div style={{
+                ...styles.profitBox,
+                borderColor: profitColor(profitData.profit),
+                background: profitData.profit >= 0 ? "rgba(0, 255, 100, 0.1)" : "rgba(255, 50, 50, 0.1)",
+              }}>
+                <div style={styles.profitRow}>
+                  <div style={styles.profitItem}>
+                    <span style={styles.profitLabel}>Your Cost</span>
+                    <span style={styles.profitValue}>${parseFloat(cost).toFixed(0)}</span>
+                  </div>
+                  <div style={styles.profitItem}>
+                    <span style={styles.profitLabel}>Payout (after fees)</span>
+                    <span style={styles.profitValue}>${profitData.payout.toFixed(0)}</span>
+                  </div>
+                  <div style={styles.profitItem}>
+                    <span style={styles.profitLabel}>Est. Profit</span>
+                    <span style={{...styles.profitValue, color: profitColor(profitData.profit), fontSize: 24}}>
+                      {profitData.profit >= 0 ? "+" : ""}{profitData.profit.toFixed(0)}
                     </span>
                   </div>
-                  
-                  {/* Animated Score */}
-                  <div style={styles.scoreCircleWrapper}>
-                    <svg viewBox="0 0 120 120" style={styles.scoreSvg}>
-                      <circle cx="60" cy="60" r="52" fill="none" stroke="#1a1a2e" strokeWidth="8" />
-                      <circle 
-                        cx="60" 
-                        cy="60" 
-                        r="52" 
-                        fill="none" 
-                        stroke={liquidityColor(result.overallLiquidityScore)}
-                        strokeWidth="8"
-                        strokeLinecap="round"
-                        strokeDasharray={`${countingScore * 3.27} 327`}
-                        transform="rotate(-90 60 60)"
-                        style={{ 
-                          filter: `drop-shadow(0 0 15px ${liquidityColor(result.overallLiquidityScore)})`,
-                          transition: "stroke-dasharray 0.1s ease-out",
-                        }}
-                      />
-                    </svg>
-                    <div style={styles.scoreInner}>
-                      <span 
-                        style={{ 
-                          ...styles.scoreNumber, 
-                          color: liquidityColor(result.overallLiquidityScore),
-                          animation: countingScore < result.overallLiquidityScore ? "scoreCount 0.1s ease-in-out infinite" : "none",
-                        }}
-                      >
-                        {countingScore}
-                      </span>
-                      <span style={styles.scoreMax}>/100</span>
-                    </div>
+                  <div style={styles.profitItem}>
+                    <span style={styles.profitLabel}>ROI</span>
+                    <span style={{...styles.profitValue, color: profitColor(profitData.profit)}}>
+                      {profitData.roi >= 0 ? "+" : ""}{profitData.roi.toFixed(1)}%
+                    </span>
                   </div>
                 </div>
+                <span style={styles.profitNote}>*Based on highest bid ${result.highestBid} minus 9.5% StockX fee</span>
               </div>
             )}
 
-            {/* Live Stats */}
-            {showResult && (
-              <div style={styles.liveStatsSection}>
-                <div style={styles.liveStatsHeader}>
-                  <span style={styles.liveIndicator}>
-                    <span style={styles.liveIndicatorDot}></span>
-                    LIVE STATS
-                  </span>
-                </div>
-                
-                <div style={styles.metricRow}>
-                  <div style={styles.metricInfo}>
-                    <span style={styles.metricLabel}>💎 LIQUIDITY SCORE</span>
-                    <span style={{ ...styles.metricValue, color: liquidityColor(result.overallLiquidityScore) }}>
-                      {result.overallLiquidityScore} • {getLiquidityLabel(result.overallLiquidityScore).toUpperCase()}
-                    </span>
-                  </div>
-                  <div style={styles.liveBarContainer}>
-                    <div style={styles.liveBarTrack}>
-                      <div 
-                        style={{
-                          ...styles.liveBarFill,
-                          width: `${result.overallLiquidityScore}%`,
-                          background: `linear-gradient(90deg, ${liquidityColor(result.overallLiquidityScore)}88, ${liquidityColor(result.overallLiquidityScore)})`,
-                          boxShadow: `0 0 30px ${liquidityColor(result.overallLiquidityScore)}`,
-                          animation: "barGrow 1s ease-out, barPulse 2s ease-in-out infinite",
-                        }}
-                      >
-                        <div style={styles.liveBarShimmer}></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+            {/* Stats Grid */}
+            <div style={styles.statsGrid}>
+              <div style={styles.statBox}>
+                <span style={styles.statLabel}>72H SALES</span>
+                <span style={{...styles.statValue, color: volumeColor(result.salesLast72Hours)}}>
+                  {result.salesLast72Hours}
+                </span>
+              </div>
+              <div style={styles.statBox}>
+                <span style={styles.statLabel}>SPREAD</span>
+                <span style={{...styles.statValue, color: spreadColor(result.medianSpreadPct)}}>
+                  {formatPercent(result.medianSpreadPct)}
+                </span>
+              </div>
+              <div style={styles.statBox}>
+                <span style={styles.statLabel}>BID COVERAGE</span>
+                <span style={{...styles.statValue, color: result.sizesWithBidsPct >= 60 ? "#00ff64" : result.sizesWithBidsPct >= 40 ? "#ffdc00" : "#ff3232"}}>
+                  {result.sizesWithBidsPct}%
+                </span>
+              </div>
+              <div style={styles.statBox}>
+                <span style={styles.statLabel}>HIGHEST BID</span>
+                <span style={styles.statValue}>{formatCurrency(result.highestBid)}</span>
+              </div>
+            </div>
 
-                <div style={styles.metricRow}>
-                  <div style={styles.metricInfo}>
-                    <span style={styles.metricLabel}>📊 SPREAD</span>
-                    <span style={{ ...styles.metricValue, color: spreadColor(result.medianSpreadPct) }}>
-                      {formatPercent(result.medianSpreadPct)} • {getSpreadLabel(result.medianSpreadPct).toUpperCase()}
-                    </span>
-                  </div>
-                  <div style={styles.liveBarContainer}>
-                    <div style={styles.liveBarTrack}>
-                      <div 
-                        style={{
-                          ...styles.liveBarFill,
-                          width: `${Math.min((result.medianSpreadPct || 0) * 5, 100)}%`,
-                          background: `linear-gradient(90deg, ${spreadColor(result.medianSpreadPct)}88, ${spreadColor(result.medianSpreadPct)})`,
-                          boxShadow: `0 0 30px ${spreadColor(result.medianSpreadPct)}`,
-                          animation: "barGrow 1.2s ease-out, barPulse 2s ease-in-out infinite",
-                        }}
-                      >
-                        <div style={styles.liveBarShimmer}></div>
-                      </div>
+            {/* Size Recommendations */}
+            {!result.isUnknown && (result.bestSizes.length > 0 || result.avoidSizes.length > 0) && (
+              <div style={styles.sizesRow}>
+                {result.bestSizes.length > 0 && (
+                  <div style={styles.sizeGroup}>
+                    <span style={styles.sizeLabel}>🎯 Best Sizes</span>
+                    <div style={styles.sizeChips}>
+                      {result.bestSizes.map((s, i) => (
+                        <span key={i} style={styles.sizeChipGood}>{s}</span>
+                      ))}
                     </div>
                   </div>
-                </div>
-
-                <div style={styles.metricRow}>
-                  <div style={styles.metricInfo}>
-                    <span style={styles.metricLabel}>🎯 BID COVERAGE</span>
-                    <span style={{ ...styles.metricValue, color: result.sizesWithBidsPct >= 60 ? "#00ff64" : result.sizesWithBidsPct >= 40 ? "#ffdc00" : "#ff3232" }}>
-                      {result.sizesWithBidsPct}% • {result.sizesWithBidsPct >= 60 ? "STRONG" : result.sizesWithBidsPct >= 40 ? "MODERATE" : "WEAK"}
-                    </span>
-                  </div>
-                  <div style={styles.liveBarContainer}>
-                    <div style={styles.liveBarTrack}>
-                      <div 
-                        style={{
-                          ...styles.liveBarFill,
-                          width: `${result.sizesWithBidsPct}%`,
-                          background: `linear-gradient(90deg, ${result.sizesWithBidsPct >= 60 ? "#00ff64" : result.sizesWithBidsPct >= 40 ? "#ffdc00" : "#ff3232"}88, ${result.sizesWithBidsPct >= 60 ? "#00ff64" : result.sizesWithBidsPct >= 40 ? "#ffdc00" : "#ff3232"})`,
-                          boxShadow: `0 0 30px ${result.sizesWithBidsPct >= 60 ? "#00ff64" : result.sizesWithBidsPct >= 40 ? "#ffdc00" : "#ff3232"}`,
-                          animation: "barGrow 1.4s ease-out, barPulse 2s ease-in-out infinite",
-                        }}
-                      >
-                        <div style={styles.liveBarShimmer}></div>
-                      </div>
+                )}
+                {result.avoidSizes.length > 0 && (
+                  <div style={styles.sizeGroup}>
+                    <span style={styles.sizeLabel}>🚫 Avoid</span>
+                    <div style={styles.sizeChips}>
+                      {result.avoidSizes.map((s, i) => (
+                        <span key={i} style={styles.sizeChipBad}>{s}</span>
+                      ))}
                     </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
 
-            {/* Analysis */}
-            {!result.isUnknown && showResult && (
-              <div style={styles.analysisSection}>
-                <div style={styles.sectionHeader}>
-                  <span style={styles.sectionIcon}>🔮</span>
-                  <span style={styles.sectionTitle}>MARKET INTEL</span>
-                </div>
-                <div style={styles.analysisList}>
-                  <div style={styles.analysisItem}>
-                    <span style={{ ...styles.analysisIndicator, background: spreadColor(result.medianSpreadPct), boxShadow: `0 0 15px ${spreadColor(result.medianSpreadPct)}` }}></span>
-                    <span style={styles.analysisText}>
-                      Spread {formatPercent(result.medianSpreadPct)} — {getSpreadLabel(result.medianSpreadPct).toLowerCase()} gap
-                    </span>
-                  </div>
-                  <div style={styles.analysisItem}>
-                    <span style={{ ...styles.analysisIndicator, background: result.sizesWithBidsPct >= 60 ? "#00ff64" : result.sizesWithBidsPct >= 40 ? "#ffdc00" : "#ff3232", boxShadow: `0 0 15px ${result.sizesWithBidsPct >= 60 ? "#00ff64" : result.sizesWithBidsPct >= 40 ? "#ffdc00" : "#ff3232"}` }}></span>
-                    <span style={styles.analysisText}>
-                      {result.sizesWithBidsPct}% sizes active — {result.sizesWithBidsPct >= 60 ? "high" : result.sizesWithBidsPct >= 40 ? "moderate" : "low"} demand
-                    </span>
-                  </div>
-                  <div style={styles.analysisItem}>
-                    <span style={{ ...styles.analysisIndicator, background: liquidityColor(result.overallLiquidityScore), boxShadow: `0 0 15px ${liquidityColor(result.overallLiquidityScore)}` }}></span>
-                    <span style={styles.analysisText}>
-                      Score {result.overallLiquidityScore} — {getLiquidityLabel(result.overallLiquidityScore).toLowerCase()} liquidity
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Size Picks */}
-            {!result.isUnknown && showResult && (
-              <div style={styles.sizesSection}>
-                <div style={{...styles.sizeBox, borderColor: "#00ff6466"}}>
-                  <div style={styles.sizeBoxHeader}>
-                    <span style={styles.sizeBoxIconGreen}>✓</span>
-                    <span style={styles.sizeBoxTitle}>🎯 TARGET SIZES</span>
-                  </div>
-                  <div style={styles.sizeChips}>
-                    {result.bestSizes.length ? result.bestSizes.map((size, i) => (
-                      <span key={i} style={styles.sizeChipGood}>{size}</span>
-                    )) : <span style={styles.noSizes}>—</span>}
-                  </div>
-                </div>
-                <div style={{...styles.sizeBox, borderColor: "#ff323266"}}>
-                  <div style={styles.sizeBoxHeader}>
-                    <span style={styles.sizeBoxIconRed}>✕</span>
-                    <span style={styles.sizeBoxTitle}>🚫 AVOID</span>
-                  </div>
-                  <div style={styles.sizeChips}>
-                    {result.avoidSizes.length ? result.avoidSizes.map((size, i) => (
-                      <span key={i} style={styles.sizeChipBad}>{size}</span>
-                    )) : <span style={styles.noSizes}>—</span>}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Table */}
-            {!result.isUnknown && result.variants && result.variants.length > 0 && showResult && (
-              <div style={styles.tableSection}>
-                <div style={styles.sectionHeader}>
-                  <span style={styles.sectionIcon}>📋</span>
-                  <span style={styles.sectionTitle}>SIZE BREAKDOWN</span>
-                  <span style={styles.tableCount}>{result.variants.length} SIZES</span>
-                </div>
-                <div style={styles.tableWrapper}>
+            {/* Size Table - Collapsible on mobile */}
+            {!result.isUnknown && result.variants?.length > 0 && (
+              <details style={styles.tableDetails}>
+                <summary style={styles.tableSummary}>
+                  📋 Size Breakdown ({result.variants.length} sizes)
+                </summary>
+                <div style={styles.tableWrap}>
                   <table style={styles.table}>
                     <thead>
                       <tr>
-                        <th style={styles.th}>SIZE</th>
-                        <th style={{ ...styles.th, textAlign: 'right' }}>BID</th>
-                        <th style={{ ...styles.th, textAlign: 'right' }}>ASK</th>
-                        <th style={{ ...styles.th, textAlign: 'right' }}>SPREAD</th>
-                        <th style={{ ...styles.th, textAlign: 'right' }}>SCORE</th>
+                        <th style={styles.th}>Size</th>
+                        <th style={styles.thRight}>Bid</th>
+                        <th style={styles.thRight}>Ask</th>
+                        {!isMobile && <th style={styles.thRight}>Spread</th>}
+                        <th style={styles.thRight}>Score</th>
+                        {cost && <th style={styles.thRight}>Profit</th>}
                       </tr>
                     </thead>
                     <tbody>
-                      {result.variants.map((v, i) => (
-                        <tr key={v.variantId || i} style={i % 2 === 0 ? styles.trEven : styles.trOdd}>
-                          <td style={styles.td}>
-                            <span style={styles.sizeCell}>{v.size}</span>
-                          </td>
-                          <td style={{ ...styles.td, ...styles.tdMono, textAlign: 'right' }}>
-                            {formatCurrency(v.highestBid)}
-                          </td>
-                          <td style={{ ...styles.td, ...styles.tdMono, textAlign: 'right' }}>
-                            {formatCurrency(v.lowestAsk)}
-                          </td>
-                          <td style={{ ...styles.td, ...styles.tdMono, textAlign: 'right', color: spreadColor(v.spreadPct) }}>
-                            {formatPercent(v.spreadPct)}
-                          </td>
-                          <td style={{ ...styles.td, textAlign: 'right' }}>
-                            <div style={styles.scoreCell}>
-                              <div style={styles.miniBarTrack}>
-                                <div
-                                  style={{
-                                    ...styles.miniBarFill,
-                                    width: `${v.liquidityScore}%`,
-                                    background: liquidityColor(v.liquidityScore),
-                                    boxShadow: `0 0 10px ${liquidityColor(v.liquidityScore)}`,
-                                  }}
-                                />
-                              </div>
-                              <span style={{ ...styles.miniScore, color: liquidityColor(v.liquidityScore) }}>
-                                {v.liquidityScore}
-                              </span>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                      {result.variants.slice(0, isMobile ? 10 : 20).map((v, i) => {
+                        const sizeProfit = calculateProfit(v.highestBid);
+                        return (
+                          <tr key={v.variantId || i} style={i % 2 ? styles.trOdd : {}}>
+                            <td style={styles.td}><strong>{v.size}</strong></td>
+                            <td style={styles.tdRight}>{formatCurrency(v.highestBid)}</td>
+                            <td style={styles.tdRight}>{formatCurrency(v.lowestAsk)}</td>
+                            {!isMobile && <td style={{...styles.tdRight, color: spreadColor(v.spreadPct)}}>{formatPercent(v.spreadPct)}</td>}
+                            <td style={{...styles.tdRight, color: liquidityColor(v.liquidityScore)}}>{v.liquidityScore}</td>
+                            {cost && sizeProfit && (
+                              <td style={{...styles.tdRight, color: profitColor(sizeProfit.profit)}}>
+                                {sizeProfit.profit >= 0 ? "+" : ""}{sizeProfit.profit.toFixed(0)}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
-              </div>
+              </details>
             )}
-
-            {/* Footer */}
-            <div style={styles.footer}>
-              <div style={styles.legend}>
-                <span style={styles.legendItem}>
-                  <span style={{...styles.legendDot, background: "#00ff64"}}></span>
-                  COP 🔥
-                </span>
-                <span style={styles.legendItem}>
-                  <span style={{...styles.legendDot, background: "#ffdc00"}}></span>
-                  MAYBE 🤔
-                </span>
-                <span style={styles.legendItem}>
-                  <span style={{...styles.legendDot, background: "#ff3232"}}></span>
-                  DROP ❌
-                </span>
-              </div>
-              {result.cache && (
-                <span style={styles.cacheTag}>
-                  <span style={styles.cacheDot}></span>
-                  {result.cache}
-                </span>
-              )}
-            </div>
           </div>
         )}
+
+        {/* Disclaimer */}
+        <div style={styles.disclaimer}>
+          <p style={styles.disclaimerText}>
+            <strong>Disclaimer:</strong> Cop Check provides market data and algorithmic indicators for informational purposes only. 
+            "COP", "MAYBE", and "DROP" are analytical labels, not recommendations. 
+            Cop Check does not provide financial, investment, or resale advice. 
+            All decisions are made at your own risk.
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -760,11 +514,10 @@ export default function CopCheck() {
 const styles = {
   page: {
     minHeight: "100vh",
-    background: "linear-gradient(180deg, #02020a 0%, #0a0a18 50%, #02020a 100%)",
-    padding: "40px 20px",
+    background: "linear-gradient(180deg, #02020a 0%, #0a0a18 100%)",
+    padding: "16px",
     fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-    position: "relative",
-    overflow: "hidden",
+    color: "#fff",
   },
   particleContainer: {
     position: "fixed",
@@ -780,711 +533,405 @@ const styles = {
     animation: "particleFall 3s ease-in forwards",
   },
   container: {
-    maxWidth: 700,
+    maxWidth: 600,
     margin: "0 auto",
-    position: "relative",
-    zIndex: 1,
   },
   header: {
-    marginBottom: 28,
     textAlign: "center",
+    marginBottom: 20,
   },
-  titleWrapper: {
+  titleRow: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: 16,
-    marginBottom: 12,
+    gap: 12,
+    marginBottom: 4,
   },
   liveBadge: {
     display: "flex",
     alignItems: "center",
     gap: 6,
-    padding: "8px 14px",
+    padding: "4px 10px",
     background: "rgba(255, 50, 50, 0.2)",
     border: "1px solid #ff3232",
-    borderRadius: 8,
-    fontSize: 11,
+    borderRadius: 6,
+    fontSize: 10,
     fontWeight: 800,
     color: "#ff3232",
-    letterSpacing: "2px",
-    animation: "neonFlicker 2s ease-in-out infinite",
+    letterSpacing: 2,
   },
   liveDot: {
-    width: 8,
-    height: 8,
+    width: 6,
+    height: 6,
     borderRadius: "50%",
     background: "#ff3232",
-    animation: "liveDot 0.8s ease-in-out infinite",
+    animation: "liveDot 1s ease-in-out infinite",
   },
   title: {
     margin: 0,
-    fontSize: 52,
+    fontSize: "clamp(28px, 8vw, 42px)",
     fontWeight: 900,
-    color: "#ffffff",
-    letterSpacing: "8px",
-    textShadow: "0 0 30px rgba(255,255,255,0.3), 0 0 60px rgba(255,255,255,0.1)",
+    letterSpacing: 4,
   },
   subtitle: {
     margin: 0,
-    fontSize: 14,
+    fontSize: 11,
     color: "#6a6a8a",
-    letterSpacing: "6px",
-    fontWeight: 700,
+    letterSpacing: 4,
   },
-  searchTerminal: {
-    background: "linear-gradient(180deg, #0e0e1c 0%, #08080f 100%)",
-    border: "2px solid #1a1a30",
-    borderRadius: 20,
-    overflow: "hidden",
-    marginBottom: 24,
-    boxShadow: "0 10px 60px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05)",
+  searchBox: {
+    background: "rgba(14, 14, 28, 0.8)",
+    border: "1px solid #1a1a30",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
   },
-  terminalHeader: {
-    display: "flex",
-    alignItems: "center",
-    padding: "14px 24px",
-    background: "rgba(0,0,0,0.4)",
-    borderBottom: "1px solid #1a1a30",
-  },
-  terminalDots: {
+  inputGroup: {
     display: "flex",
     gap: 8,
-    marginRight: 20,
-  },
-  terminalDotRed: {
-    width: 12,
-    height: 12,
-    borderRadius: "50%",
-    background: "#ff3232",
-    boxShadow: "0 0 10px #ff3232",
-  },
-  terminalDotYellow: {
-    width: 12,
-    height: 12,
-    borderRadius: "50%",
-    background: "#ffdc00",
-    boxShadow: "0 0 10px #ffdc00",
-  },
-  terminalDotGreen: {
-    width: 12,
-    height: 12,
-    borderRadius: "50%",
-    background: "#00ff64",
-    boxShadow: "0 0 10px #00ff64",
-  },
-  terminalTitle: {
-    flex: 1,
-    fontSize: 12,
-    fontWeight: 800,
-    color: "#5a5a7a",
-    letterSpacing: "3px",
-  },
-  terminalStatus: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    fontSize: 11,
-    fontWeight: 800,
-    color: "#00ff64",
-    letterSpacing: "2px",
-  },
-  statusPulse: {
-    width: 10,
-    height: 10,
-    borderRadius: "50%",
-    background: "#00ff64",
-    boxShadow: "0 0 15px #00ff64",
-    animation: "liveDot 1s ease-in-out infinite",
-  },
-  inputRow: {
-    display: "flex",
-    gap: 12,
-    padding: 24,
-  },
-  inputWrapper: {
-    flex: 1,
-    display: "flex",
-    alignItems: "center",
-    background: "#04040a",
-    border: "2px solid #1a1a30",
-    borderRadius: 14,
-    padding: "0 20px",
-    transition: "all 0.3s ease",
-  },
-  inputPrefix: {
-    color: "#00ff64",
-    fontSize: 16,
-    marginRight: 14,
-    animation: "glowPulse 1.5s ease-in-out infinite",
+    marginBottom: 12,
+    flexWrap: "wrap",
   },
   input: {
-    flex: 1,
-    padding: "18px 0",
-    fontSize: 16,
-    fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
-    background: "transparent",
-    border: "none",
-    color: "#ffffff",
+    flex: "1 1 150px",
+    minWidth: 0,
+    padding: "14px 16px",
+    fontSize: 14,
+    fontFamily: "'JetBrains Mono', monospace",
+    background: "#04040a",
+    border: "1px solid #1a1a30",
+    borderRadius: 10,
+    color: "#fff",
     textTransform: "uppercase",
-    letterSpacing: "3px",
+    letterSpacing: 2,
     outline: "none",
   },
+  costInput: {
+    flex: "0 1 120px",
+    textTransform: "none",
+    letterSpacing: 0,
+  },
+  buttonRow: {
+    display: "flex",
+    gap: 8,
+    marginBottom: 12,
+  },
   checkBtn: {
-    padding: "18px 32px",
+    flex: 1,
+    padding: "14px 20px",
     fontSize: 14,
-    fontWeight: 900,
+    fontWeight: 800,
     background: "linear-gradient(135deg, #00ff64 0%, #00aa44 100%)",
     border: "none",
-    borderRadius: 14,
-    color: "#000000",
+    borderRadius: 10,
+    color: "#000",
     cursor: "pointer",
-    letterSpacing: "2px",
-    boxShadow: "0 5px 30px rgba(0, 255, 100, 0.5), inset 0 1px 0 rgba(255,255,255,0.2)",
-    transition: "all 0.3s ease",
+    letterSpacing: 2,
     animation: "float 3s ease-in-out infinite",
   },
   checkBtnDisabled: {
     background: "#1a1a30",
     color: "#4a4a6a",
-    boxShadow: "none",
     cursor: "not-allowed",
     animation: "none",
   },
   clearBtn: {
-    width: 56,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 20,
+    width: 48,
+    fontSize: 18,
     background: "rgba(255, 50, 50, 0.15)",
-    border: "2px solid #ff323266",
-    borderRadius: 14,
+    border: "1px solid #ff323266",
+    borderRadius: 10,
     color: "#ff3232",
     cursor: "pointer",
-    transition: "all 0.3s ease",
   },
-  chipsRow: {
-    padding: "0 24px 24px",
-  },
-  chipsLabel: {
-    display: "block",
-    fontSize: 11,
-    color: "#4a4a6a",
-    letterSpacing: "3px",
-    marginBottom: 12,
-    fontWeight: 800,
-  },
-  chipsContainer: {
+  quickSkus: {
     display: "flex",
-    gap: 10,
+    gap: 8,
     flexWrap: "wrap",
   },
-  chip: {
-    padding: "12px 18px",
-    fontSize: 12,
-    fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
-    background: "rgba(255, 255, 255, 0.03)",
+  skuChip: {
+    padding: "8px 12px",
+    fontSize: 11,
+    fontFamily: "'JetBrains Mono', monospace",
+    background: "rgba(255,255,255,0.03)",
     border: "1px solid #1a1a30",
-    borderRadius: 10,
-    color: "#7a7a9a",
+    borderRadius: 8,
+    color: "#6a6a8a",
     cursor: "pointer",
-    letterSpacing: "1px",
-    transition: "all 0.3s ease",
   },
-  loadingCard: {
-    background: "linear-gradient(180deg, #0e0e1c 0%, #08080f 100%)",
-    border: "2px solid #1a1a30",
-    borderRadius: 20,
-    padding: 60,
+  loadingBox: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    gap: 30,
+    gap: 16,
+    padding: 40,
+    background: "rgba(14, 14, 28, 0.8)",
+    border: "1px solid #1a1a30",
+    borderRadius: 16,
   },
-  slotMachine: {
+  spinner: {
+    width: 40,
+    height: 40,
+    border: "3px solid #1a1a30",
+    borderTop: "3px solid #00ff64",
+    borderRadius: "50%",
+    animation: "spin 0.8s linear infinite",
+  },
+  loadingText: {
+    fontSize: 14,
+    color: "#6a6a8a",
+    letterSpacing: 2,
+  },
+  resultCard: {
+    background: "rgba(14, 14, 28, 0.8)",
+    border: "1px solid #1a1a30",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    animation: "slideIn 0.4s ease-out",
+  },
+  productRow: {
     display: "flex",
+    alignItems: "center",
     gap: 12,
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottom: "1px solid #1a1a30",
   },
-  slotWindow: {
+  productImg: {
     width: 60,
-    height: 70,
-    background: "#04040a",
-    border: "3px solid #2a2a4a",
-    borderRadius: 12,
+    height: 60,
+    borderRadius: 10,
+    background: "#fff",
+    objectFit: "contain",
+  },
+  productInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  productName: {
+    display: "block",
+    fontSize: 14,
+    fontWeight: 700,
+    marginBottom: 4,
     overflow: "hidden",
-    boxShadow: "inset 0 0 20px rgba(0,0,0,0.8)",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
-  slotReel: {
-    display: "flex",
-    flexDirection: "column",
-    animation: "slotSpin 0.15s linear infinite",
+  productSku: {
+    fontSize: 12,
+    color: "#6a6a8a",
+    fontFamily: "'JetBrains Mono', monospace",
   },
-  slotItem: {
-    fontSize: 32,
-    height: 70,
+  verdictBox: {
+    padding: 20,
+    borderRadius: 14,
+    border: "2px solid",
+    marginBottom: 16,
+    textAlign: "center",
+  },
+  verdictMain: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    gap: 20,
+    marginBottom: 8,
   },
-  loadingText: {
-    fontSize: 16,
-    fontWeight: 800,
-    color: "#6a6a8a",
-    letterSpacing: "5px",
-    animation: "pulse 1s ease-in-out infinite",
-  },
-  loadingBar: {
-    width: 250,
-    height: 6,
-    background: "#1a1a30",
-    borderRadius: 3,
-    overflow: "hidden",
-  },
-  loadingBarFill: {
-    width: "100%",
-    height: "100%",
-    background: "linear-gradient(90deg, transparent, #00ff64, transparent)",
-    animation: "shimmer 0.8s linear infinite",
-  },
-  resultCard: {
-    background: "linear-gradient(180deg, #0e0e1c 0%, #08080f 100%)",
-    border: "2px solid #1a1a30",
-    borderRadius: 20,
-    overflow: "hidden",
-    animation: "slideIn 0.6s ease-out",
-    boxShadow: "0 10px 60px rgba(0,0,0,0.5)",
-  },
-  productHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    padding: 28,
-    background: "rgba(0,0,0,0.3)",
-    borderBottom: "1px solid #1a1a30",
-  },
-  productInfo: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-    flex: 1,
-  },
-  unknownBadge: {
-    display: "inline-block",
-    padding: "8px 14px",
-    fontSize: 11,
-    fontWeight: 800,
-    background: "rgba(255, 50, 50, 0.2)",
-    border: "2px solid #ff3232",
-    borderRadius: 8,
-    color: "#ff3232",
-    letterSpacing: "2px",
-    width: "fit-content",
-  },
-  productName: {
-    fontSize: 20,
-    fontWeight: 800,
-    color: "#ffffff",
-    lineHeight: 1.4,
-  },
-  productMeta: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-end",
-    gap: 6,
-  },
-  skuLabel: {
-    fontSize: 10,
-    color: "#4a4a6a",
-    letterSpacing: "3px",
-    fontWeight: 800,
-  },
-  skuValue: {
-    fontSize: 15,
-    fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
-    color: "#7a7a9a",
-    letterSpacing: "2px",
-  },
-  verdictSection: {
-    margin: 28,
-    padding: 36,
-    borderRadius: 20,
-    border: "3px solid",
-    position: "relative",
-    overflow: "hidden",
-  },
-  verdictContent: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 30,
-    position: "relative",
-    zIndex: 1,
-  },
-  verdictLeft: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 14,
-  },
-  verdictLabel: {
-    fontSize: 14,
+  verdictText: {
+    fontSize: "clamp(32px, 10vw, 48px)",
     fontWeight: 900,
-    color: "#7a7a9a",
-    letterSpacing: "4px",
+    letterSpacing: 4,
   },
-  verdictValue: {
-    fontSize: 58,
-    fontWeight: 900,
-    letterSpacing: "6px",
-    lineHeight: 1,
-  },
-  verdictTag: {
-    display: "inline-block",
-    padding: "10px 18px",
-    fontSize: 11,
-    fontWeight: 800,
-    borderRadius: 10,
-    border: "2px solid",
-    letterSpacing: "2px",
-    width: "fit-content",
-  },
-  scoreCircleWrapper: {
+  scoreCircle: {
     position: "relative",
-    width: 130,
-    height: 130,
+    width: 70,
+    height: 70,
   },
   scoreSvg: {
     width: "100%",
     height: "100%",
   },
-  scoreInner: {
+  scoreNum: {
     position: "absolute",
     inset: 0,
     display: "flex",
-    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-  },
-  scoreNumber: {
-    fontSize: 42,
+    fontSize: 22,
     fontWeight: 900,
-    fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
-    lineHeight: 1,
+    fontFamily: "'JetBrains Mono', monospace",
   },
-  scoreMax: {
-    fontSize: 14,
-    color: "#4a4a6a",
-    fontWeight: 700,
-  },
-  liveStatsSection: {
-    padding: "0 28px 28px",
-  },
-  liveStatsHeader: {
-    marginBottom: 24,
-  },
-  liveIndicator: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 10,
+  verdictHint: {
     fontSize: 12,
-    fontWeight: 900,
-    color: "#00ff64",
-    letterSpacing: "3px",
+    color: "#8a8aaa",
   },
-  liveIndicatorDot: {
-    width: 10,
-    height: 10,
-    borderRadius: "50%",
-    background: "#00ff64",
-    boxShadow: "0 0 15px #00ff64",
-    animation: "liveDot 0.8s ease-in-out infinite",
-  },
-  metricRow: {
-    marginBottom: 24,
-  },
-  metricInfo: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  metricLabel: {
-    fontSize: 11,
-    fontWeight: 800,
-    color: "#5a5a7a",
-    letterSpacing: "2px",
-  },
-  metricValue: {
-    fontSize: 14,
-    fontWeight: 900,
-    fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
-    letterSpacing: "1px",
-  },
-  liveBarContainer: {
-    position: "relative",
-  },
-  liveBarTrack: {
-    height: 16,
-    background: "#08080f",
-    borderRadius: 8,
-    overflow: "hidden",
-    border: "2px solid #1a1a30",
-  },
-  liveBarFill: {
-    height: "100%",
-    borderRadius: 6,
-    position: "relative",
-    overflow: "hidden",
-  },
-  liveBarShimmer: {
-    position: "absolute",
-    top: 0,
-    left: "-100%",
-    width: "50%",
-    height: "100%",
-    background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)",
-    animation: "shimmer 1.5s linear infinite",
-  },
-  analysisSection: {
-    padding: "0 28px 28px",
-  },
-  sectionHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 18,
-  },
-  sectionIcon: {
-    fontSize: 18,
-  },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: 900,
-    color: "#7a7a9a",
-    letterSpacing: "3px",
-    flex: 1,
-  },
-  tableCount: {
-    fontSize: 11,
-    color: "#5a5a7a",
-    fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
-  },
-  analysisList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-  },
-  analysisItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: 16,
-    padding: "16px 20px",
-    background: "rgba(255, 255, 255, 0.02)",
+  profitBox: {
+    padding: 16,
     borderRadius: 12,
-    border: "1px solid #1a1a30",
-  },
-  analysisIndicator: {
-    width: 10,
-    height: 10,
-    borderRadius: "50%",
-    flexShrink: 0,
-    animation: "liveDot 1.5s ease-in-out infinite",
-  },
-  analysisText: {
-    fontSize: 14,
-    color: "#a0a0b0",
-    lineHeight: 1.5,
-  },
-  sizesSection: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 16,
-    padding: "0 28px 28px",
-  },
-  sizeBox: {
-    background: "rgba(255, 255, 255, 0.02)",
-    border: "2px solid",
-    borderRadius: 16,
-    padding: 20,
-  },
-  sizeBoxHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
+    border: "1px solid",
     marginBottom: 16,
   },
-  sizeBoxIconGreen: {
-    width: 28,
-    height: 28,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "rgba(0, 255, 100, 0.2)",
-    borderRadius: 8,
-    color: "#00ff64",
-    fontSize: 14,
-    fontWeight: 900,
+  profitRow: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, 1fr)",
+    gap: 8,
+    textAlign: "center",
   },
-  sizeBoxIconRed: {
-    width: 28,
-    height: 28,
+  profitItem: {
     display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "rgba(255, 50, 50, 0.2)",
-    borderRadius: 8,
-    color: "#ff3232",
-    fontSize: 14,
-    fontWeight: 900,
+    flexDirection: "column",
+    gap: 4,
   },
-  sizeBoxTitle: {
+  profitLabel: {
+    fontSize: 9,
+    color: "#6a6a8a",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  profitValue: {
+    fontSize: 16,
+    fontWeight: 800,
+    fontFamily: "'JetBrains Mono', monospace",
+  },
+  profitNote: {
+    display: "block",
+    fontSize: 10,
+    color: "#5a5a7a",
+    textAlign: "center",
+    marginTop: 10,
+  },
+  statsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, 1fr)",
+    gap: 8,
+    marginBottom: 16,
+  },
+  statBox: {
+    background: "rgba(255,255,255,0.02)",
+    border: "1px solid #1a1a30",
+    borderRadius: 10,
+    padding: "12px 8px",
+    textAlign: "center",
+  },
+  statLabel: {
+    display: "block",
+    fontSize: 9,
+    color: "#5a5a7a",
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  statValue: {
+    display: "block",
+    fontSize: 16,
+    fontWeight: 800,
+    fontFamily: "'JetBrains Mono', monospace",
+    color: "#fff",
+  },
+  sizesRow: {
+    display: "flex",
+    gap: 12,
+    marginBottom: 16,
+    flexWrap: "wrap",
+  },
+  sizeGroup: {
+    flex: 1,
+    minWidth: 120,
+  },
+  sizeLabel: {
+    display: "block",
     fontSize: 11,
-    fontWeight: 900,
     color: "#7a7a9a",
-    letterSpacing: "2px",
+    marginBottom: 8,
+    fontWeight: 700,
   },
   sizeChips: {
     display: "flex",
     flexWrap: "wrap",
-    gap: 10,
+    gap: 6,
   },
   sizeChipGood: {
-    padding: "10px 16px",
-    fontSize: 14,
-    fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
+    padding: "6px 12px",
+    fontSize: 12,
+    fontFamily: "'JetBrains Mono', monospace",
     background: "rgba(0, 255, 100, 0.15)",
-    border: "2px solid #00ff6466",
-    borderRadius: 10,
+    border: "1px solid #00ff6466",
+    borderRadius: 8,
     color: "#00ff64",
-    fontWeight: 800,
-    boxShadow: "0 0 15px rgba(0, 255, 100, 0.2)",
+    fontWeight: 700,
   },
   sizeChipBad: {
-    padding: "10px 16px",
-    fontSize: 14,
-    fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
+    padding: "6px 12px",
+    fontSize: 12,
+    fontFamily: "'JetBrains Mono', monospace",
     background: "rgba(255, 50, 50, 0.15)",
-    border: "2px solid #ff323266",
-    borderRadius: 10,
+    border: "1px solid #ff323266",
+    borderRadius: 8,
     color: "#ff3232",
-    fontWeight: 800,
-    boxShadow: "0 0 15px rgba(255, 50, 50, 0.2)",
+    fontWeight: 700,
   },
-  noSizes: {
-    color: "#3a3a5a",
-    fontSize: 14,
+  tableDetails: {
+    marginBottom: 0,
   },
-  tableSection: {
-    padding: "0 28px 28px",
+  tableSummary: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: "#8a8aaa",
+    cursor: "pointer",
+    padding: "12px 0",
+    borderTop: "1px solid #1a1a30",
   },
-  tableWrapper: {
-    background: "#06060c",
-    border: "2px solid #1a1a30",
-    borderRadius: 16,
-    overflow: "hidden",
+  tableWrap: {
+    overflowX: "auto",
+    marginTop: 8,
   },
   table: {
     width: "100%",
     borderCollapse: "collapse",
-    fontSize: 14,
+    fontSize: 12,
   },
   th: {
-    padding: "16px 20px",
-    fontSize: 11,
-    fontWeight: 900,
+    padding: "10px 8px",
+    fontSize: 10,
+    fontWeight: 800,
     color: "#5a5a7a",
-    letterSpacing: "2px",
-    textTransform: "uppercase",
-    borderBottom: "2px solid #1a1a30",
-    background: "#04040a",
-    position: "sticky",
-    top: 0,
+    textAlign: "left",
+    borderBottom: "1px solid #1a1a30",
+    whiteSpace: "nowrap",
   },
-  trEven: {
-    background: "transparent",
+  thRight: {
+    padding: "10px 8px",
+    fontSize: 10,
+    fontWeight: 800,
+    color: "#5a5a7a",
+    textAlign: "right",
+    borderBottom: "1px solid #1a1a30",
+    whiteSpace: "nowrap",
   },
   trOdd: {
-    background: "rgba(255, 255, 255, 0.02)",
+    background: "rgba(255,255,255,0.02)",
   },
   td: {
-    padding: "16px 20px",
+    padding: "10px 8px",
     color: "#b0b0c0",
     borderBottom: "1px solid #0f0f1a",
   },
-  tdMono: {
-    fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
-    fontSize: 13,
-  },
-  sizeCell: {
-    fontWeight: 800,
-    color: "#ffffff",
-  },
-  scoreCell: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 14,
-  },
-  miniBarTrack: {
-    width: 70,
-    height: 8,
-    background: "#1a1a30",
-    borderRadius: 4,
-    overflow: "hidden",
-  },
-  miniBarFill: {
-    height: "100%",
-    borderRadius: 4,
-    animation: "barPulse 2s ease-in-out infinite",
-  },
-  miniScore: {
-    fontSize: 14,
-    fontWeight: 900,
-    fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
-    minWidth: 30,
+  tdRight: {
+    padding: "10px 8px",
     textAlign: "right",
+    fontFamily: "'JetBrains Mono', monospace",
+    color: "#b0b0c0",
+    borderBottom: "1px solid #0f0f1a",
   },
-  footer: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "20px 28px",
-    borderTop: "2px solid #1a1a30",
-    background: "rgba(0,0,0,0.3)",
+  disclaimer: {
+    padding: 16,
+    background: "rgba(255, 220, 0, 0.05)",
+    border: "1px solid rgba(255, 220, 0, 0.2)",
+    borderRadius: 12,
   },
-  legend: {
-    display: "flex",
-    gap: 24,
-  },
-  legendItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    fontSize: 12,
-    fontWeight: 800,
-    color: "#6a6a8a",
-    letterSpacing: "1px",
-  },
-  legendDot: {
-    width: 12,
-    height: 12,
-    borderRadius: "50%",
-    animation: "liveDot 2s ease-in-out infinite",
-  },
-  cacheTag: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    fontSize: 11,
-    color: "#4a4a6a",
-    fontFamily: "'JetBrains Mono', 'SF Mono', monospace",
-    letterSpacing: "2px",
-  },
-  cacheDot: {
-    width: 8,
-    height: 8,
-    borderRadius: "50%",
-    background: "#00ff64",
-    boxShadow: "0 0 10px #00ff64",
+  disclaimerText: {
+    margin: 0,
+    fontSize: 10,
+    color: "#8a8a6a",
+    lineHeight: 1.6,
   },
 };
