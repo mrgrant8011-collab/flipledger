@@ -20,9 +20,11 @@ export default async function handler(req, res) {
     try {
       const accessToken = await getAccessToken(clientId, clientSecret, refreshToken);
       const officialResult = await tryOfficialAPI(sku, apiKey, accessToken);
-      if (officialResult) {
+      // Only use official result if it has actual market data
+      if (officialResult && officialResult.variants && officialResult.variants.length > 0) {
         return res.status(200).json(officialResult);
       }
+      console.log('Official API returned no market data, falling back to GraphQL');
     } catch (err) {
       console.log('Official API failed, falling back to GraphQL:', err.message);
     }
