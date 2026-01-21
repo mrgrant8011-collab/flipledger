@@ -1,5 +1,4 @@
-// Cop Check API - Official StockX API v2 with Liquidity Analysis
-// Uses your STOCKX_API_KEY - no scraping
+// Cop Check API - Official StockX API with OAuth
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -10,245 +9,369 @@ export default async function handler(req, res) {
   if (!sku) {
     return res.status(400).json({ error: 'SKU required' });
   }
-  
+
   const apiKey = process.env.STOCKX_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'STOCKX_API_KEY not configured' });
+  const refreshToken = process.env.STOCKX_REFRESH_TOKEN;
+  const clientId = process.env.STOCKX_CLIENT_ID;
+  const clientSecret = process.env.STOCKX_CLIENT_SECRET;
+  
+  // Try official API if we have all credentials
+  if (apiKey && refreshToken && clientId && clientSecret) {
+    try {
+      const accessToken = await getAccessToken(clientId, clientSecret, refreshToken);
+      const officialResult = await tryOfficialAPI(sku, apiKey, accessToken);
+      if (officialResult) {
+        return res.status(200).json(officialResult);
+      }
+    } catch (err) {
+      console.log('Official API failed, falling back to GraphQL:', err.message);
+    }
   }
-  
-  const headers = {
-    'x-api-key': apiKey,
-    'Content-Type': 'application/json',
-  };
-  
+
+  // Fallback to GraphQL (public data, no auth needed)
   try {
-    // Step 1: Search for product by SKU
-    const searchUrl = `https://api.stockx.com/v2/catalog/search?query=${encodeURIComponent(sku)}`;
-    const searchRes = await fetch(searchUrl, { headers });
-    
-    if (!searchRes.ok) {
-      const errText = await searchRes.text();
-      console.error('Search failed:', searchRes.status, errText);
-      return res.status(searchRes.status).json({ error: 'StockX search failed' });
+    const graphqlResult = await tryGraphQL(sku);
+    return res.status(200).json(graphqlResult);
+  } catch (err) {
+    console.error('GraphQL also failed:', err.message);
+    return res.status(500).json({ 
+      error: 'FETCH_FAILED', 
+      message: 'Unable to fetch market data. Please try again.' 
+    });
+  }
+}
+
+// Get access token from refresh token
+async function getAccessToken(clientId, clientSecret, refreshToken) {
+  const response = await fetch('https://accounts.stockx.com/oauth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      audience: 'gateway.stockx.com',
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to get access token');
+  }
+
+  const data = await response.json();
+  return data.access_token;
+}
+
+// Official StockX API v2 with OAuth
+async function tryOfficialAPI(sku, apiKey, accessToken) {
+  const searchRes = await fetch(
+    `https://api.stockx.com/v2/catalog/search?query=${encodeURIComponent(sku)}`,
+    {
+      headers: {
+        'x-api-key': apiKey,
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
     }
-    
-    const searchData = await searchRes.json();
-    const products = searchData.products || [];
-    
-    if (products.length === 0) {
-      return res.status(404).json({ error: 'SKU_NOT_FOUND' });
+  );
+
+  if (!searchRes.ok) {
+    throw new Error(`Search failed: ${searchRes.status}`);
+  }
+
+  const searchData = await searchRes.json();
+  const products = searchData?.products || [];
+  
+  if (products.length === 0) {
+    throw new Error('SKU_NOT_FOUND');
+  }
+
+  const product = products.find(p => 
+    p.styleId?.toUpperCase() === sku.toUpperCase()
+  ) || products[0];
+
+  const productId = product.productId || product.id;
+
+  const marketRes = await fetch(
+    `https://api.stockx.com/v2/catalog/products/${productId}/market-data`,
+    {
+      headers: {
+        'x-api-key': apiKey,
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
     }
-    
-    // Find exact SKU match or use first result
-    const product = products.find(p => 
-      p.styleId?.toUpperCase() === sku.toUpperCase()
-    ) || products[0];
-    
-    const productId = product.productId || product.id;
-    
-    if (!productId) {
-      return res.status(404).json({ error: 'Product ID not found' });
-    }
-    
-    // Step 2: Get variants (sizes)
-    const variantsUrl = `https://api.stockx.com/v2/catalog/products/${productId}/variants?country=US&currency=USD`;
-    const variantsRes = await fetch(variantsUrl, { headers });
-    
-    let variantsData = [];
-    if (variantsRes.ok) {
-      const vData = await variantsRes.json();
-      variantsData = vData.variants || [];
-    }
-    
-    // Step 3: Get market data
-    const marketUrl = `https://api.stockx.com/v2/catalog/products/${productId}/market-data?country=US&currency=USD`;
-    const marketRes = await fetch(marketUrl, { headers });
-    
-    let marketData = {};
-    if (marketRes.ok) {
-      marketData = await marketRes.json();
-    }
-    
-    // Process variants with liquidity calculations
-    const variants = [];
-    let totalSales72h = 0;
-    let sizesWithBids = 0;
-    const spreads = [];
-    
-    // Get per-variant market data if available
-    const variantMarket = marketData.variants || [];
-    
-    variantsData.forEach(v => {
-      const size = v.sizeChart?.displayOptions?.find(o => o.type === 'us')?.value 
-        || v.sizeChart?.baseSize 
-        || v.size;
-      
-      if (!size) return;
-      
-      // Find market data for this variant
-      const vm = variantMarket.find(m => m.variantId === v.id) || {};
-      
-      const bid = vm.highestBid || vm.market?.highestBid || null;
-      const ask = vm.lowestAsk || vm.market?.lowestAsk || null;
-      const lastSale = vm.lastSale || vm.market?.lastSale || null;
-      const sales72h = vm.salesLast72Hours || vm.market?.salesLast72Hours || 0;
-      
-      // Calculate spread metrics
-      let spread = null;
-      let spreadPct = null;
-      let bidStrength = null;
-      
+  );
+
+  if (!marketRes.ok) {
+    throw new Error(`Market data failed: ${marketRes.status}`);
+  }
+
+  const marketData = await marketRes.json();
+  return formatResponse(product, marketData, 'official');
+}
+
+// GraphQL fallback
+async function tryGraphQL(sku) {
+  const query = {
+    query: `
+      query SearchProducts($query: String!) {
+        browse(query: $query, first: 10) {
+          edges {
+            node {
+              ... on Product {
+                id
+                urlKey
+                title
+                styleId
+                media { thumbUrl imageUrl }
+                market {
+                  bidAskData {
+                    lowestAsk
+                    highestBid
+                    lastSale
+                    salesLast72Hours
+                  }
+                }
+                variants {
+                  id
+                  sizeChart {
+                    baseSize
+                    displayOptions { type value }
+                  }
+                  market {
+                    bidAskData {
+                      lowestAsk
+                      highestBid
+                      lastSale
+                      salesLast72Hours
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    `,
+    variables: { query: sku }
+  };
+
+  const searchRes = await fetch('https://stockx.com/p/e', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      'Accept': 'application/json',
+      'Origin': 'https://stockx.com',
+      'Referer': 'https://stockx.com/',
+      'apollographql-client-name': 'Iron',
+      'apollographql-client-version': '2024.01.01.00',
+    },
+    body: JSON.stringify(query)
+  });
+
+  if (!searchRes.ok) {
+    throw new Error(`GraphQL failed: ${searchRes.status}`);
+  }
+
+  const data = await searchRes.json();
+  const edges = data?.data?.browse?.edges || [];
+
+  if (edges.length === 0) {
+    throw new Error('SKU_NOT_FOUND');
+  }
+
+  const product = edges.find(e => 
+    e.node?.styleId?.toUpperCase() === sku.toUpperCase()
+  )?.node || edges[0]?.node;
+
+  if (!product) {
+    throw new Error('SKU_NOT_FOUND');
+  }
+
+  return formatGraphQLResponse(product);
+}
+
+function formatResponse(product, marketData, source) {
+  const variants = [];
+  let totalSales72h = 0;
+  let sizesWithBids = 0;
+  const spreads = [];
+
+  if (marketData?.variants) {
+    marketData.variants.forEach(v => {
+      const bid = v.highestBid || null;
+      const ask = v.lowestAsk || null;
+      const lastSale = v.lastSale || null;
+      const sales72h = v.salesLast72Hours || 0;
+
+      let spread = null, spreadPct = null, bidStrength = null;
       if (bid && ask && ask > 0) {
         spread = ask - bid;
         spreadPct = Math.round((spread / ask) * 1000) / 10;
         bidStrength = Math.round((bid / ask) * 1000) / 1000;
         spreads.push(spreadPct);
       }
-      
-      // Calculate liquidity score per size
-      let liquidityScore = 0;
-      
-      // Spread score (tighter = better) - max 40 points
-      if (spreadPct !== null) {
-        if (spreadPct <= 5) liquidityScore += 40;
-        else if (spreadPct <= 10) liquidityScore += 30;
-        else if (spreadPct <= 15) liquidityScore += 20;
-        else liquidityScore += 10;
-      }
-      
-      // Bid strength bonus - max 20 points
-      if (bidStrength !== null) {
-        if (bidStrength >= 0.95) liquidityScore += 20;
-        else if (bidStrength >= 0.90) liquidityScore += 15;
-        else if (bidStrength >= 0.85) liquidityScore += 10;
-        else if (bidStrength >= 0.80) liquidityScore += 5;
-      }
-      
-      // Sales velocity bonus (72h sales) - max 30 points
-      if (sales72h >= 10) liquidityScore += 30;
-      else if (sales72h >= 5) liquidityScore += 25;
-      else if (sales72h >= 3) liquidityScore += 20;
-      else if (sales72h >= 1) liquidityScore += 15;
-      else if (bid && ask) liquidityScore += 5;
-      
-      // Has last sale bonus - max 10 points
-      if (lastSale) liquidityScore += 10;
-      
-      liquidityScore = Math.min(liquidityScore, 100);
-      
-      // Track stats
+
+      const liquidityScore = calculateLiquidityScore(spreadPct, bidStrength, sales72h, bid, ask, lastSale);
+
       totalSales72h += sales72h;
       if (bid && bid > 0) sizesWithBids++;
-      
+
       variants.push({
-        variantId: v.id,
-        size: size,
+        size: v.size || v.sizeUS || 'N/A',
         highestBid: bid,
         lowestAsk: ask,
-        lastSale: lastSale,
+        lastSale,
         salesLast72Hours: sales72h,
-        spread: spread,
-        spreadPct: spreadPct,
-        bidStrength: bidStrength,
-        liquidityScore: liquidityScore,
+        spread,
+        spreadPct,
+        bidStrength,
+        liquidityScore,
       });
     });
-    
-    // Sort by liquidity score descending
-    variants.sort((a, b) => b.liquidityScore - a.liquidityScore);
-    
-    // Calculate product-level metrics
-    const totalVariants = variants.length || 1;
-    const sizesWithBidsPct = Math.round((sizesWithBids / totalVariants) * 100);
-    
-    // Median spread
-    const validSpreads = spreads.filter(s => s !== null).sort((a, b) => a - b);
-    const medianSpreadPct = validSpreads.length > 0 
-      ? validSpreads[Math.floor(validSpreads.length / 2)]
-      : null;
-    
-    // Overall liquidity score (average of top sizes)
-    const topScores = variants.slice(0, 10).map(v => v.liquidityScore);
-    const overallLiquidityScore = topScores.length > 0
-      ? Math.round(topScores.reduce((a, b) => a + b, 0) / topScores.length)
-      : 0;
-    
-    // Best and avoid sizes
-    const bestSizes = variants.filter(v => v.liquidityScore >= 60).slice(0, 5).map(v => v.size);
-    const avoidSizes = variants.filter(v => v.liquidityScore < 40).slice(-5).map(v => v.size);
-    
-    // Use product-level sales if no per-size data
-    if (totalSales72h === 0) {
-      totalSales72h = marketData.salesLast72Hours || product.market?.salesLast72Hours || 0;
-    }
-    
-    // Estimated 90-day sales
-    const estimated90DaySales = totalSales72h * 30;
-    
-    // Sales velocity rating
-    let salesVelocity = "Low";
-    if (totalSales72h >= 20) salesVelocity = "Very High";
-    else if (totalSales72h >= 10) salesVelocity = "High";
-    else if (totalSales72h >= 5) salesVelocity = "Medium";
-    
-    // Determine verdict
-    let verdict = "DROP";
-    if (medianSpreadPct !== null && medianSpreadPct <= 8 && sizesWithBidsPct >= 60 && totalSales72h >= 3) {
-      verdict = "COP";
-    } else if (medianSpreadPct !== null && medianSpreadPct <= 12 && totalSales72h >= 1) {
-      verdict = "MAYBE";
-    }
-    
-    // Build image URL
-    const image = product.media?.imageUrl 
-      || product.media?.thumbUrl 
-      || product.image 
-      || '';
-    
-    // Product-level market data
-    const productMarket = marketData.market || product.market || {};
-    
-    return res.status(200).json({
-      // Basic info
-      title: product.title || product.name,
-      sku: product.styleId || sku,
-      productId: productId,
-      image: image,
-      
-      // Product-level prices
-      lowestAsk: productMarket.lowestAsk || 0,
-      highestBid: productMarket.highestBid || 0,
-      lastSale: productMarket.lastSale || 0,
-      
-      // Sales volume
-      salesLast72Hours: totalSales72h,
-      estimated90DaySales: estimated90DaySales,
-      salesVelocity: salesVelocity,
-      
-      // Liquidity metrics
-      verdict: verdict,
-      overallLiquidityScore: overallLiquidityScore,
-      medianSpreadPct: medianSpreadPct,
-      sizesWithBidsPct: sizesWithBidsPct,
-      
-      // Size recommendations
-      bestSizes: bestSizes,
-      avoidSizes: avoidSizes,
-      
-      // All variants with detailed data
-      variants: variants,
-      
-      // Debug
-      debug: { 
-        cache: "MISS",
-        totalVariants: totalVariants,
-        sizesWithBids: sizesWithBids,
-        source: "stockx-api-v2"
+  }
+
+  variants.sort((a, b) => b.liquidityScore - a.liquidityScore);
+  return buildFinalResponse(product, variants, totalSales72h, sizesWithBids, spreads, source);
+}
+
+function formatGraphQLResponse(product) {
+  const variants = [];
+  let totalSales72h = 0;
+  let sizesWithBids = 0;
+  const spreads = [];
+
+  if (product.variants) {
+    product.variants.forEach(v => {
+      const sizeDisplay = v.sizeChart?.displayOptions?.find(o => o.type === 'us')?.value 
+        || v.sizeChart?.baseSize;
+
+      if (sizeDisplay && v.market?.bidAskData) {
+        const bid = v.market.bidAskData.highestBid || null;
+        const ask = v.market.bidAskData.lowestAsk || null;
+        const lastSale = v.market.bidAskData.lastSale || null;
+        const sales72h = v.market.bidAskData.salesLast72Hours || 0;
+
+        let spread = null, spreadPct = null, bidStrength = null;
+        if (bid && ask && ask > 0) {
+          spread = ask - bid;
+          spreadPct = Math.round((spread / ask) * 1000) / 10;
+          bidStrength = Math.round((bid / ask) * 1000) / 1000;
+          spreads.push(spreadPct);
+        }
+
+        const liquidityScore = calculateLiquidityScore(spreadPct, bidStrength, sales72h, bid, ask, lastSale);
+
+        totalSales72h += sales72h;
+        if (bid && bid > 0) sizesWithBids++;
+
+        variants.push({
+          size: sizeDisplay,
+          highestBid: bid,
+          lowestAsk: ask,
+          lastSale,
+          salesLast72Hours: sales72h,
+          spread,
+          spreadPct,
+          bidStrength,
+          liquidityScore,
+        });
       }
     });
-    
-  } catch (error) {
-    console.error('Cop Check Error:', error);
-    return res.status(500).json({ error: 'Failed to fetch data', details: error.message });
   }
+
+  variants.sort((a, b) => b.liquidityScore - a.liquidityScore);
+
+  if (totalSales72h === 0) {
+    totalSales72h = product.market?.bidAskData?.salesLast72Hours || 0;
+  }
+
+  const market = product.market?.bidAskData || {};
+  let image = product.media?.imageUrl || product.media?.thumbUrl || '';
+
+  return buildFinalResponse({
+    title: product.title,
+    styleId: product.styleId,
+    id: product.id,
+    image,
+    lowestAsk: market.lowestAsk,
+    highestBid: market.highestBid,
+    lastSale: market.lastSale,
+  }, variants, totalSales72h, sizesWithBids, spreads, 'graphql');
+}
+
+function calculateLiquidityScore(spreadPct, bidStrength, sales72h, bid, ask, lastSale) {
+  let score = 0;
+
+  if (spreadPct !== null) {
+    if (spreadPct <= 5) score += 40;
+    else if (spreadPct <= 10) score += 30;
+    else if (spreadPct <= 15) score += 20;
+    else score += 10;
+  }
+
+  if (bidStrength !== null) {
+    if (bidStrength >= 0.95) score += 20;
+    else if (bidStrength >= 0.90) score += 15;
+    else if (bidStrength >= 0.85) score += 10;
+    else if (bidStrength >= 0.80) score += 5;
+  }
+
+  if (sales72h >= 10) score += 30;
+  else if (sales72h >= 5) score += 25;
+  else if (sales72h >= 3) score += 20;
+  else if (sales72h >= 1) score += 15;
+  else if (bid && ask) score += 5;
+
+  if (lastSale) score += 10;
+
+  return Math.min(score, 100);
+}
+
+function buildFinalResponse(product, variants, totalSales72h, sizesWithBids, spreads, source) {
+  const totalVariants = variants.length || 1;
+  const sizesWithBidsPct = Math.round((sizesWithBids / totalVariants) * 100);
+
+  const validSpreads = spreads.filter(s => s !== null).sort((a, b) => a - b);
+  const medianSpreadPct = validSpreads.length > 0
+    ? validSpreads[Math.floor(validSpreads.length / 2)]
+    : null;
+
+  const topScores = variants.slice(0, 10).map(v => v.liquidityScore);
+  const overallLiquidityScore = topScores.length > 0
+    ? Math.round(topScores.reduce((a, b) => a + b, 0) / topScores.length)
+    : 0;
+
+  const bestSizes = variants.filter(v => v.liquidityScore >= 60).slice(0, 5).map(v => v.size);
+  const avoidSizes = variants.filter(v => v.liquidityScore < 40).slice(-5).map(v => v.size);
+
+  let verdict = "DROP";
+  if (medianSpreadPct !== null && medianSpreadPct <= 8 && sizesWithBidsPct >= 60 && totalSales72h >= 3) {
+    verdict = "COP";
+  } else if (medianSpreadPct !== null && medianSpreadPct <= 12 && totalSales72h >= 1) {
+    verdict = "MAYBE";
+  }
+
+  return {
+    title: product.title || 'Unknown Product',
+    sku: product.styleId || '',
+    productId: product.id || product.productId || '',
+    image: product.image || '',
+    lowestAsk: product.lowestAsk || 0,
+    highestBid: product.highestBid || 0,
+    lastSale: product.lastSale || 0,
+    salesLast72Hours: totalSales72h,
+    estimated90DaySales: totalSales72h * 30,
+    verdict,
+    overallLiquidityScore,
+    medianSpreadPct,
+    sizesWithBidsPct,
+    bestSizes,
+    avoidSizes,
+    variants,
+    source,
+  };
 }
