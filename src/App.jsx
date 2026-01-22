@@ -813,6 +813,7 @@ function App() {
   const [salesPage, setSalesPage] = useState(1);
   const [inventoryPage, setInventoryPage] = useState(1);
   const [invLookupSearch, setInvLookupSearch] = useState('');
+  const [invLookupLimit, setInvLookupLimit] = useState(50);
   const [selectedPendingItem, setSelectedPendingItem] = useState(null);
   const [showInvCsvImport, setShowInvCsvImport] = useState(false);
   const [selectedInvLookup, setSelectedInvLookup] = useState(new Set());
@@ -4523,7 +4524,7 @@ Let me know if you need anything else.`;
                   type="text"
                   placeholder="🔍 Search SKU, name, size..."
                   value={invLookupSearch}
-                  onChange={e => setInvLookupSearch(e.target.value)}
+                  onChange={e => { setInvLookupSearch(e.target.value); setInvLookupLimit(50); }}
                   style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 12 }}
                 />
               </div>
@@ -4561,7 +4562,7 @@ Let me know if you need anything else.`;
                             return (p.name && p.name.toLowerCase().includes(search)) ||
                                    (p.sku && p.sku.toLowerCase().includes(search)) ||
                                    (p.size && p.size.toString().toLowerCase().includes(search));
-                          }).slice(0, 50);
+                          }).slice(0, invLookupLimit);
                           return visible.length > 0 && visible.every(p => selectedInvLookup.has(p.id));
                         })()}
                         onChange={(e) => {
@@ -4571,7 +4572,7 @@ Let me know if you need anything else.`;
                             return (p.name && p.name.toLowerCase().includes(search)) ||
                                    (p.sku && p.sku.toLowerCase().includes(search)) ||
                                    (p.size && p.size.toString().toLowerCase().includes(search));
-                          }).slice(0, 50);
+                          }).slice(0, invLookupLimit);
                           if (e.target.checked) {
                             setSelectedInvLookup(new Set(visible.map(p => p.id)));
                           } else {
@@ -4592,7 +4593,7 @@ Let me know if you need anything else.`;
                              (p.sku && p.sku.toLowerCase().includes(search)) ||
                              (p.size && p.size.toString().toLowerCase().includes(search));
                     })
-                    .slice(0, 50)
+                    .slice(0, invLookupLimit)
                     .map(p => (
                       <div 
                         key={p.id}
@@ -4647,9 +4648,31 @@ Let me know if you need anything else.`;
                 </div>
               )}
 
-              <div style={{ padding: '10px 12px', borderTop: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', fontSize: 10, color: c.textMuted, textAlign: 'center' }}>
-                {purchases.filter(p => !p.sold).length} items in stock
-              </div>
+              {(() => {
+                const filteredItems = purchases.filter(p => !p.sold).filter(p => {
+                  if (!invLookupSearch) return true;
+                  const search = invLookupSearch.toLowerCase();
+                  return (p.name && p.name.toLowerCase().includes(search)) ||
+                         (p.sku && p.sku.toLowerCase().includes(search)) ||
+                         (p.size && p.size.toString().toLowerCase().includes(search));
+                });
+                const hasMore = filteredItems.length > invLookupLimit;
+                return (
+                  <div style={{ borderTop: `1px solid ${c.border}` }}>
+                    {hasMore && (
+                      <button
+                        onClick={() => setInvLookupLimit(prev => prev + 50)}
+                        style={{ width: '100%', padding: '10px 12px', background: 'rgba(16,185,129,0.1)', border: 'none', borderBottom: `1px solid ${c.border}`, color: c.green, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        Load More ({filteredItems.length - invLookupLimit} remaining)
+                      </button>
+                    )}
+                    <div style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.02)', fontSize: 10, color: c.textMuted, textAlign: 'center' }}>
+                      Showing {Math.min(invLookupLimit, filteredItems.length)} of {filteredItems.length} items
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>}
