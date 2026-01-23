@@ -347,7 +347,7 @@ export default async function handler(req, res) {
           // Product details
           name: lineItem.title || 'eBay Item',
           sku: lineItem.sku || itemId || '',
-         size, (lineItem.variationAspects?.find(v => v.name.toLowerCase().includes('size'))?.value) || '',
+   size: size,
           image: imageMap.get(itemId) || lineItem.image?.imageUrl || '',
           
           // Financial details - ALL preserved
