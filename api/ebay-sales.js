@@ -301,13 +301,18 @@ export default async function handler(req, res) {
   // Try variationAspects first
   let size = lineItem.variationAspects?.find(v => v.name.toLowerCase().includes('size'))?.value || '';
   
-  // If no size from variationAspects, try to parse from title
-  if (!size && lineItem.title) {
-    const sizeMatch = lineItem.title.match(/(?:Size|Sz)[:\s]*(\d+\.?\d*y?)/i);
-    if (sizeMatch) {
-      size = sizeMatch[1];
-    }
-  }
+ // If no size from variationAspects, try to parse from title
+      if (!size && lineItem.title) {
+        // Try "Size X" or "Sz X" pattern - numeric, C sizes, Y sizes, letter sizes
+        let sizeMatch = lineItem.title.match(/(?:Size|Sz)[:\s]*(\d+\.?\d*[CY]?|[234]?X{0,2}[SML]|TD|PS|GS)/i);
+        // Try standalone C or Y sizes (10C, 6.5Y)
+        if (!sizeMatch) sizeMatch = lineItem.title.match(/\b(\d+\.?\d*[CY])\b/i);
+        // Try standalone letter/kids category sizes
+        if (!sizeMatch) sizeMatch = lineItem.title.match(/\b([234]?X{0,2}[SML]|TD|PS|GS)\b/i);
+        if (sizeMatch) {
+          size = sizeMatch[1].toUpperCase();
+        }
+      }
         const baseFees = parseFloat(order.totalMarketplaceFee?.value || 0);
         const itemId = lineItem.legacyItemId || '';
         const adFee = adFeesByOrderId.get(order.orderId) || 0;
