@@ -296,6 +296,7 @@ export default async function handler(req, res) {
       if (order.cancelStatus?.cancelState === 'CANCELED') continue;
       
       for (const lineItem of order.lineItems || []) {
+        console.log('EBAY DEBUG:', JSON.stringify({ title: lineItem.title, sku: lineItem.sku, variationAspects: lineItem.variationAspects }, null, 2));
         const salePrice = parseFloat(order.pricingSummary?.total?.value || lineItem.total?.value || 0);
         const baseFees = parseFloat(order.totalMarketplaceFee?.value || 0);
         const itemId = lineItem.legacyItemId || '';
