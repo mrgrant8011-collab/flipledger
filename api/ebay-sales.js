@@ -294,10 +294,20 @@ export default async function handler(req, res) {
       // Only include PAID orders - skip cancelled, refunded, pending
       if (order.orderPaymentStatus !== 'PAID') continue;
       if (order.cancelStatus?.cancelState === 'CANCELED') continue;
-      
-      for (const lineItem of order.lineItems || []) {
-        console.log('EBAY DEBUG:', JSON.stringify({ title: lineItem.title, sku: lineItem.sku, variationAspects: lineItem.variationAspects }, null, 2));
-        const salePrice = parseFloat(order.pricingSummary?.total?.value || lineItem.total?.value || 0);
+    
+       for (const lineItem of order.lineItems || []) {
+  const salePrice = parseFloat(order.pricingSummary?.total?.value || lineItem.total?.value || 0);
+  
+  // Try variationAspects first
+  let size = lineItem.variationAspects?.find(v => v.name.toLowerCase().includes('size'))?.value || '';
+  
+  // If no size from variationAspects, try to parse from title
+  if (!size && lineItem.title) {
+    const sizeMatch = lineItem.title.match(/(?:Size|Sz)[:\s]*(\d+\.?\d*y?)/i);
+    if (sizeMatch) {
+      size = sizeMatch[1];
+    }
+  }
         const baseFees = parseFloat(order.totalMarketplaceFee?.value || 0);
         const itemId = lineItem.legacyItemId || '';
         const adFee = adFeesByOrderId.get(order.orderId) || 0;
@@ -337,7 +347,7 @@ export default async function handler(req, res) {
           // Product details
           name: lineItem.title || 'eBay Item',
           sku: lineItem.sku || itemId || '',
-         size: (lineItem.variationAspects?.find(v => v.name.toLowerCase().includes('size'))?.value) || '',
+         size, (lineItem.variationAspects?.find(v => v.name.toLowerCase().includes('size'))?.value) || '',
           image: imageMap.get(itemId) || lineItem.image?.imageUrl || '',
           
           // Financial details - ALL preserved
