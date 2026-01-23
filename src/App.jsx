@@ -30,6 +30,7 @@ import {
   safeDeleteAllExpenses,
   checkOrderExists
 } from './safeDatabase';
+import { AutoMatchButton } from './autoMatch';
 import { syncStockXSales, syncEbaySales, transformPendingForDisplay } from './syncModule';
 
 // Auth Component - Login/Signup Page
@@ -3999,6 +4000,7 @@ Let me know if you need anything else.`;
                     <option value="sku">SKU</option>
                     <option value="price">Payout</option>
                   </select>
+                  <AutoMatchButton userId={user.id} onComplete={() => loadUserData(user.id)} />
                   <button onClick={async () => { 
                     if (confirm(`Clear all?`)) {
                       await deleteAllPendingFromSupabase();
