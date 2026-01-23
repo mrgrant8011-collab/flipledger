@@ -336,7 +336,7 @@ export default async function handler(req, res) {
           // Product details
           name: lineItem.title || 'eBay Item',
           sku: lineItem.sku || itemId || '',
-          size: '', // eBay doesn't have standardized size field
+         size: (lineItem.variationAspects?.find(v => v.name.toLowerCase().includes('size'))?.value) || '',
           image: imageMap.get(itemId) || lineItem.image?.imageUrl || '',
           
           // Financial details - ALL preserved
