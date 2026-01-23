@@ -30,7 +30,7 @@ import {
   safeDeleteAllExpenses,
   checkOrderExists
 } from './safeDatabase';
-import { AutoMatchButton } from './autoMatch';
+import { AutoMatchButton } from './autoMatch.jsx';
 import { syncStockXSales, syncEbaySales, transformPendingForDisplay } from './syncModule';
 
 // Auth Component - Login/Signup Page
