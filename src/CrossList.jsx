@@ -5,7 +5,13 @@ import { supabase } from './supabase';
  * CROSS LIST - Multi-platform listing management
  * Sources: StockX Listings, FlipLedger Inventory
  * Features: List to eBay, track mappings in Supabase, prevent oversells
+ * 
+ * Storage:
+ * - Listings cache → localStorage (temporary, refreshed on sync)
+ * - Mappings → Supabase (permanent, for oversell prevention)
  */
+
+const CACHE_KEYS = { SX: 'fl_crosslist_sx', EB: 'fl_crosslist_eb' };
 
 export default function CrossList({ stockxToken, ebayToken, purchases = [], c }) {
   const [source, setSource] = useState('stockx');
@@ -13,8 +19,15 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
   const [creating, setCreating] = useState(false);
   const [delisting, setDelisting] = useState(false);
   
-  const [stockxListings, setStockxListings] = useState([]);
-  const [ebayListings, setEbayListings] = useState([]);
+  // Listings from localStorage cache
+  const [stockxListings, setStockxListings] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(CACHE_KEYS.SX) || '[]'); } catch { return []; }
+  });
+  const [ebayListings, setEbayListings] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(CACHE_KEYS.EB) || '[]'); } catch { return []; }
+  });
+  
+  // Mappings from Supabase
   const [mappings, setMappings] = useState([]);
   
   const [selectedItems, setSelectedItems] = useState(new Set());
@@ -53,9 +66,6 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
     }
   };
 
-  // ============================================
-  // SUPABASE: Insert new mapping
-  // ============================================
   const insertMapping = async (mapping) => {
     try {
       const { data, error } = await supabase
@@ -76,7 +86,6 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         console.error('[CrossList] Insert mapping error:', error);
         return null;
       }
-      
       return data;
     } catch (e) {
       console.error('[CrossList] Insert mapping error:', e);
@@ -84,9 +93,6 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
     }
   };
 
-  // ============================================
-  // SUPABASE: Update mapping status
-  // ============================================
   const updateMappingStatus = async (ebayOfferId, status) => {
     try {
       const { error } = await supabase
@@ -94,9 +100,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         .update({ status })
         .eq('ebay_offer_id', ebayOfferId);
       
-      if (error) {
-        console.error('[CrossList] Update mapping error:', error);
-      }
+      if (error) console.error('[CrossList] Update mapping error:', error);
     } catch (e) {
       console.error('[CrossList] Update mapping error:', e);
     }
@@ -146,8 +150,11 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       
       console.log('[CrossList] Synced:', sx.length, 'StockX,', eb.length, 'eBay');
       
+      // Update state and cache
       setStockxListings(sx);
       setEbayListings(eb);
+      localStorage.setItem(CACHE_KEYS.SX, JSON.stringify(sx));
+      localStorage.setItem(CACHE_KEYS.EB, JSON.stringify(eb));
       
       // Reload mappings from Supabase
       await loadMappings();
@@ -161,7 +168,6 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         
         const sxMatch = sx.find(s => s.sku === baseSku && s.size === size);
         
-        // Check if mapping already exists
         const existingMapping = mappings.find(m => 
           m.ebay_offer_id === ebItem.offerId || 
           (m.sku === baseSku && m.size === size && m.status === 'active')
@@ -179,9 +185,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         }
       }
       
-      // Reload mappings after auto-detect
       await loadMappings();
-      
       showToast(`Synced ${sx.length} StockX + ${eb.length} eBay listings`);
       
     } catch (e) {
@@ -329,9 +333,8 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       const data = await res.json();
       
       if (res.ok && data.created > 0) {
-        // Insert mappings to Supabase from createdOffers
+        // Insert mappings to Supabase
         for (const offer of (data.createdOffers || [])) {
-          // Check for existing mapping
           const exists = mappings.find(m => 
             m.ebay_offer_id === offer.offerId ||
             (m.sku === offer.baseSku && m.size === offer.size && m.status === 'active')
@@ -349,9 +352,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
           }
         }
         
-        // Reload mappings
         await loadMappings();
-        
         showToast(`Created ${data.created} eBay listings`);
         setSelectedItems(new Set());
         await syncAll();
@@ -387,14 +388,11 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       const data = await res.json();
       
       if (res.ok && data.ended > 0) {
-        // Update mappings in Supabase
         for (const offerId of offerIds) {
           await updateMappingStatus(offerId, 'delisted');
         }
         
-        // Reload mappings
         await loadMappings();
-        
         showToast(`Removed ${data.ended} from eBay`);
         await syncAll();
       } else {
