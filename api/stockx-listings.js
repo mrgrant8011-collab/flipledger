@@ -38,11 +38,11 @@ export default async function handler(req, res) {
         return res.status(200).json({ marketData });
       }
 
-      // Fetch all listings
+      // Fetch all listings (up to 2500)
       let allListings = [];
       let pageNumber = 1;
       
-      while (pageNumber <= 15) {
+      while (pageNumber <= 25) {
         const r = await fetch(`https://api.stockx.com/v2/selling/listings?pageNumber=${pageNumber}&pageSize=100&listingStatuses=ACTIVE`, {
           headers: { 'Authorization': authHeader, 'x-api-key': apiKey, 'Content-Type': 'application/json' }
         });
@@ -66,14 +66,14 @@ export default async function handler(req, res) {
         if (l.product?.productId) productIds.add(l.product.productId);
       }
 
-      // Fetch product details (including urlKey for images) - batch of 30
+      // Fetch product details (including urlKey for images) - batch of 40
       const productDetails = {};
       const productArray = Array.from(productIds);
       
       console.log(`[StockX] Fetching details for ${productArray.length} products`);
       
-      for (let i = 0; i < productArray.length; i += 30) {
-        const batch = productArray.slice(i, i + 30);
+      for (let i = 0; i < productArray.length; i += 40) {
+        const batch = productArray.slice(i, i + 40);
         await Promise.all(batch.map(async (productId) => {
           try {
             const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}`, {
@@ -115,8 +115,8 @@ export default async function handler(req, res) {
       
       console.log(`[StockX] Fetching market data for ${productArray.length} products`);
       
-      for (let i = 0; i < productArray.length; i += 15) {
-        const batch = productArray.slice(i, i + 15);
+      for (let i = 0; i < productArray.length; i += 25) {
+        const batch = productArray.slice(i, i + 25);
         await Promise.all(batch.map(async (productId) => {
           try {
             const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}/market-data?currencyCode=USD`, {
