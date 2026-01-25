@@ -310,7 +310,42 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                   })}
                 </div>
 
-                <div style={{ padding: '14px 16px', borderTop: `1px solid ${c.border}`, display: 'flex', gap: 10 }}>
+                <div style={{ padding: '14px 16px', borderTop: `1px solid ${c.border}`, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  {selectedSizes.size > 0 && (
+                    <>
+                      <span style={{ fontSize: 12, color: c.textMuted }}>{selectedSizes.size} selected:</span>
+                      <input 
+                        type="number" 
+                        placeholder="Bulk price" 
+                        id="bulkPriceInput"
+                        style={{ width: 80, padding: '8px 10px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: c.text, fontSize: 13, textAlign: 'center' }} 
+                      />
+                      <button 
+                        onClick={() => {
+                          const input = document.getElementById('bulkPriceInput');
+                          const price = parseFloat(input?.value);
+                          if (price > 0) {
+                            const newPrices = { ...editedPrices };
+                            selectedSizes.forEach(id => { newPrices[id] = price; });
+                            setEditedPrices(newPrices);
+                            input.value = '';
+                          }
+                        }} 
+                        style={{ padding: '8px 14px', background: c.gold, border: 'none', borderRadius: 6, color: '#000', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                      >Apply</button>
+                      <button 
+                        onClick={() => {
+                          const newPrices = { ...editedPrices };
+                          currentProduct.sizes.filter(s => selectedSizes.has(s.listingId) && s.sellFaster).forEach(s => {
+                            newPrices[s.listingId] = s.sellFaster;
+                          });
+                          setEditedPrices(newPrices);
+                        }} 
+                        style={{ padding: '8px 14px', background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: 6, color: '#f97316', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                      >Apply Sell Faster</button>
+                      <div style={{ width: 1, height: 24, background: c.border, margin: '0 4px' }}></div>
+                    </>
+                  )}
                   <button onClick={handleUpdatePrices} disabled={!Object.keys(editedPrices).length || loading} style={{ padding: '10px 24px', background: Object.keys(editedPrices).length ? c.green : 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700, cursor: Object.keys(editedPrices).length ? 'pointer' : 'not-allowed' }}>{loading ? 'Updating...' : 'Update Prices'}</button>
                   <button onClick={handleUnlist} disabled={!selectedSizes.size || loading} style={{ padding: '10px 24px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 13, fontWeight: 600, cursor: selectedSizes.size ? 'pointer' : 'not-allowed' }}>Unlist Selected</button>
                 </div>
