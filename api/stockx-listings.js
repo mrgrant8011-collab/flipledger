@@ -1,4 +1,3 @@
-
 /**
  * STOCKX LISTINGS API
  * GET - Fetch listings + market data (batched for speed)
@@ -113,45 +112,85 @@ export default async function handler(req, res) {
             });
             if (r.ok) {
               const variants = await r.json();
-              // Response is an array of variant market data
               for (const v of (variants || [])) {
                 if (v.variantId) {
-                  // Get channel-specific data
                   const std = v.standardMarketData || {};
                   const flex = v.flexMarketData || {};
                   const direct = v.directMarketData || {};
                   
+                  // Get best available data with fallbacks
+                  const stdLowest = parseFloat(std.lowestAsk) || parseFloat(v.lowestAskAmount) || null;
+                  const flexLowest = parseFloat(flex.lowestAsk) || parseFloat(v.flexLowestAskAmount) || parseFloat(v.lowestAskAmount) || null;
+                  const directLowest = parseFloat(direct.lowestAsk) || parseFloat(v.lowestAskAmount) || null;
+                  
+                  const stdSellFaster = parseFloat(std.sellFaster) || parseFloat(v.sellFasterAmount) || null;
+                  const flexSellFaster = parseFloat(flex.sellFaster) || parseFloat(v.sellFasterAmount) || null;
+                  const directSellFaster = parseFloat(direct.sellFaster) || parseFloat(v.sellFasterAmount) || null;
+                  
                   marketData[v.variantId] = { 
-                    // Overall lowest (across all channels)
                     lowestAsk: parseFloat(v.lowestAskAmount) || null, 
                     highestBid: parseFloat(v.highestBidAmount) || null, 
                     sellFaster: parseFloat(v.sellFasterAmount) || null,
-                    
-                    // Standard channel
-                    standardLowest: parseFloat(std.lowestAsk) || null,
-                    standardSellFaster: parseFloat(std.sellFaster) || null,
-                    standardBid: parseFloat(std.highestBidAmount) || null,
-                    
-                    // Flex channel
-                    flexLowest: parseFloat(flex.lowestAsk) || parseFloat(v.flexLowestAskAmount) || null,
-                    flexSellFaster: parseFloat(flex.sellFaster) || null,
-                    flexBid: parseFloat(flex.highestBidAmount) || null,
-                    
-                    // Direct channel
-                    directLowest: parseFloat(direct.lowestAsk) || null,
-                    directSellFaster: parseFloat(direct.sellFaster) || null,
-                    directBid: parseFloat(direct.highestBidAmount) || null
+                    standardLowest: stdLowest, standardSellFaster: stdSellFaster,
+                    flexLowest: flexLowest, flexSellFaster: flexSellFaster,
+                    directLowest: directLowest, directSellFaster: directSellFaster
                   };
                 }
               }
             }
           } catch (e) {
-            console.log('[StockX] Market data error for product', productId, ':', e.message);
+            console.log('[StockX] Product market data error:', productId, e.message);
           }
         }));
       }
       
-      console.log(`[StockX] Fetched market data for ${Object.keys(marketData).length} variants from ${productArray.length} products`);
+      // Find variants still missing market data
+      const missingVariants = [];
+      for (const l of allListings) {
+        const vid = l.variant?.variantId;
+        const pid = l.product?.productId;
+        if (vid && pid && !marketData[vid]?.lowestAsk) {
+          missingVariants.push({ productId: pid, variantId: vid });
+        }
+      }
+      
+      // Fetch missing variants individually (per-variant endpoint)
+      if (missingVariants.length > 0) {
+        console.log(`[StockX] Fetching ${missingVariants.length} missing variants individually`);
+        for (let i = 0; i < missingVariants.length; i += 20) {
+          const batch = missingVariants.slice(i, i + 20);
+          await Promise.all(batch.map(async ({ productId, variantId }) => {
+            try {
+              const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}/variants/${variantId}/market-data?currencyCode=USD`, {
+                headers: { 'Authorization': authHeader, 'x-api-key': apiKey }
+              });
+              if (r.ok) {
+                const v = await r.json();
+                const std = v.standardMarketData || {};
+                const flex = v.flexMarketData || {};
+                const direct = v.directMarketData || {};
+                
+                const overall = parseFloat(v.lowestAskAmount) || null;
+                const overallSF = parseFloat(v.sellFasterAmount) || null;
+                
+                marketData[variantId] = { 
+                  lowestAsk: overall, 
+                  highestBid: parseFloat(v.highestBidAmount) || null, 
+                  sellFaster: overallSF,
+                  standardLowest: parseFloat(std.lowestAsk) || overall,
+                  standardSellFaster: parseFloat(std.sellFaster) || overallSF,
+                  flexLowest: parseFloat(flex.lowestAsk) || parseFloat(v.flexLowestAskAmount) || overall,
+                  flexSellFaster: parseFloat(flex.sellFaster) || overallSF,
+                  directLowest: parseFloat(direct.lowestAsk) || overall,
+                  directSellFaster: parseFloat(direct.sellFaster) || overallSF
+                };
+              }
+            } catch {}
+          }));
+        }
+      }
+      
+      console.log(`[StockX] Market data: ${Object.keys(marketData).length} variants, ${Object.values(marketData).filter(m => m.lowestAsk).length} with prices`);
 
       // Transform listings
       const listings = allListings.map(l => {
@@ -161,21 +200,23 @@ export default async function handler(req, res) {
         const pd = productDetails[p.productId] || {};
         const channel = l.inventoryType || 'STANDARD';
         
-        // Pick the right market data based on listing's channel
-        let lowestAsk, sellFaster, highestBid;
+        // Always try to get SOME market data - channel specific first, then fallback to overall
+        let lowestAsk = null, sellFaster = null;
+        
         if (channel === 'DIRECT') {
           lowestAsk = md.directLowest || md.lowestAsk;
           sellFaster = md.directSellFaster || md.sellFaster;
-          highestBid = md.directBid || md.highestBid;
         } else if (channel === 'FLEX') {
           lowestAsk = md.flexLowest || md.lowestAsk;
           sellFaster = md.flexSellFaster || md.sellFaster;
-          highestBid = md.flexBid || md.highestBid;
         } else {
           lowestAsk = md.standardLowest || md.lowestAsk;
           sellFaster = md.standardSellFaster || md.sellFaster;
-          highestBid = md.standardBid || md.highestBid;
         }
+        
+        // Final fallback - use ANY available data
+        if (!lowestAsk) lowestAsk = md.lowestAsk || md.standardLowest || md.flexLowest || md.directLowest;
+        if (!sellFaster) sellFaster = md.sellFaster || md.standardSellFaster || md.flexSellFaster || md.directSellFaster;
         
         // Use urlKey from catalog API, or fallback to generated slug from product name
         let image = '';
@@ -188,13 +229,9 @@ export default async function handler(req, res) {
           listingId: l.listingId, productId: p.productId, variantId: v.variantId,
           name: p.productName || pd.title || 'Unknown', sku: p.styleId || '', size: v.variantValue || '', image,
           yourAsk: parseFloat(l.amount) || 0, inventoryType: channel,
-          lowestAsk: lowestAsk || null, highestBid: highestBid || null, sellFaster: sellFaster || null,
-          // Include all channel data for reference
-          allChannels: {
-            standard: { lowest: md.standardLowest, sellFaster: md.standardSellFaster },
-            flex: { lowest: md.flexLowest, sellFaster: md.flexSellFaster },
-            direct: { lowest: md.directLowest, sellFaster: md.directSellFaster }
-          },
+          lowestAsk: lowestAsk || null, 
+          highestBid: md.highestBid || null, 
+          sellFaster: sellFaster || null,
           createdAt: l.createdAt
         };
       });
