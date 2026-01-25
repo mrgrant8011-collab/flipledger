@@ -144,9 +144,9 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'flex-start', width: '100%' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* ROW 1: Search + Sync */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, width: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
         <input type="text" placeholder="Search SKU or name..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: 200, padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 13 }} />
         <button onClick={syncListings} disabled={syncing} style={{ padding: '10px 20px', background: c.green, border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: syncing ? 0.7 : 1 }}>🔄 {syncing ? 'Syncing...' : 'Sync'}</button>
       </div>
@@ -166,7 +166,7 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
 
       {/* ROW 3: Master-Detail */}
       {subTab === 'reprice' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 16, width: '100%' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 16 }}>
           {/* Left: Products */}
           <div style={{ ...card, overflow: 'hidden' }}>
             <div style={{ padding: '12px 14px', borderBottom: `1px solid ${c.border}`, fontSize: 11, fontWeight: 700, color: c.textMuted }}>PRODUCTS ({filteredProducts.length})</div>
@@ -271,8 +271,8 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
         </div>
       )}
 
-      {subTab === 'crosslist' && <div style={{ ...card, padding: 80, textAlign: 'center', width: '100%' }}><div style={{ fontSize: 56 }}>🚀</div><h3 style={{ marginTop: 16 }}>Cross-list to eBay</h3><p style={{ color: c.textMuted }}>{crosslistProducts.length} products ({totalCrosslist} listings) not on eBay</p></div>}
-      {subTab === 'all' && <div style={{ ...card, padding: 80, textAlign: 'center', width: '100%' }}><div style={{ fontSize: 56 }}>📦</div><h3 style={{ marginTop: 16 }}>All Listings</h3><p style={{ color: c.textMuted }}>{stockxListings.length} StockX + {ebayListings.length} eBay</p></div>}
+      {subTab === 'crosslist' && <div style={{ ...card, padding: 80, textAlign: 'center' }}><div style={{ fontSize: 56 }}>🚀</div><h3 style={{ marginTop: 16 }}>Cross-list to eBay</h3><p style={{ color: c.textMuted }}>{crosslistProducts.length} products ({totalCrosslist} listings) not on eBay</p></div>}
+      {subTab === 'all' && <div style={{ ...card, padding: 80, textAlign: 'center' }}><div style={{ fontSize: 56 }}>📦</div><h3 style={{ marginTop: 16 }}>All Listings</h3><p style={{ color: c.textMuted }}>{stockxListings.length} StockX + {ebayListings.length} eBay</p></div>}
 
       {toast && <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', padding: '14px 28px', borderRadius: 10, background: c.card, border: `1px solid ${toast.type === 'error' ? c.red : c.green}`, boxShadow: '0 4px 24px rgba(0,0,0,0.4)', zIndex: 9999 }}><span style={{ color: toast.type === 'error' ? c.red : c.green, fontWeight: 600 }}>{toast.type === 'error' ? '❌' : '✓'} {toast.msg}</span></div>}
     </div>
