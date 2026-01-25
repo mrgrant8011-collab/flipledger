@@ -54,17 +54,10 @@ export default async function handler(req, res) {
         pageNumber++;
       }
 
-      // Get unique products and variants
+      // Get unique products
       const productIds = new Set();
-      const variants = [];
-      const seen = new Set();
       for (const l of allListings) {
         if (l.product?.productId) productIds.add(l.product.productId);
-        const key = `${l.product?.productId}|${l.variant?.variantId}`;
-        if (!seen.has(key) && l.product?.productId && l.variant?.variantId) {
-          seen.add(key);
-          variants.push({ productId: l.product.productId, variantId: l.variant.variantId });
-        }
       }
 
       // Fetch product details (including urlKey for images) - batch of 25
@@ -108,24 +101,35 @@ export default async function handler(req, res) {
           .replace(/^-|-$/g, '');
       };
 
-      // Fetch market data in parallel (batches of 25, ALL variants)
+      // Fetch market data at PRODUCT level (returns all variants in one call)
       const marketData = {};
-      for (let i = 0; i < variants.length; i += 25) {
-        const batch = variants.slice(i, i + 25);
-        await Promise.all(batch.map(async ({ productId, variantId }) => {
+      for (let i = 0; i < productArray.length; i += 10) {
+        const batch = productArray.slice(i, i + 10);
+        await Promise.all(batch.map(async (productId) => {
           try {
-            const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}/variants/${variantId}/market-data?currencyCode=USD`, {
+            const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}/market-data?currencyCode=USD`, {
               headers: { 'Authorization': authHeader, 'x-api-key': apiKey }
             });
             if (r.ok) {
-              const m = await r.json();
-              marketData[variantId] = { lowestAsk: parseFloat(m.lowestAskAmount) || null, highestBid: parseFloat(m.highestBidAmount) || null, sellFaster: parseFloat(m.sellFasterAmount) || null };
+              const variants = await r.json();
+              // Response is an array of variant market data
+              for (const v of (variants || [])) {
+                if (v.variantId) {
+                  marketData[v.variantId] = { 
+                    lowestAsk: parseFloat(v.lowestAskAmount) || null, 
+                    highestBid: parseFloat(v.highestBidAmount) || null, 
+                    sellFaster: parseFloat(v.sellFasterAmount) || null 
+                  };
+                }
+              }
             }
-          } catch {}
+          } catch (e) {
+            console.log('[StockX] Market data error for product', productId, ':', e.message);
+          }
         }));
       }
       
-      console.log(`[StockX] Fetched market data for ${Object.keys(marketData).length}/${variants.length} variants`);
+      console.log(`[StockX] Fetched market data for ${Object.keys(marketData).length} variants from ${productArray.length} products`);
 
       // Transform listings
       const listings = allListings.map(l => {
