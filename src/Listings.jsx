@@ -197,7 +197,7 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
           {/* Left: Products */}
           <div style={{ ...card, overflow: 'hidden' }}>
             <div style={{ padding: '12px 14px', borderBottom: `1px solid ${c.border}`, fontSize: 11, fontWeight: 700, color: c.textMuted }}>PRODUCTS ({filteredProducts.length})</div>
-            <div style={{ maxHeight: 540, overflowY: 'auto' }}>
+            <div style={{ maxHeight: 600, overflowY: 'auto' }}>
               {filteredProducts.map(p => (
                 <div key={p.sku} onClick={() => { setSelectedProduct(p.sku); setSelectedSizes(new Set()); setEditedPrices({}); }} style={{ padding: '10px 14px', borderBottom: `1px solid ${c.border}`, cursor: 'pointer', background: selectedProduct === p.sku ? 'rgba(255,255,255,0.05)' : 'transparent', borderLeft: selectedProduct === p.sku ? `3px solid ${c.gold}` : '3px solid transparent', display: 'flex', gap: 10, alignItems: 'center' }}>
                   <div style={{ width: 40, height: 40, background: 'rgba(255,255,255,0.05)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
@@ -241,22 +241,65 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                   </label>
                 </div>
 
+                {/* Market Summary - Bid/Ask Spread */}
+                {currentProduct.sizes[0] && (
+                  <div style={{ padding: '12px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(201,169,98,0.05)', display: 'flex', gap: 20, fontSize: 12 }}>
+                    <div>
+                      <span style={{ color: c.textMuted }}>Highest Bid: </span>
+                      <span style={{ color: c.green, fontWeight: 700 }}>
+                        {currentProduct.sizes.some(s => s.highestBid) 
+                          ? `$${Math.max(...currentProduct.sizes.filter(s => s.highestBid).map(s => s.highestBid))}` 
+                          : '—'}
+                      </span>
+                    </div>
+                    <div>
+                      <span style={{ color: c.textMuted }}>Lowest Ask: </span>
+                      <span style={{ color: '#f97316', fontWeight: 700 }}>
+                        {currentProduct.sizes.some(s => s.lowestAsk) 
+                          ? `$${Math.min(...currentProduct.sizes.filter(s => s.lowestAsk).map(s => s.lowestAsk))}` 
+                          : '—'}
+                      </span>
+                    </div>
+                    <div>
+                      <span style={{ color: c.textMuted }}>Spread: </span>
+                      <span style={{ fontWeight: 700 }}>
+                        {(() => {
+                          const bids = currentProduct.sizes.filter(s => s.highestBid).map(s => s.highestBid);
+                          const asks = currentProduct.sizes.filter(s => s.lowestAsk).map(s => s.lowestAsk);
+                          if (bids.length && asks.length) {
+                            const spread = Math.min(...asks) - Math.max(...bids);
+                            return spread > 0 ? `$${spread}` : 'Crossed';
+                          }
+                          return '—';
+                        })()}
+                      </span>
+                    </div>
+                    <div style={{ marginLeft: 'auto' }}>
+                      <span style={{ color: c.textMuted }}>Your Range: </span>
+                      <span style={{ fontWeight: 600 }}>
+                        ${Math.min(...currentProduct.sizes.map(s => s.yourAsk))} - ${Math.max(...currentProduct.sizes.map(s => s.yourAsk))}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', gap: 0, padding: '12px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', fontSize: 11, fontWeight: 700, color: c.textMuted }}>
                   <span style={{ width: 32 }}></span>
                   <span style={{ width: 70 }}>SIZE</span>
                   <span style={{ width: 36 }}>QTY</span>
                   <span style={{ width: 70 }}>YOUR ASK</span>
                   <span style={{ width: 80 }}>LOWEST</span>
+                  <span style={{ width: 60 }}>BID</span>
                   <span style={{ width: 80 }}>SELL FASTER</span>
                   <span style={{ width: 60 }}>COST</span>
-                  <span style={{ width: 70 }}>PROFIT</span>
+                  <span style={{ width: 60 }}>PROFIT</span>
                 </div>
 
-                <div style={{ flex: 1, overflowY: 'auto', maxHeight: 360 }}>
+                <div style={{ flex: 1, overflowY: 'auto', maxHeight: 500 }}>
                   {currentProduct.sizes.map(item => {
                     const isEdited = editedPrices[item.listingId] !== undefined;
                     const currentPrice = parseFloat(editedPrices[item.listingId] ?? item.yourAsk) || 0;
-                    const sellFasterPrice = item.sellFaster || item.highestBid || null;
+                    const sellFasterPrice = item.sellFaster || null;
                     
                     // Channel badge color
                     const channel = item.inventoryType || 'STANDARD';
@@ -289,7 +332,7 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                           {item.size}
                           <span style={{ background: channelBadge.bg, color: '#fff', fontSize: 9, fontWeight: 700, padding: '2px 4px', borderRadius: 3 }}>{channelBadge.label}</span>
                         </span>
-                        <span style={{ width: 36 }}>1</span>
+                        <span style={{ width: 36 }}>{item.qty || 1}</span>
                         <span style={{ width: 70 }}><input type="number" value={editedPrices[item.listingId] ?? item.yourAsk} onChange={e => setEditedPrices({ ...editedPrices, [item.listingId]: e.target.value })} style={{ width: 54, padding: '6px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 6, color: c.text, fontSize: 13, textAlign: 'center' }} /></span>
                         <span style={{ width: 80, display: 'flex', alignItems: 'center', gap: 4 }}>
                           {item.lowestAsk ? (
@@ -302,9 +345,10 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                             <span style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 4, padding: '4px 8px', color: c.green, fontWeight: 700, fontSize: 11 }}>✓ ONLY</span>
                           )}
                         </span>
+                        <span style={{ width: 60 }}>{item.highestBid ? <button onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: item.highestBid })} style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 4, padding: '4px 6px', color: c.green, fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>${item.highestBid}</button> : '—'}</span>
                         <span style={{ width: 80 }}>{sellFasterPrice ? <button onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: sellFasterPrice })} style={{ background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: 4, padding: '4px 8px', color: '#f97316', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>${sellFasterPrice}</button> : '—'}</span>
                         <span style={{ width: 60, color: c.textMuted }}>{formatCost(item.cost)}</span>
-                        <span style={{ width: 70, color: profitColor, fontWeight: 600 }}>{profit ? `$${profit}` : '—'}</span>
+                        <span style={{ width: 60, color: profitColor, fontWeight: 600 }}>{profit ? `$${profit}` : '—'}</span>
                       </div>
                     );
                   })}
@@ -343,6 +387,16 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                         }} 
                         style={{ padding: '8px 14px', background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: 6, color: '#f97316', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
                       >Apply Sell Faster</button>
+                      <button 
+                        onClick={() => {
+                          const newPrices = { ...editedPrices };
+                          currentProduct.sizes.filter(s => selectedSizes.has(s.listingId) && s.highestBid).forEach(s => {
+                            newPrices[s.listingId] = s.highestBid;
+                          });
+                          setEditedPrices(newPrices);
+                        }} 
+                        style={{ padding: '8px 14px', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 6, color: c.green, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                      >Match Bids</button>
                       <div style={{ width: 1, height: 24, background: c.border, margin: '0 4px' }}></div>
                     </>
                   )}
