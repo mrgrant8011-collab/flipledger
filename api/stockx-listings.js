@@ -57,50 +57,39 @@ export default async function handler(req, res) {
       // Check if skipMarketData query param is set (for fast initial load)
       const skipMarketData = req.query.skipMarketData === 'true';
 
-      // Fetch all listings - first get page 1 to know total
+      // Fetch ALL ACTIVE listings (no inventory type filter - get STANDARD, FLEX, and DIRECT)
+      // Each listing has its own inventoryType field which we use later
       let allListings = [];
+      let pageNumber = 1;
       
-      const firstPage = await fetch(`https://api.stockx.com/v2/selling/listings?pageNumber=1&pageSize=100&listingStatuses=ACTIVE`, {
-        headers: { 'Authorization': authHeader, 'x-api-key': apiKey, 'Content-Type': 'application/json' }
-      });
-      
-      if (!firstPage.ok) {
-        console.log('[StockX] First page failed:', firstPage.status);
-        return res.status(firstPage.status).json({ error: 'Failed to fetch listings' });
-      }
-      
-      const firstData = await firstPage.json();
-      allListings.push(...(firstData.listings || []));
-      
-      const totalCount = firstData.count || 0;
-      const totalPages = Math.ceil(totalCount / 100);
-      
-      console.log(`[StockX] Total count: ${totalCount}, Pages needed: ${totalPages}`);
-      
-      // Fetch remaining pages in parallel batches of 20
-      if (firstData.hasNextPage && totalPages > 1) {
-        for (let batch = 2; batch <= totalPages; batch += 20) {
-          const pagePromises = [];
-          for (let p = batch; p < batch + 20 && p <= totalPages; p++) {
-            pagePromises.push(
-              fetch(`https://api.stockx.com/v2/selling/listings?pageNumber=${p}&pageSize=100&listingStatuses=ACTIVE`, {
-                headers: { 'Authorization': authHeader, 'x-api-key': apiKey, 'Content-Type': 'application/json' }
-              }).then(r => r.ok ? r.json() : null).catch(() => null)
-            );
-          }
-          
-          const results = await Promise.all(pagePromises);
-          for (const d of results) {
-            if (d?.listings?.length) {
-              allListings.push(...d.listings);
-            }
-          }
-          
-          console.log(`[StockX] Progress: ${allListings.length} listings`);
+      while (true) {
+        const r = await fetch(`https://api.stockx.com/v2/selling/listings?pageNumber=${pageNumber}&pageSize=100&listingStatuses=ACTIVE`, {
+          headers: { 'Authorization': authHeader, 'x-api-key': apiKey, 'Content-Type': 'application/json' }
+        });
+        
+        if (!r.ok) {
+          console.log(`[StockX] Page ${pageNumber} failed:`, r.status);
+          break;
         }
+        
+        const d = await r.json();
+        console.log(`[StockX] Page ${pageNumber}: ${d.listings?.length || 0} listings (total in API: ${d.count})`);
+        
+        if (d.listings?.length) {
+          allListings.push(...d.listings);
+        }
+        
+        if (!d.hasNextPage) break;
+        pageNumber++;
       }
       
-      console.log(`[StockX] FINAL: ${allListings.length} of ${totalCount} listings fetched`);
+      // Log breakdown by inventory type
+      const byType = {};
+      for (const l of allListings) {
+        byType[l.inventoryType || 'UNKNOWN'] = (byType[l.inventoryType || 'UNKNOWN'] || 0) + 1;
+      }
+      console.log(`[StockX] TOTAL: ${allListings.length} listings`);
+      console.log(`[StockX] By inventory type:`, JSON.stringify(byType));
 
       // Get unique products
       const productIds = new Set();
@@ -228,7 +217,6 @@ export default async function handler(req, res) {
           lowestAsk: lowestAsk || null, 
           highestBid: highestBid || null, 
           sellFaster: sellFaster || null,
-          qty: l.quantity || 1,
           createdAt: l.createdAt
         };
       });
