@@ -38,11 +38,11 @@ export default async function handler(req, res) {
         return res.status(200).json({ marketData });
       }
 
-      // Fetch all listings (up to 2500)
+      // Fetch all listings (up to 10,000)
       let allListings = [];
       let pageNumber = 1;
       
-      while (pageNumber <= 25) {
+      while (pageNumber <= 100) {
         const r = await fetch(`https://api.stockx.com/v2/selling/listings?pageNumber=${pageNumber}&pageSize=100&listingStatuses=ACTIVE`, {
           headers: { 'Authorization': authHeader, 'x-api-key': apiKey, 'Content-Type': 'application/json' }
         });
@@ -53,7 +53,7 @@ export default async function handler(req, res) {
         const d = await r.json();
         if (!d.listings?.length) break;
         allListings.push(...d.listings);
-        console.log(`[StockX] Page ${pageNumber}: ${d.listings.length} listings (total: ${allListings.length})`);
+        if (pageNumber % 10 === 0) console.log(`[StockX] Progress: ${allListings.length} listings`);
         if (!d.hasNextPage || d.listings.length < 100) break;
         pageNumber++;
       }
@@ -66,14 +66,14 @@ export default async function handler(req, res) {
         if (l.product?.productId) productIds.add(l.product.productId);
       }
 
-      // Fetch product details (including urlKey for images) - batch of 40
+      // Fetch product details (including urlKey for images) - batch of 50
       const productDetails = {};
       const productArray = Array.from(productIds);
       
       console.log(`[StockX] Fetching details for ${productArray.length} products`);
       
-      for (let i = 0; i < productArray.length; i += 40) {
-        const batch = productArray.slice(i, i + 40);
+      for (let i = 0; i < productArray.length; i += 50) {
+        const batch = productArray.slice(i, i + 50);
         await Promise.all(batch.map(async (productId) => {
           try {
             const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}`, {
@@ -115,8 +115,8 @@ export default async function handler(req, res) {
       
       console.log(`[StockX] Fetching market data for ${productArray.length} products`);
       
-      for (let i = 0; i < productArray.length; i += 25) {
-        const batch = productArray.slice(i, i + 25);
+      for (let i = 0; i < productArray.length; i += 50) {
+        const batch = productArray.slice(i, i + 50);
         await Promise.all(batch.map(async (productId) => {
           try {
             const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}/market-data?currencyCode=USD`, {
