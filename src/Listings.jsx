@@ -5,24 +5,18 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
   const [syncing, setSyncing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [stockxListings, setStockxListings] = useState([]);
-  const [ebayListings, setEbayListings] = useState([]);
+  const [stockxListings, setStockxListings] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('fl_sx') || '[]'); } catch { return []; }
+  });
+  const [ebayListings, setEbayListings] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('fl_eb') || '[]'); } catch { return []; }
+  });
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [selectedSizes, setSelectedSizes] = useState(new Set());
   const [editedPrices, setEditedPrices] = useState({});
   const [toast, setToast] = useState(null);
 
   const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000); };
-
-  // Load from localStorage on mount
-  useEffect(() => {
-    try {
-      const sx = JSON.parse(localStorage.getItem('fl_sx') || '[]');
-      const eb = JSON.parse(localStorage.getItem('fl_eb') || '[]');
-      if (sx.length) setStockxListings(sx);
-      if (eb.length) setEbayListings(eb);
-    } catch (e) {}
-  }, []);
 
   // Get cost from purchases
   const getCost = useCallback((sku, size) => {
