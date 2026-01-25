@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
 export default function Listings({ stockxToken, ebayToken, purchases = [], c = { bg: '#0a0a0a', card: '#111111', border: '#1a1a1a', text: '#ffffff', textMuted: '#888888', gold: '#C9A962', green: '#10b981', red: '#ef4444' } }) {
@@ -113,13 +112,14 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
   
   const handleUpdatePrices = async () => {
     const u = Object.entries(editedPrices).map(([id, a]) => ({ listingId: id, amount: Math.round(parseFloat(a)) })).filter(x => x.amount > 0);
-    if (!u.length) return;
+    if (!u.length) { showToast('No prices to update', 'error'); return; }
     setLoading(true);
     try {
       const r = await fetch('/api/stockx-listings', { method: 'PATCH', headers: { 'Authorization': `Bearer ${stockxToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ items: u }) });
-      if (r.ok) { showToast(`Updated ${u.length} prices`); setEditedPrices({}); await syncListings(); }
-      else showToast('Update failed', 'error');
-    } catch { showToast('Update failed', 'error'); }
+      const data = await r.json();
+      if (r.ok && data.success) { showToast(`Updated ${u.length} prices`); setEditedPrices({}); await syncListings(); }
+      else showToast(data.error || 'Update failed', 'error');
+    } catch (e) { showToast('Update failed: ' + e.message, 'error'); }
     finally { setLoading(false); }
   };
   
@@ -214,35 +214,54 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                   </label>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '44px 80px 70px 110px 110px 110px 1fr', padding: '14px 24px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', fontSize: 11, fontWeight: 700, color: c.textMuted }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '44px 70px 50px 100px 100px 100px 80px 80px', padding: '14px 24px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', fontSize: 11, fontWeight: 700, color: c.textMuted }}>
                   <span></span>
                   <span>SIZE</span>
                   <span style={{ textAlign: 'center' }}>QTY</span>
                   <span style={{ textAlign: 'center' }}>YOUR ASK</span>
-                  <span style={{ textAlign: 'center' }}>LOWEST ASK</span>
+                  <span style={{ textAlign: 'center' }}>LOWEST</span>
                   <span style={{ textAlign: 'center' }}>SELL FASTER</span>
                   <span style={{ textAlign: 'right' }}>COST</span>
+                  <span style={{ textAlign: 'right' }}>PROFIT</span>
                 </div>
 
                 <div style={{ flex: 1, overflowY: 'auto', maxHeight: 360 }}>
                   {currentProduct.sizes.map(item => {
                     const isLowest = item.lowestAsk && item.yourAsk <= item.lowestAsk;
                     const isEdited = editedPrices[item.listingId] !== undefined;
-                    const sameSize = currentProduct.sizes.filter(s => s.size === item.size).length;
+                    const currentPrice = parseFloat(editedPrices[item.listingId] ?? item.yourAsk) || 0;
+                    const sellFasterPrice = item.sellFaster || item.highestBid || null;
+                    
+                    // Calculate profit (price - cost). If cost is range "41-45", use max
+                    let costNum = null;
+                    if (item.cost) {
+                      if (typeof item.cost === 'string' && item.cost.includes('-')) {
+                        costNum = parseFloat(item.cost.split('-')[1]);
+                      } else {
+                        costNum = parseFloat(item.cost);
+                      }
+                    }
+                    const profit = costNum ? (currentPrice - costNum).toFixed(2) : null;
+                    const profitColor = profit > 0 ? c.green : profit < 0 ? c.red : c.textMuted;
                     
                     return (
-                      <div key={item.listingId} style={{ display: 'grid', gridTemplateColumns: '44px 80px 70px 110px 110px 110px 1fr', padding: '16px 24px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', fontSize: 14 }}>
+                      <div key={item.listingId} style={{ display: 'grid', gridTemplateColumns: '44px 70px 50px 100px 100px 100px 80px 80px', padding: '14px 24px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', fontSize: 14 }}>
                         <input type="checkbox" checked={selectedSizes.has(item.listingId)} onChange={e => { const n = new Set(selectedSizes); e.target.checked ? n.add(item.listingId) : n.delete(item.listingId); setSelectedSizes(n); }} style={{ width: 16, height: 16, accentColor: c.green }} />
                         <span style={{ fontWeight: 600 }}>{item.size}</span>
                         <span style={{ textAlign: 'center' }}>1</span>
                         <div style={{ textAlign: 'center' }}>
-                          <input type="number" value={editedPrices[item.listingId] ?? item.yourAsk} onChange={e => setEditedPrices({ ...editedPrices, [item.listingId]: e.target.value })} style={{ width: 80, padding: '10px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 8, color: c.text, fontSize: 14, textAlign: 'center' }} />
+                          <input type="number" value={editedPrices[item.listingId] ?? item.yourAsk} onChange={e => setEditedPrices({ ...editedPrices, [item.listingId]: e.target.value })} style={{ width: 70, padding: '8px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 8, color: c.text, fontSize: 14, textAlign: 'center' }} />
                         </div>
                         <div style={{ textAlign: 'center', color: isLowest ? c.green : c.text, fontWeight: 600 }}>
-                          {item.lowestAsk ? `$${item.lowestAsk}` : '—'}{isLowest && <span style={{ marginLeft: 6 }}>✓</span>}
+                          {item.lowestAsk ? `$${item.lowestAsk}` : '—'}{isLowest && <span style={{ marginLeft: 4 }}>✓</span>}
                         </div>
-                        <span style={{ textAlign: 'center', color: '#f97316', fontWeight: 600 }}>{item.sellFaster || item.highestBid ? `$${item.sellFaster || item.highestBid}` : '—'}</span>
+                        <div style={{ textAlign: 'center' }}>
+                          {sellFasterPrice ? (
+                            <button onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: sellFasterPrice })} style={{ background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: 6, padding: '6px 12px', color: '#f97316', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>${sellFasterPrice}</button>
+                          ) : '—'}
+                        </div>
                         <span style={{ textAlign: 'right', color: c.textMuted }}>{formatCost(item.cost)}</span>
+                        <span style={{ textAlign: 'right', color: profitColor, fontWeight: 600 }}>{profit ? `$${profit}` : '—'}</span>
                       </div>
                     );
                   })}
