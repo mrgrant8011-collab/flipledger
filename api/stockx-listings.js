@@ -77,11 +77,11 @@ export default async function handler(req, res) {
       
       console.log(`[StockX] Total count: ${totalCount}, Pages needed: ${totalPages}`);
       
-      // Fetch remaining pages in parallel batches
+      // Fetch remaining pages in parallel batches of 20
       if (firstData.hasNextPage && totalPages > 1) {
-        for (let batch = 2; batch <= totalPages; batch += 10) {
+        for (let batch = 2; batch <= totalPages; batch += 20) {
           const pagePromises = [];
-          for (let p = batch; p < batch + 10 && p <= totalPages; p++) {
+          for (let p = batch; p < batch + 20 && p <= totalPages; p++) {
             pagePromises.push(
               fetch(`https://api.stockx.com/v2/selling/listings?pageNumber=${p}&pageSize=100&listingStatuses=ACTIVE`, {
                 headers: { 'Authorization': authHeader, 'x-api-key': apiKey, 'Content-Type': 'application/json' }
@@ -96,7 +96,7 @@ export default async function handler(req, res) {
             }
           }
           
-          console.log(`[StockX] Fetched pages ${batch}-${Math.min(batch + 9, totalPages)}, total: ${allListings.length}`);
+          console.log(`[StockX] Progress: ${allListings.length} listings`);
         }
       }
       
@@ -108,26 +108,9 @@ export default async function handler(req, res) {
         if (l.product?.productId) productIds.add(l.product.productId);
       }
 
-      // Fetch product details (including urlKey for images) - batch of 50
+      // Skip product details fetch for fast sync - just use product name for image
       const productDetails = {};
       const productArray = Array.from(productIds);
-      
-      console.log(`[StockX] Fetching details for ${productArray.length} products`);
-      
-      for (let i = 0; i < productArray.length; i += 50) {
-        const batch = productArray.slice(i, i + 50);
-        await Promise.all(batch.map(async (productId) => {
-          try {
-            const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}`, {
-              headers: { 'Authorization': authHeader, 'x-api-key': apiKey }
-            });
-            if (r.ok) {
-              const p = await r.json();
-              productDetails[productId] = { urlKey: p.urlKey, title: p.title };
-            }
-          } catch {}
-        }));
-      }
       
       // Helper to generate fallback slug from product name
       const generateSlug = (name) => {
