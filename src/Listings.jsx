@@ -1,338 +1,314 @@
-/**
- * STOCKX LISTINGS API
- * GET - Fetch listings + market data (batched for speed)
- * GET ?productId=xxx - Fetch market data for specific product
- * PATCH - Update prices
- * DELETE - Unlist
- */
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+export default function Listings({ stockxToken, ebayToken, purchases = [], c = { bg: '#0a0a0a', card: '#111111', border: '#1a1a1a', text: '#ffffff', textMuted: '#888888', gold: '#C9A962', green: '#10b981', red: '#ef4444' } }) {
+  const [subTab, setSubTab] = useState('reprice');
+  const [syncing, setSyncing] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [stockxListings, setStockxListings] = useState(() => { try { return JSON.parse(localStorage.getItem('fl_sx') || '[]'); } catch { return []; } });
+  const [ebayListings, setEbayListings] = useState(() => { try { return JSON.parse(localStorage.getItem('fl_eb') || '[]'); } catch { return []; } });
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [selectedSizes, setSelectedSizes] = useState(new Set());
+  const [editedPrices, setEditedPrices] = useState({});
+  const [toast, setToast] = useState(null);
+
+  const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000); };
+
+  // Normalize SKU for matching (remove hyphens, spaces)
+  const normalizeSku = (sku) => {
+    if (!sku) return '';
+    return String(sku).toLowerCase().replace(/[-\s]/g, '');
+  };
+
+  // Normalize size for matching (remove W, spaces, etc)
+  const normalizeSize = (size) => {
+    if (!size) return '';
+    return String(size).toUpperCase().replace(/\s+/g, '').replace(/W$/, '').replace(/^W/, '');
+  };
+
+  // Get cost from inventory - flexible matching
+  const getCost = useCallback((sku, size) => {
+    if (!purchases?.length || !sku) return null;
+    
+    const skuNorm = normalizeSku(sku);
+    const sizeNorm = normalizeSize(size);
+    const sizeRaw = String(size || '').toUpperCase();
+    
+    // Find matching inventory items (not sold)
+    const matches = purchases.filter(p => {
+      if (p.sold) return false;
+      
+      // Normalize inventory SKU
+      const pSkuNorm = normalizeSku(p.sku);
+      const pSizeNorm = normalizeSize(p.size);
+      const pSizeRaw = String(p.size || '').toUpperCase();
+      
+      // Match SKU (normalized - ignores hyphens)
+      const skuMatch = pSkuNorm === skuNorm || pSkuNorm.includes(skuNorm) || skuNorm.includes(pSkuNorm);
+      
+      // Match size (try multiple formats)
+      const sizeMatch = pSizeNorm === sizeNorm || pSizeRaw === sizeRaw || p.size == size;
+      
+      return skuMatch && sizeMatch;
+    });
+    
+    if (matches.length === 0) return null;
+    if (matches.length === 1) return parseFloat(matches[0].cost) || null;
+    
+    // Multiple matches - return range
+    const costs = matches.map(m => parseFloat(m.cost) || 0).filter(c => c > 0);
+    if (costs.length === 0) return null;
+    const min = Math.min(...costs);
+    const max = Math.max(...costs);
+    return min === max ? min : `${min}-${max}`;
+  }, [purchases]);
+
+  const syncListings = useCallback(async () => {
+    setSyncing(true);
+    try {
+      const [sxRes, ebRes] = await Promise.all([
+        stockxToken ? fetch('/api/stockx-listings', { headers: { 'Authorization': `Bearer ${stockxToken}` } }) : null,
+        ebayToken ? fetch('/api/ebay-listings', { headers: { 'Authorization': `Bearer ${ebayToken}` } }) : null
+      ]);
+      const sx = sxRes?.ok ? (await sxRes.json()).listings || [] : [];
+      const eb = ebRes?.ok ? (await ebRes.json()).listings || [] : [];
+      setStockxListings(sx); setEbayListings(eb);
+      localStorage.setItem('fl_sx', JSON.stringify(sx)); localStorage.setItem('fl_eb', JSON.stringify(eb));
+      showToast(`Synced ${sx.length} StockX + ${eb.length} eBay`);
+    } catch { showToast('Sync failed', 'error'); }
+    finally { setSyncing(false); }
+  }, [stockxToken, ebayToken]);
+
+  useEffect(() => { if ((stockxToken || ebayToken) && !stockxListings.length) syncListings(); }, []);
+
+  // Group listings by SKU
+  const groupedProducts = useMemo(() => {
+    const g = {};
+    stockxListings.forEach(l => {
+      const sku = l.sku || 'UNK';
+      if (!g[sku]) g[sku] = { sku, name: l.name, image: l.image, productId: l.productId, sizes: [] };
+      const cost = getCost(sku, l.size);
+      g[sku].sizes.push({ ...l, cost });
+    });
+    Object.values(g).forEach(p => {
+      p.sizes.sort((a, b) => parseFloat(a.size) - parseFloat(b.size));
+      p.totalQty = p.sizes.length;
+      p.notLowest = p.sizes.filter(s => s.lowestAsk && s.yourAsk > s.lowestAsk).length;
+    });
+    return Object.values(g);
+  }, [stockxListings, getCost]);
+
+  // Calculate counts for tabs
+  const totalNotLowest = useMemo(() => stockxListings.filter(l => l.lowestAsk && l.yourAsk > l.lowestAsk).length, [stockxListings]);
+  const crosslistProducts = useMemo(() => { const es = new Set(ebayListings.map(e => (e.sku || e.mpn || '').toLowerCase())); return groupedProducts.filter(p => !es.has(p.sku.toLowerCase())); }, [groupedProducts, ebayListings]);
+  const totalCrosslist = crosslistProducts.reduce((s, p) => s + p.totalQty, 0);
+
+  const filteredProducts = useMemo(() => { if (!searchQuery.trim()) return groupedProducts; const q = searchQuery.toLowerCase(); return groupedProducts.filter(p => p.name?.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q)); }, [groupedProducts, searchQuery]);
+  const currentProduct = useMemo(() => groupedProducts.find(p => p.sku === selectedProduct), [groupedProducts, selectedProduct]);
+
+  useEffect(() => { if (filteredProducts.length && !selectedProduct) setSelectedProduct(filteredProducts[0].sku); }, [filteredProducts]);
+
+  const handleSelectAll = () => { if (!currentProduct) return; setSelectedSizes(selectedSizes.size === currentProduct.sizes.length ? new Set() : new Set(currentProduct.sizes.map(s => s.listingId))); };
   
-  const authHeader = req.headers.authorization;
-  const apiKey = process.env.STOCKX_API_KEY;
-  if (!authHeader) return res.status(401).json({ error: 'No auth token' });
-
-  if (req.method === 'GET') {
+  const handleUpdatePrices = async () => {
+    const u = Object.entries(editedPrices).map(([id, a]) => ({ listingId: id, amount: Math.round(parseFloat(a)) })).filter(x => x.amount > 0);
+    if (!u.length) { showToast('No prices to update', 'error'); return; }
+    console.log('[Listings] Updating prices:', u);
+    setLoading(true);
     try {
-      // Single product market data request
-      if (req.query.productId) {
-        const { productId, variantIds } = req.query;
-        const ids = variantIds ? variantIds.split(',') : [];
-        const marketData = {};
-        
-        await Promise.all(ids.slice(0, 30).map(async (variantId) => {
-          try {
-            const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}/variants/${variantId}/market-data?currencyCode=USD`, {
-              headers: { 'Authorization': authHeader, 'x-api-key': apiKey }
-            });
-            if (r.ok) {
-              const m = await r.json();
-              marketData[variantId] = { lowestAsk: parseFloat(m.lowestAskAmount) || null, highestBid: parseFloat(m.highestBidAmount) || null, sellFaster: parseFloat(m.sellFasterAmount) || null };
-            }
-          } catch {}
-        }));
-        return res.status(200).json({ marketData });
-      }
-
-      // Fetch all listings
-      let allListings = [];
-      let pageNumber = 1;
-      
-      while (pageNumber <= 10) {
-        const r = await fetch(`https://api.stockx.com/v2/selling/listings?pageNumber=${pageNumber}&pageSize=100&listingStatuses=ACTIVE`, {
-          headers: { 'Authorization': authHeader, 'x-api-key': apiKey, 'Content-Type': 'application/json' }
-        });
-        if (!r.ok) break;
-        const d = await r.json();
-        if (!d.listings?.length) break;
-        allListings.push(...d.listings);
-        if (!d.hasNextPage || d.listings.length < 100) break;
-        pageNumber++;
-      }
-
-      // Get unique products
-      const productIds = new Set();
-      for (const l of allListings) {
-        if (l.product?.productId) productIds.add(l.product.productId);
-      }
-
-      // Fetch product details (including urlKey for images) - batch of 25
-      const productDetails = {};
-      const productArray = Array.from(productIds);
-      for (let i = 0; i < productArray.length; i += 25) {
-        const batch = productArray.slice(i, i + 25);
-        await Promise.all(batch.map(async (productId) => {
-          try {
-            const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}`, {
-              headers: { 'Authorization': authHeader, 'x-api-key': apiKey }
-            });
-            if (r.ok) {
-              const p = await r.json();
-              productDetails[productId] = { urlKey: p.urlKey, title: p.title };
-            }
-          } catch {}
-        }));
-      }
-      
-      // Helper to generate fallback slug from product name
-      const generateSlug = (name) => {
-        if (!name) return '';
-        let n = name;
-        if (/^Jordan\s/i.test(n) && !/^Air\s+Jordan/i.test(n)) n = 'Air ' + n;
-        return n
-          .replace(/\(Women's\)/gi, 'W')
-          .replace(/\(Men's\)/gi, '')
-          .replace(/\(GS\)/gi, 'GS')
-          .replace(/\(PS\)/gi, 'PS')
-          .replace(/\(TD\)/gi, 'TD')
-          .replace(/\([^)]*\)/g, '')
-          .replace(/'/g, '')
-          .replace(/"/g, '')
-          .replace(/&/g, 'and')
-          .replace(/\+/g, 'Plus')
-          .replace(/[^a-zA-Z0-9\s-]/g, '')
-          .trim()
-          .replace(/\s+/g, '-')
-          .replace(/-+/g, '-')
-          .replace(/^-|-$/g, '');
-      };
-
-      // Fetch market data at PRODUCT level (returns all variants in one call)
-      const marketData = {};
-      for (let i = 0; i < productArray.length; i += 10) {
-        const batch = productArray.slice(i, i + 10);
-        await Promise.all(batch.map(async (productId) => {
-          try {
-            const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}/market-data?currencyCode=USD`, {
-              headers: { 'Authorization': authHeader, 'x-api-key': apiKey }
-            });
-            if (r.ok) {
-              const variants = await r.json();
-              for (const v of (variants || [])) {
-                if (v.variantId) {
-                  const std = v.standardMarketData || {};
-                  const flex = v.flexMarketData || {};
-                  const direct = v.directMarketData || {};
-                  
-                  // Keep channel data SEPARATE - no mixing
-                  marketData[v.variantId] = { 
-                    // Overall (for reference only)
-                    lowestAsk: parseFloat(v.lowestAskAmount) || null, 
-                    highestBid: parseFloat(v.highestBidAmount) || null, 
-                    sellFaster: parseFloat(v.sellFasterAmount) || null,
-                    
-                    // Standard channel - ONLY standard data
-                    standardLowest: parseFloat(std.lowestAsk) || null,
-                    standardSellFaster: parseFloat(std.sellFaster) || null,
-                    
-                    // Flex channel - ONLY flex data
-                    flexLowest: parseFloat(flex.lowestAsk) || parseFloat(v.flexLowestAskAmount) || null,
-                    flexSellFaster: parseFloat(flex.sellFaster) || null,
-                    
-                    // Direct channel - ONLY direct data
-                    directLowest: parseFloat(direct.lowestAsk) || null,
-                    directSellFaster: parseFloat(direct.sellFaster) || null
-                  };
-                }
-              }
-            }
-          } catch (e) {
-            console.log('[StockX] Product market data error:', productId, e.message);
-          }
-        }));
-      }
-      
-      // Find variants still missing market data
-      const missingVariants = [];
-      for (const l of allListings) {
-        const vid = l.variant?.variantId;
-        const pid = l.product?.productId;
-        if (vid && pid && !marketData[vid]) {
-          missingVariants.push({ productId: pid, variantId: vid });
-        }
-      }
-      
-      // Fetch missing variants individually (per-variant endpoint)
-      if (missingVariants.length > 0) {
-        console.log(`[StockX] Fetching ${missingVariants.length} missing variants individually`);
-        for (let i = 0; i < missingVariants.length; i += 20) {
-          const batch = missingVariants.slice(i, i + 20);
-          await Promise.all(batch.map(async ({ productId, variantId }) => {
-            try {
-              const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}/variants/${variantId}/market-data?currencyCode=USD`, {
-                headers: { 'Authorization': authHeader, 'x-api-key': apiKey }
-              });
-              if (r.ok) {
-                const v = await r.json();
-                const std = v.standardMarketData || {};
-                const flex = v.flexMarketData || {};
-                const direct = v.directMarketData || {};
-                
-                marketData[variantId] = { 
-                  lowestAsk: parseFloat(v.lowestAskAmount) || null, 
-                  highestBid: parseFloat(v.highestBidAmount) || null, 
-                  sellFaster: parseFloat(v.sellFasterAmount) || null,
-                  standardLowest: parseFloat(std.lowestAsk) || null,
-                  standardSellFaster: parseFloat(std.sellFaster) || null,
-                  flexLowest: parseFloat(flex.lowestAsk) || parseFloat(v.flexLowestAskAmount) || null,
-                  flexSellFaster: parseFloat(flex.sellFaster) || null,
-                  directLowest: parseFloat(direct.lowestAsk) || null,
-                  directSellFaster: parseFloat(direct.sellFaster) || null
-                };
-              }
-            } catch {}
-          }));
-        }
-      }
-      
-      console.log(`[StockX] Market data: ${Object.keys(marketData).length} variants`);
-
-      // Transform listings
-      const listings = allListings.map(l => {
-        const p = l.product || {};
-        const v = l.variant || {};
-        const md = marketData[v.variantId] || {};
-        const pd = productDetails[p.productId] || {};
-        const channel = l.inventoryType || 'STANDARD';
-        
-        // ONLY use channel-specific data - NO FALLBACKS
-        // Direct sellers compete with Direct sellers only
-        // Flex sellers compete with Flex sellers only
-        // Standard sellers compete with Standard sellers only
-        let lowestAsk = null, sellFaster = null;
-        
-        if (channel === 'DIRECT') {
-          lowestAsk = md.directLowest;
-          sellFaster = md.directSellFaster;
-        } else if (channel === 'FLEX') {
-          lowestAsk = md.flexLowest;
-          sellFaster = md.flexSellFaster;
-        } else {
-          lowestAsk = md.standardLowest;
-          sellFaster = md.standardSellFaster;
-        }
-        
-        // Use urlKey from catalog API, or fallback to generated slug from product name
-        let image = '';
-        const slug = pd.urlKey || generateSlug(p.productName || pd.title);
-        if (slug) {
-          image = `https://images.stockx.com/images/${slug}.jpg?fit=fill&bg=FFFFFF&w=300&h=214&fm=webp&auto=compress&q=90&dpr=2&trim=color`;
-        }
-        
-        return {
-          listingId: l.listingId, productId: p.productId, variantId: v.variantId,
-          name: p.productName || pd.title || 'Unknown', sku: p.styleId || '', size: v.variantValue || '', image,
-          yourAsk: parseFloat(l.amount) || 0, inventoryType: channel,
-          lowestAsk: lowestAsk || null, 
-          highestBid: md.highestBid || null, 
-          sellFaster: sellFaster || null,
-          createdAt: l.createdAt
-        };
-      });
-
-      return res.status(200).json({ success: true, listings, total: listings.length });
-    } catch (e) {
-      return res.status(500).json({ error: 'Failed', message: e.message });
-    }
-  }
-
-  if (req.method === 'PATCH') {
-    try {
-      const { items } = req.body;
-      if (!items?.length) return res.status(400).json({ error: 'items required' });
-      
-      console.log('[StockX] Updating', items.length, 'listings');
-      
-      const results = { success: 0, failed: 0, errors: [] };
-      
-      // Update each listing individually (more reliable than batch)
-      for (const item of items) {
-        try {
-          const r = await fetch(`https://api.stockx.com/v2/selling/listings/${item.listingId}`, {
-            method: 'PATCH',
-            headers: { 
-              'Authorization': authHeader, 
-              'x-api-key': apiKey, 
-              'Content-Type': 'application/json' 
-            },
-            body: JSON.stringify({ 
-              amount: String(item.amount), 
-              currencyCode: 'USD' 
-            })
-          });
-          
-          if (r.ok) {
-            const data = await r.json();
-            console.log('[StockX] Updated', item.listingId, 'to', item.amount, '- operation:', data.operationId);
-            results.success++;
-          } else {
-            const errText = await r.text();
-            console.log('[StockX] Failed to update', item.listingId, ':', r.status, errText);
-            results.failed++;
-            results.errors.push({ listingId: item.listingId, status: r.status, error: errText });
-          }
-        } catch (e) {
-          console.log('[StockX] Error updating', item.listingId, ':', e.message);
-          results.failed++;
-          results.errors.push({ listingId: item.listingId, error: e.message });
-        }
-      }
-      
-      if (results.success > 0) {
-        return res.status(200).json({ success: true, updated: results.success, failed: results.failed, errors: results.errors });
+      const r = await fetch('/api/stockx-listings', { method: 'PATCH', headers: { 'Authorization': `Bearer ${stockxToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ items: u }) });
+      const data = await r.json();
+      console.log('[Listings] Update response:', r.status, data);
+      if (r.ok && data.success) { 
+        showToast(`Updated ${u.length} prices`); 
+        setEditedPrices({}); 
+        await syncListings(); 
       } else {
-        return res.status(400).json({ success: false, error: 'All updates failed', ...results });
+        const errMsg = data.details || data.error || data.message || 'Update failed';
+        console.error('[Listings] Update error:', errMsg);
+        showToast(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg), 'error');
       }
-    } catch (e) {
-      console.log('[StockX] PATCH error:', e.message);
-      return res.status(500).json({ error: 'Failed', message: e.message });
+    } catch (e) { 
+      console.error('[Listings] Update exception:', e);
+      showToast('Update failed: ' + e.message, 'error'); 
     }
-  }
-
-  if (req.method === 'DELETE') {
+    finally { setLoading(false); }
+  };
+  
+  const handleUnlist = async () => {
+    if (!selectedSizes.size) return;
+    setLoading(true);
     try {
-      const { listingIds } = req.body;
-      if (!listingIds?.length) return res.status(400).json({ error: 'listingIds required' });
-      
-      console.log('[StockX] Deleting', listingIds.length, 'listings');
-      
-      const results = { success: 0, failed: 0, errors: [] };
-      
-      for (const listingId of listingIds) {
-        try {
-          const r = await fetch(`https://api.stockx.com/v2/selling/listings/${listingId}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': authHeader, 'x-api-key': apiKey }
-          });
-          
-          if (r.ok) {
-            console.log('[StockX] Deleted', listingId);
-            results.success++;
-          } else {
-            const errText = await r.text();
-            console.log('[StockX] Failed to delete', listingId, ':', r.status, errText);
-            results.failed++;
-            results.errors.push({ listingId, status: r.status, error: errText });
-          }
-        } catch (e) {
-          results.failed++;
-          results.errors.push({ listingId, error: e.message });
-        }
-      }
-      
-      if (results.success > 0) {
-        return res.status(200).json({ success: true, deleted: results.success, failed: results.failed });
-      } else {
-        return res.status(400).json({ success: false, error: 'All deletes failed', ...results });
-      }
-    } catch (e) {
-      return res.status(500).json({ error: 'Failed', message: e.message });
-    }
-  }
+      const r = await fetch('/api/stockx-listings', { method: 'DELETE', headers: { 'Authorization': `Bearer ${stockxToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ listingIds: Array.from(selectedSizes) }) });
+      if (r.ok) { showToast(`Unlisted ${selectedSizes.size} items`); setSelectedSizes(new Set()); await syncListings(); }
+      else showToast('Unlist failed', 'error');
+    } catch { showToast('Unlist failed', 'error'); }
+    finally { setLoading(false); }
+  };
 
-  return res.status(405).json({ error: 'Method not allowed' });
+  const card = { background: c.card, border: `1px solid ${c.border}`, borderRadius: 12 };
+
+  // Format cost display
+  const formatCost = (cost) => {
+    if (!cost) return '—';
+    if (typeof cost === 'string' && cost.includes('-')) return `$${cost}`;
+    return `$${cost}`;
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%', maxWidth: '100%', alignSelf: 'flex-start' }}>
+      {/* ROW 1: Search + Sync */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+        <input type="text" placeholder="Search SKU or name..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: 200, padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 13 }} />
+        <button onClick={syncListings} disabled={syncing} style={{ padding: '10px 20px', background: c.green, border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: syncing ? 0.7 : 1 }}>🔄 {syncing ? 'Syncing...' : 'Sync'}</button>
+      </div>
+
+      {/* ROW 2: Tabs */}
+      <div style={{ display: 'flex', gap: 10 }}>
+        {[
+          { id: 'reprice', icon: '⚡', label: 'Reprice', count: totalNotLowest },
+          { id: 'crosslist', icon: '🚀', label: 'Cross-list', count: totalCrosslist },
+          { id: 'all', icon: '📦', label: 'All Listings', count: stockxListings.length + ebayListings.length }
+        ].map(t => (
+          <button key={t.id} onClick={() => setSubTab(t.id)} style={{ padding: '10px 18px', background: subTab === t.id ? 'rgba(255,255,255,0.08)' : 'transparent', border: `1px solid ${subTab === t.id ? 'rgba(255,255,255,0.2)' : c.border}`, borderRadius: 8, color: c.text, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            {t.icon} {t.label} <span style={{ color: c.gold, marginLeft: 6 }}>{t.count}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* ROW 3: Master-Detail */}
+      {subTab === 'reprice' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16, width: '100%' }}>
+          {/* Left: Products */}
+          <div style={{ ...card, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 14px', borderBottom: `1px solid ${c.border}`, fontSize: 11, fontWeight: 700, color: c.textMuted }}>PRODUCTS ({filteredProducts.length})</div>
+            <div style={{ maxHeight: 540, overflowY: 'auto' }}>
+              {filteredProducts.map(p => (
+                <div key={p.sku} onClick={() => { setSelectedProduct(p.sku); setSelectedSizes(new Set()); setEditedPrices({}); }} style={{ padding: '10px 14px', borderBottom: `1px solid ${c.border}`, cursor: 'pointer', background: selectedProduct === p.sku ? 'rgba(255,255,255,0.05)' : 'transparent', borderLeft: selectedProduct === p.sku ? `3px solid ${c.gold}` : '3px solid transparent', display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <div style={{ width: 40, height: 40, background: 'rgba(255,255,255,0.05)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                    {p.image ? <img src={p.image} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.onerror = null; e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><text x="8" y="30" font-size="20">👟</text></svg>'; }} /> : <span style={{ fontSize: 20 }}>👟</span>}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+                    <div style={{ fontSize: 10, color: c.textMuted }}>{p.sku}</div>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700 }}>x{p.totalQty}</div>
+                    {p.notLowest > 0 && <div style={{ fontSize: 10, color: c.red }}>{p.notLowest} ↓</div>}
+                  </div>
+                </div>
+              ))}
+              {!filteredProducts.length && <div style={{ padding: 40, textAlign: 'center', color: c.textMuted, fontSize: 13 }}>{syncing ? 'Loading...' : 'No listings'}</div>}
+            </div>
+          </div>
+
+          {/* Right: Detail */}
+          <div style={{ ...card, overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            {currentProduct ? (
+              <>
+                <div style={{ padding: '16px', borderBottom: `1px solid ${c.border}`, display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{ width: 50, height: 50, background: 'rgba(255,255,255,0.05)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                    {currentProduct.image ? <img src={currentProduct.image} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.onerror = null; e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60"><text x="15" y="42" font-size="30">👟</text></svg>'; }} /> : <span style={{ fontSize: 26 }}>👟</span>}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentProduct.name}</h3>
+                    <div style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>
+                      {currentProduct.sku}
+                      {currentProduct.sizes[0]?.inventoryType === 'DIRECT' && <span style={{ marginLeft: 8, background: '#f97316', color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>🚀 Direct</span>}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ padding: '10px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: c.textMuted }}>
+                    <input type="checkbox" checked={currentProduct.sizes.length > 0 && selectedSizes.size === currentProduct.sizes.length} onChange={handleSelectAll} style={{ width: 16, height: 16, accentColor: c.green }} />
+                    Select all
+                  </label>
+                </div>
+
+                <div style={{ display: 'flex', gap: 0, padding: '12px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', fontSize: 11, fontWeight: 700, color: c.textMuted }}>
+                  <span style={{ width: 32 }}></span>
+                  <span style={{ width: 70 }}>SIZE</span>
+                  <span style={{ width: 36 }}>QTY</span>
+                  <span style={{ width: 70 }}>YOUR ASK</span>
+                  <span style={{ width: 80 }}>LOWEST</span>
+                  <span style={{ width: 80 }}>SELL FASTER</span>
+                  <span style={{ width: 60 }}>COST</span>
+                  <span style={{ width: 70 }}>PROFIT</span>
+                </div>
+
+                <div style={{ flex: 1, overflowY: 'auto', maxHeight: 360 }}>
+                  {currentProduct.sizes.map(item => {
+                    const isEdited = editedPrices[item.listingId] !== undefined;
+                    const currentPrice = parseFloat(editedPrices[item.listingId] ?? item.yourAsk) || 0;
+                    const sellFasterPrice = item.sellFaster || item.highestBid || null;
+                    
+                    // Channel badge color
+                    const channel = item.inventoryType || 'STANDARD';
+                    const channelBadge = channel === 'DIRECT' ? { label: 'D', bg: '#f97316' } : 
+                                        channel === 'FLEX' ? { label: 'F', bg: '#8b5cf6' } : 
+                                        { label: 'S', bg: '#6b7280' };
+                    
+                    // Check if user is the lowest ask in their channel
+                    const isLowest = item.lowestAsk && item.yourAsk <= item.lowestAsk;
+                    const priceDiff = item.lowestAsk ? (item.yourAsk - item.lowestAsk) : null;
+                    
+                    // Calculate profit (price after ~15% StockX fees - cost)
+                    let costNum = null;
+                    if (item.cost) {
+                      if (typeof item.cost === 'string' && item.cost.includes('-')) {
+                        costNum = parseFloat(item.cost.split('-')[1]);
+                      } else {
+                        costNum = parseFloat(item.cost);
+                      }
+                    }
+                    // StockX payout is roughly 85% of sale price (15% fees)
+                    const payout = currentPrice * 0.85;
+                    const profit = costNum ? (payout - costNum).toFixed(0) : null;
+                    const profitColor = profit > 0 ? c.green : profit < 0 ? c.red : c.textMuted;
+                    
+                    return (
+                      <div key={item.listingId} style={{ display: 'flex', gap: 0, padding: '12px 16px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', fontSize: 13 }}>
+                        <span style={{ width: 32 }}><input type="checkbox" checked={selectedSizes.has(item.listingId)} onChange={e => { const n = new Set(selectedSizes); e.target.checked ? n.add(item.listingId) : n.delete(item.listingId); setSelectedSizes(n); }} style={{ width: 16, height: 16, accentColor: c.green }} /></span>
+                        <span style={{ width: 70, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {item.size}
+                          <span style={{ background: channelBadge.bg, color: '#fff', fontSize: 9, fontWeight: 700, padding: '2px 4px', borderRadius: 3 }}>{channelBadge.label}</span>
+                        </span>
+                        <span style={{ width: 36 }}>1</span>
+                        <span style={{ width: 70 }}><input type="number" value={editedPrices[item.listingId] ?? item.yourAsk} onChange={e => setEditedPrices({ ...editedPrices, [item.listingId]: e.target.value })} style={{ width: 54, padding: '6px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 6, color: c.text, fontSize: 13, textAlign: 'center' }} /></span>
+                        <span style={{ width: 80, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {item.lowestAsk ? (
+                            isLowest ? (
+                              <span style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 4, padding: '4px 8px', color: c.green, fontWeight: 700, fontSize: 11 }}>✓ YOU</span>
+                            ) : (
+                              <span style={{ color: c.text, fontWeight: 600 }}>${item.lowestAsk}</span>
+                            )
+                          ) : (
+                            <span style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 4, padding: '4px 8px', color: c.green, fontWeight: 700, fontSize: 11 }}>✓ ONLY</span>
+                          )}
+                        </span>
+                        <span style={{ width: 80 }}>{sellFasterPrice ? <button onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: sellFasterPrice })} style={{ background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: 4, padding: '4px 8px', color: '#f97316', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>${sellFasterPrice}</button> : '—'}</span>
+                        <span style={{ width: 60, color: c.textMuted }}>{formatCost(item.cost)}</span>
+                        <span style={{ width: 70, color: profitColor, fontWeight: 600 }}>{profit ? `$${profit}` : '—'}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div style={{ padding: '14px 16px', borderTop: `1px solid ${c.border}`, display: 'flex', gap: 10 }}>
+                  <button onClick={handleUpdatePrices} disabled={!Object.keys(editedPrices).length || loading} style={{ padding: '10px 24px', background: Object.keys(editedPrices).length ? c.green : 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700, cursor: Object.keys(editedPrices).length ? 'pointer' : 'not-allowed' }}>{loading ? 'Updating...' : 'Update Prices'}</button>
+                  <button onClick={handleUnlist} disabled={!selectedSizes.size || loading} style={{ padding: '10px 24px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 13, fontWeight: 600, cursor: selectedSizes.size ? 'pointer' : 'not-allowed' }}>Unlist Selected</button>
+                </div>
+              </>
+            ) : <div style={{ padding: 100, textAlign: 'center', color: c.textMuted, fontSize: 15 }}>Select a product</div>}
+          </div>
+        </div>
+      )}
+
+      {subTab === 'crosslist' && <div style={{ ...card, padding: 80, textAlign: 'center', width: '100%' }}><div style={{ fontSize: 56 }}>🚀</div><h3 style={{ marginTop: 16 }}>Cross-list to eBay</h3><p style={{ color: c.textMuted }}>{crosslistProducts.length} products ({totalCrosslist} listings) not on eBay</p></div>}
+      {subTab === 'all' && <div style={{ ...card, padding: 80, textAlign: 'center', width: '100%' }}><div style={{ fontSize: 56 }}>📦</div><h3 style={{ marginTop: 16 }}>All Listings</h3><p style={{ color: c.textMuted }}>{stockxListings.length} StockX + {ebayListings.length} eBay</p></div>}
+
+      {toast && <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', padding: '14px 28px', borderRadius: 10, background: c.card, border: `1px solid ${toast.type === 'error' ? c.red : c.green}`, boxShadow: '0 4px 24px rgba(0,0,0,0.4)', zIndex: 9999 }}><span style={{ color: toast.type === 'error' ? c.red : c.green, fontWeight: 600 }}>{toast.type === 'error' ? '❌' : '✓'} {toast.msg}</span></div>}
+    </div>
+  );
 }
