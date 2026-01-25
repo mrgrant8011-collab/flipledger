@@ -4,7 +4,7 @@ import CrossList from './CrossList';
 
 /**
  * LISTINGS - Thin Wrapper
- * Two pages only:
+ * Two tabs:
  * 1) Repricer - StockX price management
  * 2) Cross List - StockX → eBay multi-platform
  */
