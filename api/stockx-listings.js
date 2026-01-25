@@ -203,16 +203,17 @@ export default async function handler(req, res) {
           highestBid = md.standardBid || md.highestBid;
         }
         
-        // Use urlKey from catalog API, or fallback to generated slug from product name
+        // Generate image URL from product name slug
         let image = '';
-        const slug = pd.urlKey || generateSlug(p.productName || pd.title);
+        const productName = p.productName || pd.title || '';
+        const slug = pd.urlKey || generateSlug(productName);
         if (slug) {
-          image = `https://images.stockx.com/images/${slug}.jpg?fit=fill&bg=FFFFFF&w=300&h=214&fm=webp&auto=compress&q=90&dpr=2&trim=color`;
+          image = `https://images.stockx.com/images/${slug}.jpg?fit=fill&bg=FFFFFF&w=140&h=100&fm=webp&auto=compress&q=90&dpr=2&trim=color`;
         }
         
         return {
           listingId: l.listingId, productId: p.productId, variantId: v.variantId,
-          name: p.productName || pd.title || 'Unknown', sku: p.styleId || '', size: v.variantValue || '', image,
+          name: productName || 'Unknown', sku: p.styleId || '', size: v.variantValue || '', image,
           yourAsk: parseFloat(l.amount) || 0, inventoryType: channel,
           lowestAsk: lowestAsk || null, 
           highestBid: highestBid || null, 
