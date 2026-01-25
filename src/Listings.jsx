@@ -13,7 +13,55 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
   const [toast, setToast] = useState(null);
 
   const showToast = (msg, type = 'success') => { setToast({ msg, type }); setTimeout(() => setToast(null), 3000); };
-  const getCost = useCallback((sku, size) => { const m = purchases.find(p => (p.sku || '').toLowerCase() === (sku || '').toLowerCase() && (p.size || '').toString() === (size || '').toString() && !p.sold); return m?.cost ? parseFloat(m.cost) : null; }, [purchases]);
+
+  // Normalize SKU for matching (remove hyphens, spaces)
+  const normalizeSku = (sku) => {
+    if (!sku) return '';
+    return String(sku).toLowerCase().replace(/[-\s]/g, '');
+  };
+
+  // Normalize size for matching (remove W, spaces, etc)
+  const normalizeSize = (size) => {
+    if (!size) return '';
+    return String(size).toUpperCase().replace(/\s+/g, '').replace(/W$/, '').replace(/^W/, '');
+  };
+
+  // Get cost from inventory - flexible matching
+  const getCost = useCallback((sku, size) => {
+    if (!purchases?.length || !sku) return null;
+    
+    const skuNorm = normalizeSku(sku);
+    const sizeNorm = normalizeSize(size);
+    const sizeRaw = String(size || '').toUpperCase();
+    
+    // Find matching inventory items (not sold)
+    const matches = purchases.filter(p => {
+      if (p.sold) return false;
+      
+      // Normalize inventory SKU
+      const pSkuNorm = normalizeSku(p.sku);
+      const pSizeNorm = normalizeSize(p.size);
+      const pSizeRaw = String(p.size || '').toUpperCase();
+      
+      // Match SKU (normalized - ignores hyphens)
+      const skuMatch = pSkuNorm === skuNorm || pSkuNorm.includes(skuNorm) || skuNorm.includes(pSkuNorm);
+      
+      // Match size (try multiple formats)
+      const sizeMatch = pSizeNorm === sizeNorm || pSizeRaw === sizeRaw || p.size == size;
+      
+      return skuMatch && sizeMatch;
+    });
+    
+    if (matches.length === 0) return null;
+    if (matches.length === 1) return parseFloat(matches[0].cost) || null;
+    
+    // Multiple matches - return range
+    const costs = matches.map(m => parseFloat(m.cost) || 0).filter(c => c > 0);
+    if (costs.length === 0) return null;
+    const min = Math.min(...costs);
+    const max = Math.max(...costs);
+    return min === max ? min : `${min}-${max}`;
+  }, [purchases]);
 
   const syncListings = useCallback(async () => {
     setSyncing(true);
@@ -39,12 +87,12 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
     stockxListings.forEach(l => {
       const sku = l.sku || 'UNK';
       if (!g[sku]) g[sku] = { sku, name: l.name, image: l.image, productId: l.productId, sizes: [] };
-      g[sku].sizes.push({ ...l, cost: getCost(sku, l.size) });
+      const cost = getCost(sku, l.size);
+      g[sku].sizes.push({ ...l, cost });
     });
     Object.values(g).forEach(p => {
       p.sizes.sort((a, b) => parseFloat(a.size) - parseFloat(b.size));
       p.totalQty = p.sizes.length;
-      // Count listings NOT at lowest price
       p.notLowest = p.sizes.filter(s => s.lowestAsk && s.yourAsk > s.lowestAsk).length;
     });
     return Object.values(g);
@@ -87,15 +135,22 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
 
   const card = { background: c.card, border: `1px solid ${c.border}`, borderRadius: 12 };
 
+  // Format cost display
+  const formatCost = (cost) => {
+    if (!cost) return '—';
+    if (typeof cost === 'string' && cost.includes('-')) return `$${cost}`;
+    return `$${cost}`;
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* ROW 1: Search + Sync (right aligned) */}
+      {/* ROW 1: Search + Sync */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
         <input type="text" placeholder="Search SKU or name..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: 220, padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 10, color: c.text, fontSize: 14 }} />
         <button onClick={syncListings} disabled={syncing} style={{ padding: '12px 24px', background: c.green, border: 'none', borderRadius: 10, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: syncing ? 0.7 : 1 }}>🔄 {syncing ? 'Syncing...' : 'Sync'}</button>
       </div>
 
-      {/* ROW 2: Tabs with correct counts */}
+      {/* ROW 2: Tabs */}
       <div style={{ display: 'flex', gap: 12 }}>
         {[
           { id: 'reprice', icon: '⚡', label: 'Reprice', count: totalNotLowest },
@@ -111,7 +166,7 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
       {/* ROW 3: Master-Detail */}
       {subTab === 'reprice' && (
         <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 20 }}>
-          {/* Left: Products List */}
+          {/* Left: Products */}
           <div style={{ ...card, overflow: 'hidden' }}>
             <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, fontSize: 12, fontWeight: 700, color: c.textMuted }}>PRODUCTS ({filteredProducts.length})</div>
             <div style={{ maxHeight: 540, overflowY: 'auto' }}>
@@ -134,11 +189,10 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
             </div>
           </div>
 
-          {/* Right: Product Detail */}
+          {/* Right: Detail */}
           <div style={{ ...card, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             {currentProduct ? (
               <>
-                {/* Header */}
                 <div style={{ padding: '20px 24px', borderBottom: `1px solid ${c.border}`, display: 'flex', gap: 16, alignItems: 'center' }}>
                   <div style={{ width: 60, height: 60, background: 'rgba(255,255,255,0.05)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
                     {currentProduct.image ? <img src={currentProduct.image} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 30 }}>👟</span>}
@@ -152,7 +206,6 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                   </div>
                 </div>
 
-                {/* Select All */}
                 <div style={{ padding: '12px 24px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: c.textMuted }}>
                     <input type="checkbox" checked={currentProduct.sizes.length > 0 && selectedSizes.size === currentProduct.sizes.length} onChange={handleSelectAll} style={{ width: 16, height: 16, accentColor: c.green }} />
@@ -160,7 +213,6 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                   </label>
                 </div>
 
-                {/* Table Header */}
                 <div style={{ display: 'grid', gridTemplateColumns: '44px 80px 70px 110px 110px 110px 1fr', padding: '14px 24px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', fontSize: 11, fontWeight: 700, color: c.textMuted }}>
                   <span></span>
                   <span>SIZE</span>
@@ -171,7 +223,6 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                   <span style={{ textAlign: 'right' }}>COST</span>
                 </div>
 
-                {/* Table Body */}
                 <div style={{ flex: 1, overflowY: 'auto', maxHeight: 360 }}>
                   {currentProduct.sizes.map(item => {
                     const isLowest = item.lowestAsk && item.yourAsk <= item.lowestAsk;
@@ -190,13 +241,12 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                           {item.lowestAsk ? `$${item.lowestAsk}` : '—'}{isLowest && <span style={{ marginLeft: 6 }}>✓</span>}
                         </div>
                         <span style={{ textAlign: 'center', color: '#f97316', fontWeight: 600 }}>{item.sellFaster || item.highestBid ? `$${item.sellFaster || item.highestBid}` : '—'}</span>
-                        <span style={{ textAlign: 'right', color: c.textMuted }}>{item.cost ? `$${item.cost}` : '—'}</span>
+                        <span style={{ textAlign: 'right', color: c.textMuted }}>{formatCost(item.cost)}</span>
                       </div>
                     );
                   })}
                 </div>
 
-                {/* Buttons */}
                 <div style={{ padding: '18px 24px', borderTop: `1px solid ${c.border}`, display: 'flex', gap: 14 }}>
                   <button onClick={handleUpdatePrices} disabled={!Object.keys(editedPrices).length || loading} style={{ padding: '14px 32px', background: Object.keys(editedPrices).length ? c.green : 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 10, color: '#fff', fontSize: 14, fontWeight: 700, cursor: Object.keys(editedPrices).length ? 'pointer' : 'not-allowed' }}>Update Prices</button>
                   <button onClick={handleUnlist} disabled={!selectedSizes.size || loading} style={{ padding: '14px 32px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 10, color: c.text, fontSize: 14, fontWeight: 600, cursor: selectedSizes.size ? 'pointer' : 'not-allowed' }}>Unlist Selected</button>
