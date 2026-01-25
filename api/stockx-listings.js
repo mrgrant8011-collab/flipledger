@@ -160,40 +160,48 @@ export default async function handler(req, res) {
       const { items } = req.body;
       if (!items?.length) return res.status(400).json({ error: 'items required' });
       
-      console.log('[StockX] Updating prices:', JSON.stringify(items));
+      console.log('[StockX] Updating', items.length, 'listings');
       
-      const r = await fetch('https://api.stockx.com/v2/selling/batch/update-listing', {
-        method: 'POST',
-        headers: { 'Authorization': authHeader, 'x-api-key': apiKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: items.map(i => ({ listingId: i.listingId, amount: String(i.amount), currencyCode: 'USD' })) })
-      });
+      const results = { success: 0, failed: 0, errors: [] };
       
-      if (!r.ok) {
-        const errText = await r.text();
-        console.log('[StockX] Update failed:', r.status, errText);
-        return res.status(r.status).json({ error: 'StockX update failed', details: errText });
-      }
-      
-      const data = await r.json();
-      const { batchId } = data;
-      console.log('[StockX] Batch created:', batchId);
-      
-      // Poll for completion
-      for (let i = 0; i < 15; i++) {
-        await new Promise(r => setTimeout(r, 1000));
-        const s = await fetch(`https://api.stockx.com/v2/selling/batch/update-listing/${batchId}`, { headers: { 'Authorization': authHeader, 'x-api-key': apiKey } });
-        if (s.ok) {
-          const status = await s.json();
-          console.log('[StockX] Batch status:', status.status);
-          if (status.status === 'COMPLETED') {
-            return res.status(200).json({ success: true, updated: items.length });
+      // Update each listing individually (more reliable than batch)
+      for (const item of items) {
+        try {
+          const r = await fetch(`https://api.stockx.com/v2/selling/listings/${item.listingId}`, {
+            method: 'PATCH',
+            headers: { 
+              'Authorization': authHeader, 
+              'x-api-key': apiKey, 
+              'Content-Type': 'application/json' 
+            },
+            body: JSON.stringify({ 
+              amount: String(item.amount), 
+              currencyCode: 'USD' 
+            })
+          });
+          
+          if (r.ok) {
+            const data = await r.json();
+            console.log('[StockX] Updated', item.listingId, 'to', item.amount, '- operation:', data.operationId);
+            results.success++;
+          } else {
+            const errText = await r.text();
+            console.log('[StockX] Failed to update', item.listingId, ':', r.status, errText);
+            results.failed++;
+            results.errors.push({ listingId: item.listingId, status: r.status, error: errText });
           }
-          if (status.status === 'FAILED') {
-            return res.status(400).json({ error: 'Batch failed', details: status });
-          }
+        } catch (e) {
+          console.log('[StockX] Error updating', item.listingId, ':', e.message);
+          results.failed++;
+          results.errors.push({ listingId: item.listingId, error: e.message });
         }
       }
-      return res.status(200).json({ success: true, batchId, message: 'Processing' });
+      
+      if (results.success > 0) {
+        return res.status(200).json({ success: true, updated: results.success, failed: results.failed, errors: results.errors });
+      } else {
+        return res.status(400).json({ success: false, error: 'All updates failed', ...results });
+      }
     } catch (e) {
       console.log('[StockX] PATCH error:', e.message);
       return res.status(500).json({ error: 'Failed', message: e.message });
@@ -205,13 +213,37 @@ export default async function handler(req, res) {
       const { listingIds } = req.body;
       if (!listingIds?.length) return res.status(400).json({ error: 'listingIds required' });
       
-      const r = await fetch('https://api.stockx.com/v2/selling/batch/delete-listing', {
-        method: 'POST',
-        headers: { 'Authorization': authHeader, 'x-api-key': apiKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: listingIds.map(id => ({ listingId: id })) })
-      });
-      if (!r.ok) return res.status(r.status).json({ error: 'Failed' });
-      return res.status(200).json({ success: true, deleted: listingIds.length });
+      console.log('[StockX] Deleting', listingIds.length, 'listings');
+      
+      const results = { success: 0, failed: 0, errors: [] };
+      
+      for (const listingId of listingIds) {
+        try {
+          const r = await fetch(`https://api.stockx.com/v2/selling/listings/${listingId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': authHeader, 'x-api-key': apiKey }
+          });
+          
+          if (r.ok) {
+            console.log('[StockX] Deleted', listingId);
+            results.success++;
+          } else {
+            const errText = await r.text();
+            console.log('[StockX] Failed to delete', listingId, ':', r.status, errText);
+            results.failed++;
+            results.errors.push({ listingId, status: r.status, error: errText });
+          }
+        } catch (e) {
+          results.failed++;
+          results.errors.push({ listingId, error: e.message });
+        }
+      }
+      
+      if (results.success > 0) {
+        return res.status(200).json({ success: true, deleted: results.success, failed: results.failed });
+      } else {
+        return res.status(400).json({ success: false, error: 'All deletes failed', ...results });
+      }
     } catch (e) {
       return res.status(500).json({ error: 'Failed', message: e.message });
     }
