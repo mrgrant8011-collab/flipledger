@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
 export default function Listings({ stockxToken, ebayToken, purchases = [], c = { bg: '#0a0a0a', card: '#111111', border: '#1a1a1a', text: '#ffffff', textMuted: '#888888', gold: '#C9A962', green: '#10b981', red: '#ef4444' } }) {
@@ -86,11 +87,42 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
     const g = {};
     stockxListings.forEach(l => {
       const sku = l.sku || 'UNK';
-      if (!g[sku]) g[sku] = { sku, name: l.name, image: l.image, productId: l.productId, sizes: [] };
+      if (!g[sku]) g[sku] = { sku, name: l.name, image: l.image, productId: l.productId, sizes: [], sizeGroups: {} };
       const cost = getCost(sku, l.size);
       g[sku].sizes.push({ ...l, cost });
+      
+      // Group by size for qty display
+      const sizeKey = `${l.size}-${l.inventoryType || 'STANDARD'}`;
+      if (!g[sku].sizeGroups[sizeKey]) {
+        g[sku].sizeGroups[sizeKey] = { 
+          size: l.size, 
+          inventoryType: l.inventoryType || 'STANDARD',
+          listings: [],
+          lowestAsk: l.lowestAsk,
+          highestBid: l.highestBid,
+          sellFaster: l.sellFaster
+        };
+      }
+      g[sku].sizeGroups[sizeKey].listings.push({ ...l, cost });
     });
+    
     Object.values(g).forEach(p => {
+      // Convert sizeGroups to array and calculate qty
+      p.consolidatedSizes = Object.values(p.sizeGroups).map(sg => ({
+        ...sg,
+        qty: sg.listings.length,
+        listingIds: sg.listings.map(l => l.listingId),
+        yourAsks: sg.listings.map(l => l.yourAsk),
+        minAsk: Math.min(...sg.listings.map(l => l.yourAsk)),
+        maxAsk: Math.max(...sg.listings.map(l => l.yourAsk)),
+        costs: sg.listings.map(l => l.cost).filter(c => c),
+        // Use first listing as reference
+        listingId: sg.listings[0].listingId,
+        yourAsk: sg.listings[0].yourAsk,
+        cost: sg.listings[0].cost
+      }));
+      p.consolidatedSizes.sort((a, b) => parseFloat(a.size) - parseFloat(b.size));
+      
       p.sizes.sort((a, b) => parseFloat(a.size) - parseFloat(b.size));
       p.totalQty = p.sizes.length;
       p.notLowest = p.sizes.filter(s => s.lowestAsk && s.yourAsk > s.lowestAsk).length;
@@ -123,7 +155,11 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
 
   useEffect(() => { if (filteredProducts.length && !selectedProduct) setSelectedProduct(filteredProducts[0].sku); }, [filteredProducts]);
 
-  const handleSelectAll = () => { if (!currentProduct) return; setSelectedSizes(selectedSizes.size === currentProduct.sizes.length ? new Set() : new Set(currentProduct.sizes.map(s => s.listingId))); };
+  const handleSelectAll = () => { 
+    if (!currentProduct) return; 
+    const allListingIds = currentProduct.consolidatedSizes.flatMap(s => s.listingIds);
+    setSelectedSizes(selectedSizes.size === allListingIds.length ? new Set() : new Set(allListingIds)); 
+  };
   
   const handleUpdatePrices = async () => {
     const u = Object.entries(editedPrices).map(([id, a]) => ({ listingId: id, amount: Math.round(parseFloat(a)) })).filter(x => x.amount > 0);
@@ -236,7 +272,7 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
 
                 <div style={{ padding: '10px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: c.textMuted }}>
-                    <input type="checkbox" checked={currentProduct.sizes.length > 0 && selectedSizes.size === currentProduct.sizes.length} onChange={handleSelectAll} style={{ width: 16, height: 16, accentColor: c.green }} />
+                    <input type="checkbox" checked={currentProduct.consolidatedSizes.length > 0 && currentProduct.consolidatedSizes.flatMap(s => s.listingIds).every(id => selectedSizes.has(id))} onChange={handleSelectAll} style={{ width: 16, height: 16, accentColor: c.green }} />
                     Select all
                   </label>
                 </div>
@@ -286,6 +322,7 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                 <div style={{ display: 'flex', gap: 0, padding: '12px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', fontSize: 11, fontWeight: 700, color: c.textMuted }}>
                   <span style={{ width: 32 }}></span>
                   <span style={{ width: 70 }}>SIZE</span>
+                  <span style={{ width: 36 }}>QTY</span>
                   <span style={{ width: 70 }}>YOUR ASK</span>
                   <span style={{ width: 80 }}>LOWEST</span>
                   <span style={{ width: 60 }}>BID</span>
@@ -295,9 +332,9 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                 </div>
 
                 <div style={{ flex: 1, overflowY: 'auto', maxHeight: 500 }}>
-                  {currentProduct.sizes.map(item => {
-                    const isEdited = editedPrices[item.listingId] !== undefined;
-                    const currentPrice = parseFloat(editedPrices[item.listingId] ?? item.yourAsk) || 0;
+                  {currentProduct.consolidatedSizes.map(item => {
+                    const isEdited = item.listingIds.some(id => editedPrices[id] !== undefined);
+                    const currentPrice = parseFloat(editedPrices[item.listingIds[0]] ?? item.yourAsk) || 0;
                     const sellFasterPrice = item.sellFaster || null;
                     
                     // Channel badge color
@@ -307,8 +344,7 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                                         { label: 'S', bg: '#6b7280' };
                     
                     // Check if user is the lowest ask in their channel
-                    const isLowest = item.lowestAsk && item.yourAsk <= item.lowestAsk;
-                    const priceDiff = item.lowestAsk ? (item.yourAsk - item.lowestAsk) : null;
+                    const isLowest = item.lowestAsk && item.minAsk <= item.lowestAsk;
                     
                     // Calculate profit (price after ~15% StockX fees - cost)
                     let costNum = null;
@@ -324,14 +360,43 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                     const profit = costNum ? (payout - costNum).toFixed(0) : null;
                     const profitColor = profit > 0 ? c.green : profit < 0 ? c.red : c.textMuted;
                     
+                    // Show price range if different prices exist
+                    const priceDisplay = item.minAsk === item.maxAsk ? item.minAsk : `${item.minAsk}-${item.maxAsk}`;
+                    
+                    // Unique key for this size group
+                    const rowKey = `${item.size}-${item.inventoryType}`;
+                    
                     return (
-                      <div key={item.listingId} style={{ display: 'flex', gap: 0, padding: '12px 16px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', fontSize: 13 }}>
-                        <span style={{ width: 32 }}><input type="checkbox" checked={selectedSizes.has(item.listingId)} onChange={e => { const n = new Set(selectedSizes); e.target.checked ? n.add(item.listingId) : n.delete(item.listingId); setSelectedSizes(n); }} style={{ width: 16, height: 16, accentColor: c.green }} /></span>
+                      <div key={rowKey} style={{ display: 'flex', gap: 0, padding: '12px 16px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', fontSize: 13 }}>
+                        <span style={{ width: 32 }}>
+                          <input 
+                            type="checkbox" 
+                            checked={item.listingIds.every(id => selectedSizes.has(id))} 
+                            onChange={e => { 
+                              const n = new Set(selectedSizes); 
+                              item.listingIds.forEach(id => e.target.checked ? n.add(id) : n.delete(id)); 
+                              setSelectedSizes(n); 
+                            }} 
+                            style={{ width: 16, height: 16, accentColor: c.green }} 
+                          />
+                        </span>
                         <span style={{ width: 70, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                           {item.size}
                           <span style={{ background: channelBadge.bg, color: '#fff', fontSize: 9, fontWeight: 700, padding: '2px 4px', borderRadius: 3 }}>{channelBadge.label}</span>
                         </span>
-                        <span style={{ width: 70 }}><input type="number" value={editedPrices[item.listingId] ?? item.yourAsk} onChange={e => setEditedPrices({ ...editedPrices, [item.listingId]: e.target.value })} style={{ width: 54, padding: '6px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 6, color: c.text, fontSize: 13, textAlign: 'center' }} /></span>
+                        <span style={{ width: 36, fontWeight: 600 }}>{item.qty}</span>
+                        <span style={{ width: 70 }}>
+                          <input 
+                            type="number" 
+                            value={editedPrices[item.listingIds[0]] ?? item.yourAsk} 
+                            onChange={e => {
+                              const newPrices = { ...editedPrices };
+                              item.listingIds.forEach(id => { newPrices[id] = e.target.value; });
+                              setEditedPrices(newPrices);
+                            }} 
+                            style={{ width: 54, padding: '6px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 6, color: c.text, fontSize: 13, textAlign: 'center' }} 
+                          />
+                        </span>
                         <span style={{ width: 80, display: 'flex', alignItems: 'center', gap: 4 }}>
                           {item.lowestAsk ? (
                             isLowest ? (
@@ -343,8 +408,16 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                             <span style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 4, padding: '4px 8px', color: c.green, fontWeight: 700, fontSize: 11 }}>✓ ONLY</span>
                           )}
                         </span>
-                        <span style={{ width: 60 }}>{item.highestBid ? <button onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: item.highestBid })} style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 4, padding: '4px 6px', color: c.green, fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>${item.highestBid}</button> : '—'}</span>
-                        <span style={{ width: 80 }}>{sellFasterPrice ? <button onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: sellFasterPrice })} style={{ background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: 4, padding: '4px 8px', color: '#f97316', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>${sellFasterPrice}</button> : '—'}</span>
+                        <span style={{ width: 60 }}>{item.highestBid ? <button onClick={() => {
+                          const newPrices = { ...editedPrices };
+                          item.listingIds.forEach(id => { newPrices[id] = item.highestBid; });
+                          setEditedPrices(newPrices);
+                        }} style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 4, padding: '4px 6px', color: c.green, fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>${item.highestBid}</button> : '—'}</span>
+                        <span style={{ width: 80 }}>{sellFasterPrice ? <button onClick={() => {
+                          const newPrices = { ...editedPrices };
+                          item.listingIds.forEach(id => { newPrices[id] = sellFasterPrice; });
+                          setEditedPrices(newPrices);
+                        }} style={{ background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: 4, padding: '4px 8px', color: '#f97316', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>${sellFasterPrice}</button> : '—'}</span>
                         <span style={{ width: 60, color: c.textMuted }}>{formatCost(item.cost)}</span>
                         <span style={{ width: 60, color: profitColor, fontWeight: 600 }}>{profit ? `$${profit}` : '—'}</span>
                       </div>
