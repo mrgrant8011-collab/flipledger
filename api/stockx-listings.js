@@ -42,17 +42,23 @@ export default async function handler(req, res) {
       let allListings = [];
       let pageNumber = 1;
       
-      while (pageNumber <= 10) {
+      while (pageNumber <= 15) {
         const r = await fetch(`https://api.stockx.com/v2/selling/listings?pageNumber=${pageNumber}&pageSize=100&listingStatuses=ACTIVE`, {
           headers: { 'Authorization': authHeader, 'x-api-key': apiKey, 'Content-Type': 'application/json' }
         });
-        if (!r.ok) break;
+        if (!r.ok) {
+          console.log(`[StockX] Listings page ${pageNumber} failed:`, r.status);
+          break;
+        }
         const d = await r.json();
         if (!d.listings?.length) break;
         allListings.push(...d.listings);
+        console.log(`[StockX] Page ${pageNumber}: ${d.listings.length} listings (total: ${allListings.length})`);
         if (!d.hasNextPage || d.listings.length < 100) break;
         pageNumber++;
       }
+      
+      console.log(`[StockX] Total listings fetched: ${allListings.length}`);
 
       // Get unique products
       const productIds = new Set();
@@ -60,11 +66,14 @@ export default async function handler(req, res) {
         if (l.product?.productId) productIds.add(l.product.productId);
       }
 
-      // Fetch product details (including urlKey for images) - batch of 25
+      // Fetch product details (including urlKey for images) - batch of 30
       const productDetails = {};
       const productArray = Array.from(productIds);
-      for (let i = 0; i < productArray.length; i += 25) {
-        const batch = productArray.slice(i, i + 25);
+      
+      console.log(`[StockX] Fetching details for ${productArray.length} products`);
+      
+      for (let i = 0; i < productArray.length; i += 30) {
+        const batch = productArray.slice(i, i + 30);
         await Promise.all(batch.map(async (productId) => {
           try {
             const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}`, {
@@ -101,50 +110,46 @@ export default async function handler(req, res) {
           .replace(/^-|-$/g, '');
       };
 
-      // Fetch market data per-variant (more accurate - accounts for user's own listings)
+      // Fetch market data at PRODUCT level (faster - one call per product, not per variant)
       const marketData = {};
-      const variantList = [];
-      for (const l of allListings) {
-        const vid = l.variant?.variantId;
-        const pid = l.product?.productId;
-        if (vid && pid && !variantList.find(v => v.variantId === vid)) {
-          variantList.push({ productId: pid, variantId: vid });
-        }
-      }
       
-      console.log(`[StockX] Fetching market data for ${variantList.length} variants`);
+      console.log(`[StockX] Fetching market data for ${productArray.length} products`);
       
-      for (let i = 0; i < variantList.length; i += 20) {
-        const batch = variantList.slice(i, i + 20);
-        await Promise.all(batch.map(async ({ productId, variantId }) => {
+      for (let i = 0; i < productArray.length; i += 15) {
+        const batch = productArray.slice(i, i + 15);
+        await Promise.all(batch.map(async (productId) => {
           try {
-            const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}/variants/${variantId}/market-data?currencyCode=USD`, {
+            const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}/market-data?currencyCode=USD`, {
               headers: { 'Authorization': authHeader, 'x-api-key': apiKey }
             });
             if (r.ok) {
-              const v = await r.json();
-              const std = v.standardMarketData || {};
-              const flex = v.flexMarketData || {};
-              const direct = v.directMarketData || {};
-              
-              marketData[variantId] = { 
-                lowestAsk: parseFloat(v.lowestAskAmount) || null, 
-                highestBid: parseFloat(v.highestBidAmount) || null, 
-                sellFaster: parseFloat(v.sellFasterAmount) || null,
-                
-                // Channel-specific - ONLY from that channel
-                standardLowest: parseFloat(std.lowestAsk) || null,
-                standardSellFaster: parseFloat(std.sellFaster) || null,
-                
-                flexLowest: parseFloat(flex.lowestAsk) || null,
-                flexSellFaster: parseFloat(flex.sellFaster) || null,
-                
-                directLowest: parseFloat(direct.lowestAsk) || null,
-                directSellFaster: parseFloat(direct.sellFaster) || null
-              };
+              const variants = await r.json();
+              for (const v of (variants || [])) {
+                if (v.variantId) {
+                  const std = v.standardMarketData || {};
+                  const flex = v.flexMarketData || {};
+                  const direct = v.directMarketData || {};
+                  
+                  marketData[v.variantId] = { 
+                    lowestAsk: parseFloat(v.lowestAskAmount) || null, 
+                    highestBid: parseFloat(v.highestBidAmount) || null, 
+                    sellFaster: parseFloat(v.sellFasterAmount) || null,
+                    
+                    // Channel-specific - strictly from each channel
+                    standardLowest: parseFloat(std.lowestAsk) || null,
+                    standardSellFaster: parseFloat(std.sellFaster) || null,
+                    
+                    flexLowest: parseFloat(flex.lowestAsk) || null,
+                    flexSellFaster: parseFloat(flex.sellFaster) || null,
+                    
+                    directLowest: parseFloat(direct.lowestAsk) || null,
+                    directSellFaster: parseFloat(direct.sellFaster) || null
+                  };
+                }
+              }
             }
           } catch (e) {
-            console.log('[StockX] Variant market data error:', variantId, e.message);
+            console.log('[StockX] Product market data error:', productId, e.message);
           }
         }));
       }
