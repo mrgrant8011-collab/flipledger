@@ -228,7 +228,7 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
 
                 <div style={{ display: 'flex', gap: 0, padding: '12px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', fontSize: 11, fontWeight: 700, color: c.textMuted }}>
                   <span style={{ width: 32 }}></span>
-                  <span style={{ width: 50 }}>SIZE</span>
+                  <span style={{ width: 70 }}>SIZE</span>
                   <span style={{ width: 36 }}>QTY</span>
                   <span style={{ width: 70 }}>YOUR ASK</span>
                   <span style={{ width: 70 }}>LOWEST</span>
@@ -243,6 +243,12 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                     const isEdited = editedPrices[item.listingId] !== undefined;
                     const currentPrice = parseFloat(editedPrices[item.listingId] ?? item.yourAsk) || 0;
                     const sellFasterPrice = item.sellFaster || item.highestBid || null;
+                    
+                    // Channel badge color
+                    const channel = item.inventoryType || 'STANDARD';
+                    const channelBadge = channel === 'DIRECT' ? { label: 'D', bg: '#f97316' } : 
+                                        channel === 'FLEX' ? { label: 'F', bg: '#8b5cf6' } : 
+                                        { label: 'S', bg: '#6b7280' };
                     
                     // Calculate profit (price after ~15% StockX fees - cost)
                     let costNum = null;
@@ -261,7 +267,10 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                     return (
                       <div key={item.listingId} style={{ display: 'flex', gap: 0, padding: '12px 16px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', fontSize: 13 }}>
                         <span style={{ width: 32 }}><input type="checkbox" checked={selectedSizes.has(item.listingId)} onChange={e => { const n = new Set(selectedSizes); e.target.checked ? n.add(item.listingId) : n.delete(item.listingId); setSelectedSizes(n); }} style={{ width: 16, height: 16, accentColor: c.green }} /></span>
-                        <span style={{ width: 50, fontWeight: 600 }}>{item.size}</span>
+                        <span style={{ width: 70, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          {item.size}
+                          <span style={{ background: channelBadge.bg, color: '#fff', fontSize: 9, fontWeight: 700, padding: '2px 4px', borderRadius: 3 }}>{channelBadge.label}</span>
+                        </span>
                         <span style={{ width: 36 }}>1</span>
                         <span style={{ width: 70 }}><input type="number" value={editedPrices[item.listingId] ?? item.yourAsk} onChange={e => setEditedPrices({ ...editedPrices, [item.listingId]: e.target.value })} style={{ width: 54, padding: '6px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 6, color: c.text, fontSize: 13, textAlign: 'center' }} /></span>
                         <span style={{ width: 70, color: isLowest ? c.green : c.text, fontWeight: 600 }}>{item.lowestAsk ? `$${item.lowestAsk}` : '—'}{isLowest && ' ✓'}</span>
