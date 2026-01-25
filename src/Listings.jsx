@@ -1,6 +1,6 @@
 /**
  * FLIPLEDGER LISTINGS TAB
- * Clean layout matching Dashboard style
+ * Full width - App.jsx handles header
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -138,26 +138,46 @@ export default function Listings({
     finally { setLoading(false); }
   };
 
-  const cardStyle = { background: c.card, border: `1px solid ${c.border}`, borderRadius: 16 };
+  const cardStyle = { background: c.card, border: `1px solid ${c.border}`, borderRadius: 14 };
 
   return (
-    <div>
-      {/* TOP BAR: Tabs + Search + Sync */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 16 }}>
+    <>
+      {/* SUMMARY CARDS */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+        <div style={{ ...cardStyle, padding: '20px 24px' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: c.textMuted, marginBottom: 8 }}>STOCKX LISTINGS</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: c.text }}>{stockxListings.length}</div>
+        </div>
+        <div style={{ ...cardStyle, padding: '20px 24px' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: c.textMuted, marginBottom: 8 }}>EBAY LISTINGS</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: c.text }}>{ebayListings.length}</div>
+        </div>
+        <div style={{ ...cardStyle, padding: '20px 24px' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: c.textMuted, marginBottom: 8 }}>NOT LOWEST</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: c.red }}>{groupedProducts.reduce((sum, p) => sum + p.notLowest, 0)}</div>
+        </div>
+        <div style={{ ...cardStyle, padding: '20px 24px' }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: c.textMuted, marginBottom: 8 }}>CROSS-LIST READY</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: c.gold }}>{crosslistProducts.reduce((sum, p) => sum + p.totalQty, 0)}</div>
+        </div>
+      </div>
+
+      {/* TABS + SEARCH + SYNC */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <div style={{ display: 'flex', gap: 10 }}>
           {[
             { id: 'reprice', icon: '⚡', label: 'Reprice', count: stockxListings.length },
             { id: 'crosslist', icon: '🚀', label: 'Cross-list', count: crosslistProducts.reduce((sum, p) => sum + p.totalQty, 0) },
             { id: 'all', icon: '📦', label: 'All Listings', count: stockxListings.length + ebayListings.length }
           ].map(tab => (
-            <button key={tab.id} onClick={() => setSubTab(tab.id)} style={{ padding: '12px 20px', background: subTab === tab.id ? 'rgba(255,255,255,0.08)' : 'transparent', border: `1px solid ${subTab === tab.id ? 'rgba(255,255,255,0.15)' : c.border}`, borderRadius: 10, color: c.text, fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-              {tab.icon} {tab.label} <span style={{ color: c.gold }}>{tab.count}</span>
+            <button key={tab.id} onClick={() => setSubTab(tab.id)} style={{ padding: '12px 20px', background: subTab === tab.id ? 'rgba(255,255,255,0.1)' : 'transparent', border: `1px solid ${subTab === tab.id ? 'rgba(255,255,255,0.2)' : c.border}`, borderRadius: 10, color: c.text, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+              {tab.icon} {tab.label} <span style={{ color: c.gold, marginLeft: 6 }}>{tab.count}</span>
             </button>
           ))}
         </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <input type="text" placeholder="🔍 Search..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: 180, padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 13 }} />
-          <button onClick={syncListings} disabled={syncing} style={{ padding: '10px 20px', background: c.green, border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+          <input type="text" placeholder="🔍 Search SKU or name..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: 220, padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 10, color: c.text, fontSize: 14 }} />
+          <button onClick={syncListings} disabled={syncing} style={{ padding: '12px 24px', background: c.green, border: 'none', borderRadius: 10, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
             🔄 {syncing ? 'Syncing...' : 'Sync'}
           </button>
         </div>
@@ -165,43 +185,43 @@ export default function Listings({
 
       {/* REPRICE TAB */}
       {subTab === 'reprice' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 20 }}>
           {/* Products List */}
-          <div style={{ ...cardStyle, overflow: 'hidden' }}>
-            <div style={{ padding: '14px 18px', borderBottom: `1px solid ${c.border}`, fontSize: 11, fontWeight: 700, color: c.textMuted, letterSpacing: 0.5 }}>PRODUCTS ({filteredProducts.length})</div>
-            <div style={{ maxHeight: 520, overflowY: 'auto' }}>
+          <div style={{ ...cardStyle, overflow: 'hidden', maxHeight: 600 }}>
+            <div style={{ padding: '14px 18px', borderBottom: `1px solid ${c.border}`, fontSize: 12, fontWeight: 700, color: c.textMuted }}>PRODUCTS ({filteredProducts.length})</div>
+            <div style={{ overflowY: 'auto', maxHeight: 540 }}>
               {filteredProducts.length > 0 ? filteredProducts.map(p => (
-                <div key={p.sku} onClick={() => { setSelectedProduct(p.sku); setSelectedSizes(new Set()); }} style={{ padding: '14px 18px', borderBottom: `1px solid ${c.border}`, cursor: 'pointer', background: selectedProduct === p.sku ? 'rgba(255,255,255,0.05)' : 'transparent', borderLeft: selectedProduct === p.sku ? `3px solid ${c.gold}` : '3px solid transparent', display: 'flex', gap: 12, alignItems: 'center' }}>
-                  <div style={{ width: 40, height: 40, background: 'rgba(255,255,255,0.05)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, overflow: 'hidden', flexShrink: 0 }}>
+                <div key={p.sku} onClick={() => { setSelectedProduct(p.sku); setSelectedSizes(new Set()); }} style={{ padding: '14px 18px', borderBottom: `1px solid ${c.border}`, cursor: 'pointer', background: selectedProduct === p.sku ? 'rgba(255,255,255,0.05)' : 'transparent', borderLeft: selectedProduct === p.sku ? `4px solid ${c.gold}` : '4px solid transparent', display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{ width: 44, height: 44, background: 'rgba(255,255,255,0.05)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, overflow: 'hidden', flexShrink: 0 }}>
                     {p.image ? <img src={p.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '👟'}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
                     <div style={{ fontSize: 11, color: c.textMuted }}>{p.sku}</div>
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>Qty: {p.totalQty}</div>
-                    {p.notLowest > 0 && <div style={{ fontSize: 10, color: c.red }}>{p.notLowest} not lowest</div>}
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>Qty: {p.totalQty}</div>
+                    {p.notLowest > 0 && <div style={{ fontSize: 11, color: c.red }}>{p.notLowest} not lowest</div>}
                   </div>
                 </div>
-              )) : <div style={{ padding: 40, textAlign: 'center', color: c.textMuted }}>{syncing ? 'Loading...' : 'No listings found'}</div>}
+              )) : <div style={{ padding: 40, textAlign: 'center', color: c.textMuted }}>{syncing ? 'Loading...' : 'No listings'}</div>}
             </div>
           </div>
 
           {/* Product Detail */}
-          <div style={{ ...cardStyle, overflow: 'hidden' }}>
+          <div style={{ ...cardStyle, overflow: 'hidden', maxHeight: 600, display: 'flex', flexDirection: 'column' }}>
             {currentProduct ? (
               <>
                 {/* Header */}
                 <div style={{ padding: '20px 24px', borderBottom: `1px solid ${c.border}`, display: 'flex', gap: 16, alignItems: 'center' }}>
-                  <div style={{ width: 56, height: 56, background: 'rgba(255,255,255,0.05)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, overflow: 'hidden' }}>
+                  <div style={{ width: 60, height: 60, background: 'rgba(255,255,255,0.05)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, overflow: 'hidden' }}>
                     {currentProduct.image ? <img src={currentProduct.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '👟'}
                   </div>
                   <div>
                     <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{currentProduct.name}</h3>
                     <div style={{ fontSize: 13, color: c.textMuted, marginTop: 4 }}>
                       {currentProduct.sku}
-                      {currentProduct.inventoryType === 'DIRECT' && <span style={{ marginLeft: 10, background: '#f97316', color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>🚀 Direct</span>}
+                      {currentProduct.inventoryType === 'DIRECT' && <span style={{ marginLeft: 10, background: '#f97316', color: '#fff', padding: '3px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700 }}>🚀 Direct</span>}
                     </div>
                   </div>
                 </div>
@@ -214,8 +234,8 @@ export default function Listings({
                   </label>
                 </div>
 
-                {/* Table */}
-                <div style={{ display: 'grid', gridTemplateColumns: '40px 60px 50px 90px 90px 90px 80px', padding: '12px 24px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', fontSize: 10, fontWeight: 700, color: c.textMuted }}>
+                {/* Table Header */}
+                <div style={{ display: 'grid', gridTemplateColumns: '40px 70px 60px 100px 100px 100px 80px', padding: '12px 24px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', fontSize: 10, fontWeight: 700, color: c.textMuted }}>
                   <span></span>
                   <span>SIZE</span>
                   <span style={{ textAlign: 'center' }}>QTY</span>
@@ -225,18 +245,19 @@ export default function Listings({
                   <span style={{ textAlign: 'right' }}>COST</span>
                 </div>
 
-                <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                {/* Table Body */}
+                <div style={{ flex: 1, overflowY: 'auto' }}>
                   {currentProduct.sizes.map(item => {
                     const isLowest = item.lowestAsk && item.yourAsk <= item.lowestAsk;
                     const isEdited = editedPrices[item.listingId] !== undefined;
                     const sameSize = currentProduct.sizes.filter(s => s.size === item.size).length;
                     return (
-                      <div key={item.listingId} style={{ display: 'grid', gridTemplateColumns: '40px 60px 50px 90px 90px 90px 80px', padding: '14px 24px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', fontSize: 13 }}>
+                      <div key={item.listingId} style={{ display: 'grid', gridTemplateColumns: '40px 70px 60px 100px 100px 100px 80px', padding: '14px 24px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', fontSize: 13 }}>
                         <input type="checkbox" checked={selectedSizes.has(item.listingId)} onChange={e => { const n = new Set(selectedSizes); e.target.checked ? n.add(item.listingId) : n.delete(item.listingId); setSelectedSizes(n); }} style={{ width: 16, height: 16, accentColor: c.green }} />
                         <span style={{ fontWeight: 600 }}>{item.size}</span>
-                        <span style={{ textAlign: 'center' }}>{sameSize > 1 ? <span style={{ background: c.gold, color: '#000', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700 }}>x{sameSize}</span> : '1'}</span>
+                        <span style={{ textAlign: 'center' }}>{sameSize > 1 ? <span style={{ background: c.gold, color: '#000', padding: '3px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700 }}>x{sameSize}</span> : '1'}</span>
                         <div style={{ textAlign: 'center' }}>
-                          <input type="number" value={editedPrices[item.listingId] ?? item.yourAsk} onChange={e => setEditedPrices({ ...editedPrices, [item.listingId]: e.target.value })} style={{ width: 70, padding: '6px 8px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 6, color: c.text, fontSize: 13, textAlign: 'center' }} />
+                          <input type="number" value={editedPrices[item.listingId] ?? item.yourAsk} onChange={e => setEditedPrices({ ...editedPrices, [item.listingId]: e.target.value })} style={{ width: 70, padding: '8px 10px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 6, color: c.text, fontSize: 13, textAlign: 'center' }} />
                         </div>
                         <div style={{ textAlign: 'center', color: isLowest ? c.green : c.text, fontWeight: 600 }}>
                           ${item.lowestAsk || '—'} {isLowest && <span style={{ color: c.green }}>✓</span>}
@@ -250,10 +271,10 @@ export default function Listings({
 
                 {/* Buttons */}
                 <div style={{ padding: '16px 24px', borderTop: `1px solid ${c.border}`, display: 'flex', gap: 12 }}>
-                  <button onClick={handleUpdatePrices} disabled={Object.keys(editedPrices).length === 0 || loading} style={{ padding: '12px 24px', background: Object.keys(editedPrices).length > 0 ? c.green : 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 14, fontWeight: 700, cursor: Object.keys(editedPrices).length > 0 ? 'pointer' : 'not-allowed' }}>
+                  <button onClick={handleUpdatePrices} disabled={Object.keys(editedPrices).length === 0 || loading} style={{ padding: '12px 28px', background: Object.keys(editedPrices).length > 0 ? c.green : 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 10, color: '#fff', fontSize: 14, fontWeight: 700, cursor: Object.keys(editedPrices).length > 0 ? 'pointer' : 'not-allowed' }}>
                     Update Prices
                   </button>
-                  <button onClick={handleUnlistSelected} disabled={selectedSizes.size === 0 || loading} style={{ padding: '12px 24px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 14, fontWeight: 600, cursor: selectedSizes.size > 0 ? 'pointer' : 'not-allowed' }}>
+                  <button onClick={handleUnlistSelected} disabled={selectedSizes.size === 0 || loading} style={{ padding: '12px 28px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 10, color: c.text, fontSize: 14, fontWeight: 600, cursor: selectedSizes.size > 0 ? 'pointer' : 'not-allowed' }}>
                     Unlist Selected
                   </button>
                 </div>
@@ -267,7 +288,7 @@ export default function Listings({
       {subTab === 'crosslist' && (
         <div style={{ ...cardStyle, padding: 60, textAlign: 'center' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🚀</div>
-          <h3 style={{ margin: '0 0 8px' }}>Cross-list to eBay</h3>
+          <h3 style={{ margin: '0 0 8px', fontSize: 20 }}>Cross-list to eBay</h3>
           <p style={{ color: c.textMuted }}>{crosslistProducts.length} products not on eBay</p>
         </div>
       )}
@@ -276,7 +297,7 @@ export default function Listings({
       {subTab === 'all' && (
         <div style={{ ...cardStyle, padding: 60, textAlign: 'center' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>📦</div>
-          <h3 style={{ margin: '0 0 8px' }}>All Listings</h3>
+          <h3 style={{ margin: '0 0 8px', fontSize: 20 }}>All Listings</h3>
           <p style={{ color: c.textMuted }}>{stockxListings.length} StockX + {ebayListings.length} eBay</p>
         </div>
       )}
@@ -287,6 +308,6 @@ export default function Listings({
           <span style={{ color: toast.type === 'error' ? c.red : c.green, fontWeight: 600 }}>{toast.type === 'error' ? '❌' : '✓'} {toast.message}</span>
         </div>
       )}
-    </div>
+    </>
   );
 }
