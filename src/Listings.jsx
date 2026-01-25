@@ -58,7 +58,8 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
   const syncStockX = async () => {
     if (!stockxToken) return [];
     try {
-      const res = await fetch('/api/stockx-listings?skipMarketData=true', {
+      // Fetch WITH market data (no skipMarketData param)
+      const res = await fetch('/api/stockx-listings', {
         headers: { 'Authorization': `Bearer ${stockxToken}` }
       });
       if (res.ok) {
@@ -85,6 +86,75 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
       console.error('[Sync] eBay error:', e);
     }
     return [];
+  };
+
+  // Fetch market data for a specific product (called when product is selected)
+  const fetchMarketData = async (productId, variantIds) => {
+    if (!stockxToken || !productId || !variantIds.length) return;
+    
+    try {
+      const res = await fetch(`/api/stockx-listings?productId=${productId}&variantIds=${variantIds.join(',')}`, {
+        headers: { 'Authorization': `Bearer ${stockxToken}` }
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        const md = data.marketData || {};
+        
+        // Update listings with market data
+        setStockxListings(prev => prev.map(l => {
+          const variantData = md[l.variantId];
+          if (variantData) {
+            const channel = l.inventoryType || 'STANDARD';
+            let lowestAsk, sellFaster, highestBid;
+            
+            if (channel === 'DIRECT') {
+              lowestAsk = variantData.directLowest;
+              sellFaster = variantData.directSellFaster;
+              highestBid = variantData.directBid || variantData.highestBid;
+            } else if (channel === 'FLEX') {
+              lowestAsk = variantData.flexLowest;
+              sellFaster = variantData.flexSellFaster;
+              highestBid = variantData.flexBid || variantData.highestBid;
+            } else {
+              lowestAsk = variantData.standardLowest;
+              sellFaster = variantData.standardSellFaster;
+              highestBid = variantData.standardBid || variantData.highestBid;
+            }
+            
+            return { ...l, lowestAsk, sellFaster, highestBid };
+          }
+          return l;
+        }));
+        
+        // Also update localStorage
+        const updated = stockxListings.map(l => {
+          const variantData = md[l.variantId];
+          if (variantData) {
+            const channel = l.inventoryType || 'STANDARD';
+            let lowestAsk, sellFaster, highestBid;
+            if (channel === 'DIRECT') {
+              lowestAsk = variantData.directLowest;
+              sellFaster = variantData.directSellFaster;
+              highestBid = variantData.directBid || variantData.highestBid;
+            } else if (channel === 'FLEX') {
+              lowestAsk = variantData.flexLowest;
+              sellFaster = variantData.flexSellFaster;
+              highestBid = variantData.flexBid || variantData.highestBid;
+            } else {
+              lowestAsk = variantData.standardLowest;
+              sellFaster = variantData.standardSellFaster;
+              highestBid = variantData.standardBid || variantData.highestBid;
+            }
+            return { ...l, lowestAsk, sellFaster, highestBid };
+          }
+          return l;
+        });
+        localStorage.setItem('fl_sx', JSON.stringify(updated));
+      }
+    } catch (e) {
+      console.error('[MarketData] Error:', e);
+    }
   };
 
   const syncAll = async () => {
@@ -341,7 +411,15 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
             {filteredProducts.map(p => (
               <div
                 key={p.sku}
-                onClick={() => { setSelectedProduct(p.sku); setEditedPrices({}); }}
+                onClick={() => { 
+                  setSelectedProduct(p.sku); 
+                  setEditedPrices({}); 
+                  // Fetch market data for this product
+                  if (p.productId) {
+                    const variantIds = p.sizes.map(s => s.variantId).filter(Boolean);
+                    fetchMarketData(p.productId, variantIds);
+                  }
+                }}
                 style={{
                   padding: '12px 14px',
                   borderBottom: `1px solid ${c.border}`,
@@ -366,7 +444,11 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                     style={{ accentColor: c.green }}
                   />
                 )}
-                <div style={{ width: 40, height: 40, background: 'rgba(255,255,255,0.05)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>👟</div>
+                <div style={{ width: 40, height: 40, background: 'rgba(255,255,255,0.05)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                  {p.image ? (
+                    <img src={p.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; e.target.parentNode.innerHTML = '👟'; }} />
+                  ) : '👟'}
+                </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
                   <div style={{ fontSize: 10, color: c.textMuted }}>{p.sku}</div>
@@ -412,16 +494,23 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
           {currentProduct ? (
             <>
               {/* Header */}
-              <div style={{ padding: '16px', borderBottom: `1px solid ${c.border}` }}>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{currentProduct.name}</h3>
-                <div style={{ fontSize: 12, color: c.textMuted, marginTop: 4 }}>
-                  {currentProduct.sku} • {currentProduct.totalQty} listings
-                  {currentProduct.sizes[0]?.inventoryType === 'DIRECT' && (
-                    <span style={{ marginLeft: 8, background: '#f97316', color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 10 }}>Direct</span>
-                  )}
-                  {currentProduct.sizes[0]?.inventoryType === 'FLEX' && (
-                    <span style={{ marginLeft: 8, background: '#8b5cf6', color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 10 }}>Flex</span>
-                  )}
+              <div style={{ padding: '16px', borderBottom: `1px solid ${c.border}`, display: 'flex', gap: 12, alignItems: 'center' }}>
+                <div style={{ width: 60, height: 60, background: 'rgba(255,255,255,0.05)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                  {currentProduct.image ? (
+                    <img src={currentProduct.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; e.target.parentNode.innerHTML = '👟'; }} />
+                  ) : '👟'}
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{currentProduct.name}</h3>
+                  <div style={{ fontSize: 12, color: c.textMuted, marginTop: 4 }}>
+                    {currentProduct.sku} • {currentProduct.totalQty} listings
+                    {currentProduct.sizes[0]?.inventoryType === 'DIRECT' && (
+                      <span style={{ marginLeft: 8, background: '#f97316', color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 10 }}>Direct</span>
+                    )}
+                    {currentProduct.sizes[0]?.inventoryType === 'FLEX' && (
+                      <span style={{ marginLeft: 8, background: '#8b5cf6', color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 10 }}>Flex</span>
+                    )}
+                  </div>
                 </div>
               </div>
 
