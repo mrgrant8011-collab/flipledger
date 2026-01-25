@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
 export default function Listings({ stockxToken, ebayToken, purchases = [], c = { bg: '#0a0a0a', card: '#111111', border: '#1a1a1a', text: '#ffffff', textMuted: '#888888', gold: '#C9A962', green: '#10b981', red: '#ef4444' } }) {
-  const [subTab, setSubTab] = useState('reprice');
+  const [subTab, setSubTab] = useState('all');
   const [syncing, setSyncing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingMarketData, setLoadingMarketData] = useState(false);
@@ -211,8 +211,12 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
     let products = groupedProducts;
     
     // In Reprice tab, only show products that have items needing repricing
+    // But if no market data loaded yet, show all products
     if (subTab === 'reprice') {
-      products = products.filter(p => p.notLowest > 0);
+      const hasMarketData = products.some(p => p.sizes.some(s => s.lowestAsk !== null));
+      if (hasMarketData) {
+        products = products.filter(p => p.notLowest > 0);
+      }
     }
     
     // Apply search filter
