@@ -233,7 +233,7 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                       <div key={item.listingId} style={{ display: 'grid', gridTemplateColumns: '44px 80px 70px 110px 110px 110px 1fr', padding: '16px 24px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', fontSize: 14 }}>
                         <input type="checkbox" checked={selectedSizes.has(item.listingId)} onChange={e => { const n = new Set(selectedSizes); e.target.checked ? n.add(item.listingId) : n.delete(item.listingId); setSelectedSizes(n); }} style={{ width: 16, height: 16, accentColor: c.green }} />
                         <span style={{ fontWeight: 600 }}>{item.size}</span>
-                        <span style={{ textAlign: 'center' }}>{sameSize > 1 ? <span style={{ background: c.gold, color: '#000', padding: '4px 10px', borderRadius: 10, fontSize: 12, fontWeight: 700 }}>x{sameSize}</span> : '1'}</span>
+                        <span style={{ textAlign: 'center' }}>1</span>
                         <div style={{ textAlign: 'center' }}>
                           <input type="number" value={editedPrices[item.listingId] ?? item.yourAsk} onChange={e => setEditedPrices({ ...editedPrices, [item.listingId]: e.target.value })} style={{ width: 80, padding: '10px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 8, color: c.text, fontSize: 14, textAlign: 'center' }} />
                         </div>
