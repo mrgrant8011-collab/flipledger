@@ -286,7 +286,6 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                 <div style={{ display: 'flex', gap: 0, padding: '12px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', fontSize: 11, fontWeight: 700, color: c.textMuted }}>
                   <span style={{ width: 32 }}></span>
                   <span style={{ width: 70 }}>SIZE</span>
-                  <span style={{ width: 36 }}>QTY</span>
                   <span style={{ width: 70 }}>YOUR ASK</span>
                   <span style={{ width: 80 }}>LOWEST</span>
                   <span style={{ width: 60 }}>BID</span>
@@ -332,7 +331,6 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                           {item.size}
                           <span style={{ background: channelBadge.bg, color: '#fff', fontSize: 9, fontWeight: 700, padding: '2px 4px', borderRadius: 3 }}>{channelBadge.label}</span>
                         </span>
-                        <span style={{ width: 36 }}>{item.qty || 1}</span>
                         <span style={{ width: 70 }}><input type="number" value={editedPrices[item.listingId] ?? item.yourAsk} onChange={e => setEditedPrices({ ...editedPrices, [item.listingId]: e.target.value })} style={{ width: 54, padding: '6px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 6, color: c.text, fontSize: 13, textAlign: 'center' }} /></span>
                         <span style={{ width: 80, display: 'flex', alignItems: 'center', gap: 4 }}>
                           {item.lowestAsk ? (
