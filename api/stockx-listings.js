@@ -31,34 +31,76 @@ export default async function handler(req, res) {
             });
             if (r.ok) {
               const m = await r.json();
-              marketData[variantId] = { lowestAsk: parseFloat(m.lowestAskAmount) || null, highestBid: parseFloat(m.highestBidAmount) || null, sellFaster: parseFloat(m.sellFasterAmount) || null };
+              const std = m.standardMarketData || {};
+              const flex = m.flexMarketData || {};
+              const direct = m.directMarketData || {};
+              marketData[variantId] = { 
+                lowestAsk: parseFloat(m.lowestAskAmount) || null, 
+                highestBid: parseFloat(m.highestBidAmount) || null, 
+                sellFaster: parseFloat(m.sellFasterAmount) || null,
+                standardLowest: parseFloat(std.lowestAsk) || null,
+                standardSellFaster: parseFloat(std.sellFaster) || null,
+                standardBid: parseFloat(std.highestBidAmount) || null,
+                flexLowest: parseFloat(flex.lowestAsk) || null,
+                flexSellFaster: parseFloat(flex.sellFaster) || null,
+                flexBid: parseFloat(flex.highestBidAmount) || null,
+                directLowest: parseFloat(direct.lowestAsk) || null,
+                directSellFaster: parseFloat(direct.sellFaster) || null,
+                directBid: parseFloat(direct.highestBidAmount) || null
+              };
             }
           } catch {}
         }));
         return res.status(200).json({ marketData });
       }
 
-      // Fetch all listings (up to 10,000)
+      // Check if skipMarketData query param is set (for fast initial load)
+      const skipMarketData = req.query.skipMarketData === 'true';
+
+      // Fetch all listings - first get page 1 to know total
       let allListings = [];
-      let pageNumber = 1;
       
-      while (pageNumber <= 100) {
-        const r = await fetch(`https://api.stockx.com/v2/selling/listings?pageNumber=${pageNumber}&pageSize=100&listingStatuses=ACTIVE`, {
-          headers: { 'Authorization': authHeader, 'x-api-key': apiKey, 'Content-Type': 'application/json' }
-        });
-        if (!r.ok) {
-          console.log(`[StockX] Listings page ${pageNumber} failed:`, r.status);
-          break;
-        }
-        const d = await r.json();
-        if (!d.listings?.length) break;
-        allListings.push(...d.listings);
-        if (pageNumber % 10 === 0) console.log(`[StockX] Progress: ${allListings.length} listings`);
-        if (!d.hasNextPage || d.listings.length < 100) break;
-        pageNumber++;
+      const firstPage = await fetch(`https://api.stockx.com/v2/selling/listings?pageNumber=1&pageSize=100&listingStatuses=ACTIVE`, {
+        headers: { 'Authorization': authHeader, 'x-api-key': apiKey, 'Content-Type': 'application/json' }
+      });
+      
+      if (!firstPage.ok) {
+        console.log('[StockX] First page failed:', firstPage.status);
+        return res.status(firstPage.status).json({ error: 'Failed to fetch listings' });
       }
       
-      console.log(`[StockX] Total listings fetched: ${allListings.length}`);
+      const firstData = await firstPage.json();
+      allListings.push(...(firstData.listings || []));
+      
+      const totalCount = firstData.count || 0;
+      const totalPages = Math.ceil(totalCount / 100);
+      
+      console.log(`[StockX] Total count: ${totalCount}, Pages needed: ${totalPages}`);
+      
+      // Fetch remaining pages in parallel batches
+      if (firstData.hasNextPage && totalPages > 1) {
+        for (let batch = 2; batch <= totalPages; batch += 10) {
+          const pagePromises = [];
+          for (let p = batch; p < batch + 10 && p <= totalPages; p++) {
+            pagePromises.push(
+              fetch(`https://api.stockx.com/v2/selling/listings?pageNumber=${p}&pageSize=100&listingStatuses=ACTIVE`, {
+                headers: { 'Authorization': authHeader, 'x-api-key': apiKey, 'Content-Type': 'application/json' }
+              }).then(r => r.ok ? r.json() : null).catch(() => null)
+            );
+          }
+          
+          const results = await Promise.all(pagePromises);
+          for (const d of results) {
+            if (d?.listings?.length) {
+              allListings.push(...d.listings);
+            }
+          }
+          
+          console.log(`[StockX] Fetched pages ${batch}-${Math.min(batch + 9, totalPages)}, total: ${allListings.length}`);
+        }
+      }
+      
+      console.log(`[StockX] FINAL: ${allListings.length} of ${totalCount} listings fetched`);
 
       // Get unique products
       const productIds = new Set();
@@ -113,42 +155,43 @@ export default async function handler(req, res) {
       // Fetch market data at PRODUCT level (faster - one call per product, not per variant)
       const marketData = {};
       
-      console.log(`[StockX] Fetching market data for ${productArray.length} products`);
-      
-      for (let i = 0; i < productArray.length; i += 50) {
-        const batch = productArray.slice(i, i + 50);
-        await Promise.all(batch.map(async (productId) => {
-          try {
-            const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}/market-data?currencyCode=USD`, {
-              headers: { 'Authorization': authHeader, 'x-api-key': apiKey }
-            });
-            if (r.ok) {
-              const variants = await r.json();
-              for (const v of (variants || [])) {
-                if (v.variantId) {
-                  const std = v.standardMarketData || {};
-                  const flex = v.flexMarketData || {};
-                  const direct = v.directMarketData || {};
-                  
-                  marketData[v.variantId] = { 
-                    lowestAsk: parseFloat(v.lowestAskAmount) || null, 
-                    highestBid: parseFloat(v.highestBidAmount) || null, 
-                    sellFaster: parseFloat(v.sellFasterAmount) || null,
+      if (!skipMarketData) {
+        console.log(`[StockX] Fetching market data for ${productArray.length} products`);
+        
+        for (let i = 0; i < productArray.length; i += 50) {
+          const batch = productArray.slice(i, i + 50);
+          await Promise.all(batch.map(async (productId) => {
+            try {
+              const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}/market-data?currencyCode=USD`, {
+                headers: { 'Authorization': authHeader, 'x-api-key': apiKey }
+              });
+              if (r.ok) {
+                const variants = await r.json();
+                for (const v of (variants || [])) {
+                  if (v.variantId) {
+                    const std = v.standardMarketData || {};
+                    const flex = v.flexMarketData || {};
+                    const direct = v.directMarketData || {};
                     
-                    // Channel-specific - strictly from each channel
-                    standardLowest: parseFloat(std.lowestAsk) || null,
-                    standardSellFaster: parseFloat(std.sellFaster) || null,
-                    standardBid: parseFloat(std.highestBidAmount) || null,
-                    
-                    flexLowest: parseFloat(flex.lowestAsk) || null,
-                    flexSellFaster: parseFloat(flex.sellFaster) || null,
-                    flexBid: parseFloat(flex.highestBidAmount) || null,
-                    
-                    directLowest: parseFloat(direct.lowestAsk) || null,
-                    directSellFaster: parseFloat(direct.sellFaster) || null,
-                    directBid: parseFloat(direct.highestBidAmount) || null
-                  };
-                }
+                    marketData[v.variantId] = { 
+                      lowestAsk: parseFloat(v.lowestAskAmount) || null, 
+                      highestBid: parseFloat(v.highestBidAmount) || null, 
+                      sellFaster: parseFloat(v.sellFasterAmount) || null,
+                      
+                      // Channel-specific - strictly from each channel
+                      standardLowest: parseFloat(std.lowestAsk) || null,
+                      standardSellFaster: parseFloat(std.sellFaster) || null,
+                      standardBid: parseFloat(std.highestBidAmount) || null,
+                      
+                      flexLowest: parseFloat(flex.lowestAsk) || null,
+                      flexSellFaster: parseFloat(flex.sellFaster) || null,
+                      flexBid: parseFloat(flex.highestBidAmount) || null,
+                      
+                      directLowest: parseFloat(direct.lowestAsk) || null,
+                      directSellFaster: parseFloat(direct.sellFaster) || null,
+                      directBid: parseFloat(direct.highestBidAmount) || null
+                    };
+                  }
               }
             }
           } catch (e) {
@@ -156,6 +199,7 @@ export default async function handler(req, res) {
           }
         }));
       }
+      } // end if (!skipMarketData)
       
       console.log(`[StockX] Market data: ${Object.keys(marketData).length} variants`);
 
