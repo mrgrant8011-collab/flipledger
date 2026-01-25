@@ -4,6 +4,7 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
   const [subTab, setSubTab] = useState('reprice');
   const [syncing, setSyncing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingMarketData, setLoadingMarketData] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [stockxListings, setStockxListings] = useState(() => { try { return JSON.parse(localStorage.getItem('fl_sx') || '[]'); } catch { return []; } });
   const [ebayListings, setEbayListings] = useState(() => { try { return JSON.parse(localStorage.getItem('fl_eb') || '[]'); } catch { return []; } });
@@ -67,9 +68,9 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
     if (syncing) return;
     setSyncing(true);
     try {
-      console.log('[Sync] Starting...');
+      console.log('[Sync] Starting fast sync...');
       const [sxRes, ebRes] = await Promise.all([
-        stockxToken ? fetch('/api/stockx-listings', { headers: { 'Authorization': `Bearer ${stockxToken}` } }) : null,
+        stockxToken ? fetch('/api/stockx-listings?skipMarketData=true', { headers: { 'Authorization': `Bearer ${stockxToken}` } }) : null,
         ebayToken ? fetch('/api/ebay-listings', { headers: { 'Authorization': `Bearer ${ebayToken}` } }) : null
       ]);
       
@@ -102,6 +103,50 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
     }
     finally { setSyncing(false); }
   }, [stockxToken, ebayToken, syncing]);
+  
+  // Fetch market data for selected product
+  const fetchMarketData = useCallback(async (productId, variantIds) => {
+    if (!stockxToken || !productId) return;
+    setLoadingMarketData(true);
+    try {
+      console.log('[MarketData] Fetching for product', productId);
+      const r = await fetch(`/api/stockx-listings?productId=${productId}&variantIds=${variantIds.join(',')}`, {
+        headers: { 'Authorization': `Bearer ${stockxToken}` }
+      });
+      if (r.ok) {
+        const data = await r.json();
+        console.log('[MarketData] Got data for', Object.keys(data.marketData || {}).length, 'variants');
+        
+        // Update listings with market data
+        setStockxListings(prev => prev.map(l => {
+          const md = data.marketData?.[l.variantId];
+          if (md) {
+            const channel = l.inventoryType || 'STANDARD';
+            let lowestAsk, sellFaster, highestBid;
+            if (channel === 'DIRECT') {
+              lowestAsk = md.directLowest;
+              sellFaster = md.directSellFaster;
+              highestBid = md.directBid || md.highestBid;
+            } else if (channel === 'FLEX') {
+              lowestAsk = md.flexLowest;
+              sellFaster = md.flexSellFaster;
+              highestBid = md.flexBid || md.highestBid;
+            } else {
+              lowestAsk = md.standardLowest;
+              sellFaster = md.standardSellFaster;
+              highestBid = md.standardBid || md.highestBid;
+            }
+            return { ...l, lowestAsk, sellFaster, highestBid };
+          }
+          return l;
+        }));
+      }
+    } catch (e) {
+      console.error('[MarketData] Error:', e);
+    } finally {
+      setLoadingMarketData(false);
+    }
+  }, [stockxToken]);
 
   useEffect(() => { 
     if ((stockxToken || ebayToken) && !stockxListings.length && !syncing) {
@@ -180,7 +225,17 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
   }, [groupedProducts, searchQuery, subTab]);
   const currentProduct = useMemo(() => groupedProducts.find(p => p.sku === selectedProduct), [groupedProducts, selectedProduct]);
 
-  useEffect(() => { if (filteredProducts.length && !selectedProduct) setSelectedProduct(filteredProducts[0].sku); }, [filteredProducts]);
+  useEffect(() => { 
+    if (filteredProducts.length && !selectedProduct) {
+      const firstProduct = filteredProducts[0];
+      setSelectedProduct(firstProduct.sku);
+      // Fetch market data for first product
+      if (firstProduct.productId) {
+        const variantIds = firstProduct.sizes.map(s => s.variantId).filter(Boolean);
+        fetchMarketData(firstProduct.productId, variantIds);
+      }
+    }
+  }, [filteredProducts, fetchMarketData]);
 
   const handleSelectAll = () => { 
     if (!currentProduct) return; 
@@ -262,7 +317,16 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
             <div style={{ padding: '12px 14px', borderBottom: `1px solid ${c.border}`, fontSize: 11, fontWeight: 700, color: c.textMuted }}>PRODUCTS ({filteredProducts.length})</div>
             <div style={{ maxHeight: 600, overflowY: 'auto' }}>
               {filteredProducts.map(p => (
-                <div key={p.sku} onClick={() => { setSelectedProduct(p.sku); setSelectedSizes(new Set()); setEditedPrices({}); }} style={{ padding: '10px 14px', borderBottom: `1px solid ${c.border}`, cursor: 'pointer', background: selectedProduct === p.sku ? 'rgba(255,255,255,0.05)' : 'transparent', borderLeft: selectedProduct === p.sku ? `3px solid ${c.gold}` : '3px solid transparent', display: 'flex', gap: 10, alignItems: 'center' }}>
+                <div key={p.sku} onClick={() => { 
+                  setSelectedProduct(p.sku); 
+                  setSelectedSizes(new Set()); 
+                  setEditedPrices({}); 
+                  // Fetch market data for this product
+                  if (p.productId) {
+                    const variantIds = p.sizes.map(s => s.variantId).filter(Boolean);
+                    fetchMarketData(p.productId, variantIds);
+                  }
+                }} style={{ padding: '10px 14px', borderBottom: `1px solid ${c.border}`, cursor: 'pointer', background: selectedProduct === p.sku ? 'rgba(255,255,255,0.05)' : 'transparent', borderLeft: selectedProduct === p.sku ? `3px solid ${c.gold}` : '3px solid transparent', display: 'flex', gap: 10, alignItems: 'center' }}>
                   <div style={{ width: 40, height: 40, background: 'rgba(255,255,255,0.05)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
                     {p.image ? <img src={p.image} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.onerror = null; e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><text x="8" y="30" font-size="20">👟</text></svg>'; }} /> : <span style={{ fontSize: 20 }}>👟</span>}
                   </div>
@@ -293,6 +357,7 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                     <div style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>
                       {currentProduct.sku}
                       {currentProduct.sizes[0]?.inventoryType === 'DIRECT' && <span style={{ marginLeft: 8, background: '#f97316', color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>🚀 Direct</span>}
+                      {loadingMarketData && <span style={{ marginLeft: 8, color: c.gold, fontSize: 10 }}>Loading prices...</span>}
                     </div>
                   </div>
                 </div>
@@ -353,9 +418,9 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                   <span style={{ width: 70 }}>YOUR ASK</span>
                   <span style={{ width: 80 }}>LOWEST</span>
                   <span style={{ width: 60 }}>BID</span>
-                  <span style={{ width: 80 }}>SELL FASTER</span>
-                  <span style={{ width: 60 }}>COST</span>
-                  <span style={{ width: 60 }}>PROFIT</span>
+                  <span style={{ width: 75 }}>SELL FASTER</span>
+                  <span style={{ width: 70 }}>COST</span>
+                  <span style={{ width: 70 }}>PROFIT</span>
                 </div>
 
                 <div style={{ flex: 1, overflowY: 'auto', maxHeight: 500 }}>
@@ -374,18 +439,35 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                     const isLowest = item.lowestAsk && item.minAsk <= item.lowestAsk;
                     
                     // Calculate profit (price after ~15% StockX fees - cost)
-                    let costNum = null;
-                    if (item.cost) {
-                      if (typeof item.cost === 'string' && item.cost.includes('-')) {
-                        costNum = parseFloat(item.cost.split('-')[1]);
-                      } else {
-                        costNum = parseFloat(item.cost);
-                      }
-                    }
                     // StockX payout is roughly 85% of sale price (15% fees)
                     const payout = currentPrice * 0.85;
-                    const profit = costNum ? (payout - costNum).toFixed(0) : null;
-                    const profitColor = profit > 0 ? c.green : profit < 0 ? c.red : c.textMuted;
+                    
+                    // Get all valid costs as numbers
+                    const costNums = (item.costs || []).map(c => {
+                      if (!c) return null;
+                      if (typeof c === 'string' && c.includes('-')) {
+                        return parseFloat(c.split('-')[1]); // Use higher cost for conservative profit
+                      }
+                      return parseFloat(c);
+                    }).filter(c => c && !isNaN(c));
+                    
+                    let profitDisplay = null;
+                    let profitColor = c.textMuted;
+                    
+                    if (costNums.length > 0) {
+                      const minCost = Math.min(...costNums);
+                      const maxCost = Math.max(...costNums);
+                      const maxProfit = Math.round(payout - minCost);
+                      const minProfit = Math.round(payout - maxCost);
+                      
+                      if (minProfit === maxProfit) {
+                        profitDisplay = `$${minProfit}`;
+                        profitColor = minProfit > 0 ? c.green : minProfit < 0 ? c.red : c.textMuted;
+                      } else {
+                        profitDisplay = `$${minProfit}-${maxProfit}`;
+                        profitColor = minProfit > 0 ? c.green : maxProfit < 0 ? c.red : c.gold; // gold = mixed
+                      }
+                    }
                     
                     // Show price range if different prices exist
                     const priceDisplay = item.minAsk === item.maxAsk ? item.minAsk : `${item.minAsk}-${item.maxAsk}`;
@@ -440,13 +522,23 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                           item.listingIds.forEach(id => { newPrices[id] = item.highestBid; });
                           setEditedPrices(newPrices);
                         }} style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 4, padding: '4px 6px', color: c.green, fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>${item.highestBid}</button> : '—'}</span>
-                        <span style={{ width: 80 }}>{sellFasterPrice ? <button onClick={() => {
+                        <span style={{ width: 75 }}>{sellFasterPrice ? <button onClick={() => {
                           const newPrices = { ...editedPrices };
                           item.listingIds.forEach(id => { newPrices[id] = sellFasterPrice; });
                           setEditedPrices(newPrices);
                         }} style={{ background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: 4, padding: '4px 8px', color: '#f97316', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>${sellFasterPrice}</button> : '—'}</span>
-                        <span style={{ width: 60, color: c.textMuted }}>{formatCost(item.cost)}</span>
-                        <span style={{ width: 60, color: profitColor, fontWeight: 600 }}>{profit ? `$${profit}` : '—'}</span>
+                        <span style={{ width: 70, color: c.textMuted, fontSize: 11 }}>{(() => {
+                          const validCosts = (item.costs || []).map(c => {
+                            if (!c) return null;
+                            if (typeof c === 'string' && c.includes('-')) return parseFloat(c.split('-')[0]);
+                            return parseFloat(c);
+                          }).filter(c => c && !isNaN(c));
+                          if (validCosts.length === 0) return '—';
+                          const min = Math.min(...validCosts);
+                          const max = Math.max(...validCosts);
+                          return min === max ? `$${min.toFixed(2)}` : `$${min.toFixed(0)}-${max.toFixed(0)}`;
+                        })()}</span>
+                        <span style={{ width: 70, color: profitColor, fontWeight: 600, fontSize: 11 }}>{profitDisplay || '—'}</span>
                       </div>
                     );
                   })}
