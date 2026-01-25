@@ -2,11 +2,9 @@
  * EBAY LISTINGS API
  * =================
  * GET - Fetch all active listings (inventory items + offers)
- * POST - Create new listings (cross-list from StockX)
+ * POST - Create new listings (cross-list from StockX/inventory)
  * PATCH - Bulk update price/quantity
- * DELETE - End/withdraw listings
- * 
- * Based on eBay Sell Inventory API v1
+ * DELETE - End/withdraw listings (body: { offerIds: [...] })
  */
 
 export default async function handler(req, res) {
@@ -33,7 +31,6 @@ export default async function handler(req, res) {
   // ============================================
   if (req.method === 'GET') {
     try {
-      // Step 1: Get all inventory items
       let allItems = [];
       let offset = 0;
       const limit = 100;
@@ -41,7 +38,6 @@ export default async function handler(req, res) {
       
       while (hasMore && offset < 1000) {
         const url = `https://api.ebay.com/sell/inventory/v1/inventory_item?limit=${limit}&offset=${offset}`;
-        
         const response = await fetch(url, { headers: baseHeaders });
         
         if (!response.ok) {
@@ -65,7 +61,6 @@ export default async function handler(req, res) {
       
       console.log(`[eBay Listings] Fetched ${allItems.length} inventory items`);
       
-      // Step 2: For each item, get its offers to find published (active) listings
       const listings = [];
       
       for (let i = 0; i < allItems.length; i += 10) {
@@ -75,46 +70,32 @@ export default async function handler(req, res) {
           try {
             const sku = item.sku;
             const offersUrl = `https://api.ebay.com/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}&marketplace_id=EBAY_US`;
-            
             const offersRes = await fetch(offersUrl, { headers: baseHeaders });
             
             if (offersRes.ok) {
               const offersData = await offersRes.json();
               const offers = offersData.offers || [];
-              
-              // Only include PUBLISHED offers (active listings)
               const publishedOffers = offers.filter(o => o.status === 'PUBLISHED');
               
               for (const offer of publishedOffers) {
-                // Extract size from aspects
                 const aspects = item.product?.aspects || {};
-                const size = aspects['US Shoe Size']?.[0] || 
-                            aspects['Size']?.[0] || 
-                            aspects['US Size']?.[0] || '';
+                const size = aspects['US Shoe Size']?.[0] || aspects['Size']?.[0] || aspects['US Size']?.[0] || '';
                 
                 listings.push({
                   sku: item.sku,
                   offerId: offer.offerId,
                   listingId: offer.listing?.listingId || null,
-                  
-                  // Product info
                   title: item.product?.title || offer.listing?.listingTitle || 'eBay Item',
                   mpn: item.product?.mpn || '',
                   brand: item.product?.brand || '',
                   size,
                   image: item.product?.imageUrls?.[0] || '',
-                  
-                  // Listing details
                   price: parseFloat(offer.pricingSummary?.price?.value) || 0,
                   currency: offer.pricingSummary?.price?.currency || 'USD',
                   quantity: item.availability?.shipToLocationAvailability?.quantity || 0,
                   status: offer.status,
                   format: offer.format || 'FIXED_PRICE',
-                  
-                  // Category
                   categoryId: offer.categoryId,
-                  
-                  // Timestamps
                   listingStartDate: offer.listing?.listingStartDate || null
                 });
               }
@@ -127,11 +108,7 @@ export default async function handler(req, res) {
       
       console.log(`[eBay Listings] Found ${listings.length} active listings`);
       
-      return res.status(200).json({
-        success: true,
-        listings,
-        total: listings.length
-      });
+      return res.status(200).json({ success: true, listings, total: listings.length });
       
     } catch (error) {
       console.error('[eBay Listings] Error:', error.message);
@@ -141,6 +118,7 @@ export default async function handler(req, res) {
 
   // ============================================
   // POST - Create new listings (cross-list)
+  // Returns: { success, created, failed, errors, createdOffers }
   // ============================================
   if (req.method === 'POST') {
     try {
@@ -150,7 +128,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'products array is required' });
       }
       
-      // Step 1: Get fulfillment/payment/return policies
+      // Get business policies
       let fulfillmentPolicyId, paymentPolicyId, returnPolicyId;
       
       try {
@@ -183,20 +161,18 @@ export default async function handler(req, res) {
         });
       }
       
-      const results = { created: 0, failed: 0, errors: [] };
+      const results = { created: 0, failed: 0, errors: [], createdOffers: [] };
       
       for (const product of products) {
         for (const sizeData of (product.sizes || [])) {
           try {
-            const sku = `${product.sku}-${sizeData.size}`;
-            const price = Math.ceil((sizeData.price || product.price || 100) * 1.10); // 10% markup for eBay fees
+            const ebaySku = `${product.sku}-${sizeData.size}`;
+            const price = Math.ceil((sizeData.price || product.price || 100) * 1.10);
             
-            // Step 2: Create/Update Inventory Item
+            // Create Inventory Item
             const inventoryItem = {
               availability: {
-                shipToLocationAvailability: {
-                  quantity: sizeData.qty || 1
-                }
+                shipToLocationAvailability: { quantity: sizeData.qty || 1 }
               },
               condition: 'NEW',
               product: {
@@ -214,42 +190,30 @@ export default async function handler(req, res) {
               }
             };
             
-            const invRes = await fetch(`https://api.ebay.com/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`, {
+            const invRes = await fetch(`https://api.ebay.com/sell/inventory/v1/inventory_item/${encodeURIComponent(ebaySku)}`, {
               method: 'PUT',
-              headers: {
-                ...baseHeaders,
-                'Content-Language': 'en-US'
-              },
+              headers: { ...baseHeaders, 'Content-Language': 'en-US' },
               body: JSON.stringify(inventoryItem)
             });
             
             if (!invRes.ok && invRes.status !== 204) {
               const err = await invRes.text();
-              results.errors.push({ sku, step: 'inventory', error: err });
+              results.errors.push({ sku: ebaySku, step: 'inventory', error: err });
               results.failed++;
               continue;
             }
             
-            // Step 3: Create Offer
+            // Create Offer
             const offer = {
-              sku,
+              sku: ebaySku,
               marketplaceId: 'EBAY_US',
               format: 'FIXED_PRICE',
               listingDescription: `Brand new ${product.name} in size ${sizeData.size}. 100% Authentic.`,
               availableQuantity: sizeData.qty || 1,
-              categoryId: '15709', // Athletic Shoes
-              pricingSummary: {
-                price: {
-                  value: String(price),
-                  currency: 'USD'
-                }
-              },
-              listingPolicies: {
-                fulfillmentPolicyId,
-                paymentPolicyId,
-                returnPolicyId
-              },
-              merchantLocationKey: 'default' // Uses default location
+              categoryId: '15709',
+              pricingSummary: { price: { value: String(price), currency: 'USD' } },
+              listingPolicies: { fulfillmentPolicyId, paymentPolicyId, returnPolicyId },
+              merchantLocationKey: 'default'
             };
             
             const offerRes = await fetch('https://api.ebay.com/sell/inventory/v1/offer', {
@@ -260,7 +224,7 @@ export default async function handler(req, res) {
             
             if (!offerRes.ok) {
               const err = await offerRes.text();
-              results.errors.push({ sku, step: 'offer', error: err });
+              results.errors.push({ sku: ebaySku, step: 'offer', error: err });
               results.failed++;
               continue;
             }
@@ -268,18 +232,33 @@ export default async function handler(req, res) {
             const offerData = await offerRes.json();
             const offerId = offerData.offerId;
             
-            // Step 4: Publish Offer
+            // Publish Offer
             const publishRes = await fetch(`https://api.ebay.com/sell/inventory/v1/offer/${offerId}/publish`, {
               method: 'POST',
               headers: baseHeaders
             });
             
-            if (!publishRes.ok) {
+            let listingId = null;
+            if (publishRes.ok) {
+              const publishData = await publishRes.json();
+              listingId = publishData.listingId || null;
+            } else {
               const err = await publishRes.text();
-              results.errors.push({ sku, step: 'publish', error: err });
+              results.errors.push({ sku: ebaySku, step: 'publish', error: err });
               results.failed++;
               continue;
             }
+            
+            // Track created offer for mapping
+            results.createdOffers.push({
+              ebaySku,
+              baseSku: product.sku,
+              size: sizeData.size,
+              offerId,
+              listingId,
+              stockxListingId: sizeData.stockxListingId || null,
+              price
+            });
             
             results.created++;
             
@@ -292,7 +271,10 @@ export default async function handler(req, res) {
       
       return res.status(200).json({
         success: results.created > 0,
-        ...results
+        created: results.created,
+        failed: results.failed,
+        errors: results.errors,
+        createdOffers: results.createdOffers
       });
       
     } catch (error) {
@@ -312,19 +294,13 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'updates array is required' });
       }
       
-      // Group updates by SKU
       const requests = updates.map(u => ({
         sku: u.sku,
-        shipToLocationAvailability: u.quantity !== undefined ? {
-          quantity: u.quantity
-        } : undefined,
+        shipToLocationAvailability: u.quantity !== undefined ? { quantity: u.quantity } : undefined,
         offers: [{
           offerId: u.offerId,
           availableQuantity: u.quantity,
-          price: u.price !== undefined ? {
-            value: String(u.price),
-            currency: 'USD'
-          } : undefined
+          price: u.price !== undefined ? { value: String(u.price), currency: 'USD' } : undefined
         }]
       }));
       
@@ -356,6 +332,7 @@ export default async function handler(req, res) {
 
   // ============================================
   // DELETE - End/withdraw listings
+  // Body: { offerIds: [...] }
   // ============================================
   if (req.method === 'DELETE') {
     try {
@@ -389,7 +366,9 @@ export default async function handler(req, res) {
       
       return res.status(200).json({
         success: results.ended > 0,
-        ...results
+        ended: results.ended,
+        failed: results.failed,
+        errors: results.errors
       });
       
     } catch (error) {
