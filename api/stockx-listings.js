@@ -108,11 +108,10 @@ export default async function handler(req, res) {
           .replace(/^-|-$/g, '');
       };
 
-      // Fetch market data in parallel (batches of 25, limit 100)
+      // Fetch market data in parallel (batches of 25, ALL variants)
       const marketData = {};
-      const limitedVariants = variants.slice(0, 100);
-      for (let i = 0; i < limitedVariants.length; i += 25) {
-        const batch = limitedVariants.slice(i, i + 25);
+      for (let i = 0; i < variants.length; i += 25) {
+        const batch = variants.slice(i, i + 25);
         await Promise.all(batch.map(async ({ productId, variantId }) => {
           try {
             const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}/variants/${variantId}/market-data?currencyCode=USD`, {
@@ -125,6 +124,8 @@ export default async function handler(req, res) {
           } catch {}
         }));
       }
+      
+      console.log(`[StockX] Fetched market data for ${Object.keys(marketData).length}/${variants.length} variants`);
 
       // Transform listings
       const listings = allListings.map(l => {
