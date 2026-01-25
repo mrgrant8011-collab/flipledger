@@ -1,4 +1,3 @@
-
 /**
  * STOCKX LISTINGS API
  * GET - Fetch listings + market data (batched for speed)
@@ -161,21 +160,42 @@ export default async function handler(req, res) {
       const { items } = req.body;
       if (!items?.length) return res.status(400).json({ error: 'items required' });
       
+      console.log('[StockX] Updating prices:', JSON.stringify(items));
+      
       const r = await fetch('https://api.stockx.com/v2/selling/batch/update-listing', {
         method: 'POST',
         headers: { 'Authorization': authHeader, 'x-api-key': apiKey, 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: items.map(i => ({ listingId: i.listingId, amount: String(i.amount), currencyCode: 'USD' })) })
       });
-      if (!r.ok) return res.status(r.status).json({ error: 'Failed' });
       
-      const { batchId } = await r.json();
+      if (!r.ok) {
+        const errText = await r.text();
+        console.log('[StockX] Update failed:', r.status, errText);
+        return res.status(r.status).json({ error: 'StockX update failed', details: errText });
+      }
+      
+      const data = await r.json();
+      const { batchId } = data;
+      console.log('[StockX] Batch created:', batchId);
+      
+      // Poll for completion
       for (let i = 0; i < 15; i++) {
         await new Promise(r => setTimeout(r, 1000));
         const s = await fetch(`https://api.stockx.com/v2/selling/batch/update-listing/${batchId}`, { headers: { 'Authorization': authHeader, 'x-api-key': apiKey } });
-        if (s.ok && (await s.json()).status === 'COMPLETED') return res.status(200).json({ success: true, updated: items.length });
+        if (s.ok) {
+          const status = await s.json();
+          console.log('[StockX] Batch status:', status.status);
+          if (status.status === 'COMPLETED') {
+            return res.status(200).json({ success: true, updated: items.length });
+          }
+          if (status.status === 'FAILED') {
+            return res.status(400).json({ error: 'Batch failed', details: status });
+          }
+        }
       }
-      return res.status(200).json({ success: true, batchId });
+      return res.status(200).json({ success: true, batchId, message: 'Processing' });
     } catch (e) {
+      console.log('[StockX] PATCH error:', e.message);
       return res.status(500).json({ error: 'Failed', message: e.message });
     }
   }
