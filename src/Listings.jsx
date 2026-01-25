@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
 export default function Listings({ stockxToken, ebayToken, purchases = [], c = { bg: '#0a0a0a', card: '#111111', border: '#1a1a1a', text: '#ffffff', textMuted: '#888888', gold: '#C9A962', green: '#10b981', red: '#ef4444' } }) {
@@ -65,22 +64,50 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
   }, [purchases]);
 
   const syncListings = useCallback(async () => {
+    if (syncing) return;
     setSyncing(true);
     try {
+      console.log('[Sync] Starting...');
       const [sxRes, ebRes] = await Promise.all([
         stockxToken ? fetch('/api/stockx-listings', { headers: { 'Authorization': `Bearer ${stockxToken}` } }) : null,
         ebayToken ? fetch('/api/ebay-listings', { headers: { 'Authorization': `Bearer ${ebayToken}` } }) : null
       ]);
-      const sx = sxRes?.ok ? (await sxRes.json()).listings || [] : [];
-      const eb = ebRes?.ok ? (await ebRes.json()).listings || [] : [];
-      setStockxListings(sx); setEbayListings(eb);
-      localStorage.setItem('fl_sx', JSON.stringify(sx)); localStorage.setItem('fl_eb', JSON.stringify(eb));
+      
+      console.log('[Sync] StockX response:', sxRes?.status);
+      
+      if (sxRes && !sxRes.ok) {
+        const errText = await sxRes.text();
+        console.error('[Sync] StockX error:', errText);
+        showToast('StockX sync failed - check console', 'error');
+        setSyncing(false);
+        return;
+      }
+      
+      const sxData = sxRes ? await sxRes.json() : { listings: [] };
+      const ebData = ebRes?.ok ? await ebRes.json() : { listings: [] };
+      
+      const sx = sxData.listings || [];
+      const eb = ebData.listings || [];
+      
+      console.log('[Sync] Got', sx.length, 'StockX listings');
+      
+      setStockxListings(sx); 
+      setEbayListings(eb);
+      localStorage.setItem('fl_sx', JSON.stringify(sx)); 
+      localStorage.setItem('fl_eb', JSON.stringify(eb));
       showToast(`Synced ${sx.length} StockX + ${eb.length} eBay`);
-    } catch { showToast('Sync failed', 'error'); }
+    } catch (e) { 
+      console.error('[Sync] Error:', e);
+      showToast('Sync failed: ' + e.message, 'error'); 
+    }
     finally { setSyncing(false); }
-  }, [stockxToken, ebayToken]);
+  }, [stockxToken, ebayToken, syncing]);
 
-  useEffect(() => { if ((stockxToken || ebayToken) && !stockxListings.length) syncListings(); }, []);
+  useEffect(() => { 
+    if ((stockxToken || ebayToken) && !stockxListings.length && !syncing) {
+      syncListings(); 
+    }
+  }, [stockxToken, ebayToken]);
 
   // Group listings by SKU
   const groupedProducts = useMemo(() => {
