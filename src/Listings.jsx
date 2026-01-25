@@ -1,6 +1,6 @@
 /**
  * FLIPLEDGER LISTINGS TAB
- * No header - App.jsx handles that
+ * Matches mockup exactly - simple layout, cached data
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -25,67 +25,74 @@ export default function Listings({
   const [syncing, setSyncing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
-  const [stockxListings, setStockxListings] = useState([]);
-  const [ebayListings, setEbayListings] = useState([]);
+  // Load cached data on mount
+  const [stockxListings, setStockxListings] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('fl_stockx_listings') || '[]'); } catch { return []; }
+  });
+  const [ebayListings, setEbayListings] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('fl_ebay_listings') || '[]'); } catch { return []; }
+  });
+  
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [selectedSizes, setSelectedSizes] = useState(new Set());
   const [editedPrices, setEditedPrices] = useState({});
   const [toast, setToast] = useState(null);
 
-  const cardStyle = { background: c.card, border: `1px solid ${c.border}`, borderRadius: 14 };
+  const cardStyle = { background: c.card, border: `1px solid ${c.border}`, borderRadius: 12 };
 
-  const showToast = useCallback((message, type = 'success') => {
-    setToast({ message, type });
+  const showToast = useCallback((msg, type = 'success') => {
+    setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
   }, []);
 
   const getCost = useCallback((sku, size) => {
-    if (!purchases?.length) return null;
     const match = purchases.find(p => 
       (p.sku || '').toLowerCase() === (sku || '').toLowerCase() &&
-      (p.size || '').toString() === (size || '').toString() &&
-      !p.sold
+      (p.size || '').toString() === (size || '').toString() && !p.sold
     );
     return match?.cost ? parseFloat(match.cost) : null;
   }, [purchases]);
 
-  const fetchStockXListings = useCallback(async () => {
+  const fetchStockX = useCallback(async () => {
     if (!stockxToken) return [];
     try {
       const res = await fetch('/api/stockx-listings', { headers: { 'Authorization': `Bearer ${stockxToken}` } });
-      if (!res.ok) throw new Error('Failed');
-      return (await res.json()).listings || [];
-    } catch (e) { return []; }
+      return res.ok ? (await res.json()).listings || [] : [];
+    } catch { return []; }
   }, [stockxToken]);
 
-  const fetchEbayListings = useCallback(async () => {
+  const fetchEbay = useCallback(async () => {
     if (!ebayToken) return [];
     try {
       const res = await fetch('/api/ebay-listings', { headers: { 'Authorization': `Bearer ${ebayToken}` } });
-      if (!res.ok) throw new Error('Failed');
-      return (await res.json()).listings || [];
-    } catch (e) { return []; }
+      return res.ok ? (await res.json()).listings || [] : [];
+    } catch { return []; }
   }, [ebayToken]);
 
   const syncListings = useCallback(async () => {
     setSyncing(true);
     try {
-      const [stockx, ebay] = await Promise.all([fetchStockXListings(), fetchEbayListings()]);
-      setStockxListings(stockx);
-      setEbayListings(ebay);
-      showToast(`Synced ${stockx.length} StockX + ${ebay.length} eBay`);
-    } catch (e) { showToast('Sync failed', 'error'); }
+      const [sx, eb] = await Promise.all([fetchStockX(), fetchEbay()]);
+      setStockxListings(sx);
+      setEbayListings(eb);
+      localStorage.setItem('fl_stockx_listings', JSON.stringify(sx));
+      localStorage.setItem('fl_ebay_listings', JSON.stringify(eb));
+      showToast(`Synced ${sx.length} StockX + ${eb.length} eBay`);
+    } catch { showToast('Sync failed', 'error'); }
     finally { setSyncing(false); }
-  }, [fetchStockXListings, fetchEbayListings, showToast]);
+  }, [fetchStockX, fetchEbay, showToast]);
 
-  useEffect(() => { if (stockxToken || ebayToken) syncListings(); }, []);
+  // Auto-sync on first load if no cached data
+  useEffect(() => {
+    if ((stockxToken || ebayToken) && stockxListings.length === 0) syncListings();
+  }, []);
 
   const groupedProducts = useMemo(() => {
     const groups = {};
-    stockxListings.forEach(listing => {
-      const sku = listing.sku || 'UNKNOWN';
-      if (!groups[sku]) groups[sku] = { sku, name: listing.name, image: listing.image, inventoryType: listing.inventoryType, sizes: [] };
-      groups[sku].sizes.push({ ...listing, cost: getCost(sku, listing.size) });
+    stockxListings.forEach(l => {
+      const sku = l.sku || 'UNKNOWN';
+      if (!groups[sku]) groups[sku] = { sku, name: l.name, image: l.image, inventoryType: l.inventoryType, sizes: [] };
+      groups[sku].sizes.push({ ...l, cost: getCost(sku, l.size) });
     });
     Object.values(groups).forEach(g => {
       g.sizes.sort((a, b) => parseFloat(a.size) - parseFloat(b.size));
@@ -108,7 +115,9 @@ export default function Listings({
 
   const currentProduct = useMemo(() => groupedProducts.find(p => p.sku === selectedProduct), [groupedProducts, selectedProduct]);
 
-  useEffect(() => { if (filteredProducts.length > 0 && !selectedProduct) setSelectedProduct(filteredProducts[0].sku); }, [filteredProducts, selectedProduct]);
+  useEffect(() => { 
+    if (filteredProducts.length > 0 && !selectedProduct) setSelectedProduct(filteredProducts[0].sku); 
+  }, [filteredProducts]);
 
   const handleSelectAll = () => {
     if (!currentProduct) return;
@@ -116,145 +125,125 @@ export default function Listings({
   };
 
   const handleUpdatePrices = async () => {
-    const updates = Object.entries(editedPrices).map(([listingId, amount]) => ({ listingId, amount: Math.round(parseFloat(amount)) })).filter(u => u.amount > 0);
+    const updates = Object.entries(editedPrices).map(([id, amt]) => ({ listingId: id, amount: Math.round(parseFloat(amt)) })).filter(u => u.amount > 0);
     if (!updates.length) return;
     setLoading(true);
     try {
       const res = await fetch('/api/stockx-listings', { method: 'PATCH', headers: { 'Authorization': `Bearer ${stockxToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ items: updates }) });
       if (res.ok) { showToast(`Updated ${updates.length} listings`); setEditedPrices({}); await syncListings(); }
       else showToast('Update failed', 'error');
-    } catch (e) { showToast('Update failed', 'error'); }
+    } catch { showToast('Update failed', 'error'); }
     finally { setLoading(false); }
   };
 
-  const handleUnlistSelected = async () => {
+  const handleUnlist = async () => {
     if (!selectedSizes.size) return;
     setLoading(true);
     try {
       const res = await fetch('/api/stockx-listings', { method: 'DELETE', headers: { 'Authorization': `Bearer ${stockxToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ listingIds: Array.from(selectedSizes) }) });
       if (res.ok) { showToast(`Unlisted ${selectedSizes.size} items`); setSelectedSizes(new Set()); await syncListings(); }
       else showToast('Unlist failed', 'error');
-    } catch (e) { showToast('Unlist failed', 'error'); }
+    } catch { showToast('Unlist failed', 'error'); }
     finally { setLoading(false); }
   };
 
-  const totalNotLowest = groupedProducts.reduce((sum, p) => sum + p.notLowest, 0);
-  const totalCrosslist = crosslistProducts.reduce((sum, p) => sum + p.totalQty, 0);
+  const totalCrosslist = crosslistProducts.reduce((s, p) => s + p.totalQty, 0);
 
   return (
-    <div>
-      {/* SUMMARY CARDS */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 20 }}>
-        <div style={{ ...cardStyle, padding: 16 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>STOCKX LISTINGS</span>
-          <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800 }}>{stockxListings.length}</p>
-        </div>
-        <div style={{ ...cardStyle, padding: 16 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>EBAY LISTINGS</span>
-          <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800 }}>{ebayListings.length}</p>
-        </div>
-        <div style={{ ...cardStyle, padding: 16 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>NOT LOWEST</span>
-          <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: c.red }}>{totalNotLowest}</p>
-        </div>
-        <div style={{ ...cardStyle, padding: 16 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>CROSS-LIST READY</span>
-          <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: c.gold }}>{totalCrosslist}</p>
-        </div>
-      </div>
-
-      {/* TABS + SEARCH + SYNC */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+    <>
+      {/* TABS + SEARCH + SYNC - Single Row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
         {[
           { id: 'reprice', icon: '⚡', label: 'Reprice', count: stockxListings.length },
           { id: 'crosslist', icon: '🚀', label: 'Cross-list', count: totalCrosslist },
           { id: 'all', icon: '📦', label: 'All Listings', count: stockxListings.length + ebayListings.length }
-        ].map(tab => (
-          <button key={tab.id} onClick={() => setSubTab(tab.id)} style={{ padding: '10px 16px', background: subTab === tab.id ? 'rgba(255,255,255,0.08)' : 'transparent', border: `1px solid ${subTab === tab.id ? 'rgba(255,255,255,0.2)' : c.border}`, borderRadius: 8, color: c.text, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-            {tab.icon} {tab.label} <span style={{ color: c.gold, marginLeft: 4 }}>{tab.count}</span>
+        ].map(t => (
+          <button key={t.id} onClick={() => setSubTab(t.id)} style={{ padding: '12px 20px', background: subTab === t.id ? 'rgba(255,255,255,0.08)' : 'transparent', border: `1px solid ${subTab === t.id ? 'rgba(255,255,255,0.2)' : c.border}`, borderRadius: 10, color: c.text, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+            {t.icon} {t.label} <span style={{ color: c.gold, marginLeft: 6 }}>{t.count}</span>
           </button>
         ))}
         <div style={{ flex: 1 }} />
-        <input type="text" placeholder="Search SKU or name..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: 180, padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 13 }} />
-        <button onClick={syncListings} disabled={syncing} style={{ padding: '10px 20px', background: c.green, border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+        <input type="text" placeholder="Search SKU or name..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: 200, padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 10, color: c.text, fontSize: 14 }} />
+        <button onClick={syncListings} disabled={syncing} style={{ padding: '12px 24px', background: c.green, border: 'none', borderRadius: 10, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
           🔄 {syncing ? 'Syncing...' : 'Sync'}
         </button>
       </div>
 
-      {/* REPRICE TAB - Master Detail */}
+      {/* REPRICE TAB */}
       {subTab === 'reprice' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 20 }}>
           {/* Products List */}
           <div style={{ ...cardStyle, overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px', borderBottom: `1px solid ${c.border}`, fontSize: 11, fontWeight: 700, color: c.textMuted }}>PRODUCTS ({filteredProducts.length})</div>
-            <div style={{ maxHeight: 480, overflowY: 'auto' }}>
-              {filteredProducts.length > 0 ? filteredProducts.map(p => (
-                <div key={p.sku} onClick={() => { setSelectedProduct(p.sku); setSelectedSizes(new Set()); }} style={{ padding: '12px 16px', borderBottom: `1px solid ${c.border}`, cursor: 'pointer', background: selectedProduct === p.sku ? 'rgba(255,255,255,0.05)' : 'transparent', borderLeft: selectedProduct === p.sku ? `3px solid ${c.gold}` : '3px solid transparent', display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <div style={{ width: 40, height: 40, background: 'rgba(255,255,255,0.05)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, overflow: 'hidden', flexShrink: 0 }}>
-                    {p.image ? <img src={p.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '👟'}
+            <div style={{ padding: '14px 18px', borderBottom: `1px solid ${c.border}`, fontSize: 12, fontWeight: 700, color: c.textMuted }}>PRODUCTS ({filteredProducts.length})</div>
+            <div style={{ maxHeight: 520, overflowY: 'auto' }}>
+              {filteredProducts.map(p => (
+                <div key={p.sku} onClick={() => { setSelectedProduct(p.sku); setSelectedSizes(new Set()); }} style={{ padding: '14px 18px', borderBottom: `1px solid ${c.border}`, cursor: 'pointer', background: selectedProduct === p.sku ? 'rgba(255,255,255,0.05)' : 'transparent', borderLeft: selectedProduct === p.sku ? `4px solid ${c.gold}` : '4px solid transparent', display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{ width: 44, height: 44, background: 'rgba(255,255,255,0.05)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                    {p.image ? <img src={p.image} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 22 }}>👟</span>}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
-                    <div style={{ fontSize: 10, color: c.textMuted }}>{p.sku}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+                    <div style={{ fontSize: 11, color: c.textMuted }}>{p.sku}</div>
                   </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>Qty: {p.totalQty}</div>
-                    {p.notLowest > 0 && <div style={{ fontSize: 10, color: c.red }}>{p.notLowest} not lowest</div>}
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>Qty: {p.totalQty}</div>
+                    {p.notLowest > 0 && <div style={{ fontSize: 11, color: c.red }}>{p.notLowest} not lowest</div>}
                   </div>
                 </div>
-              )) : <div style={{ padding: 40, textAlign: 'center', color: c.textMuted }}>{syncing ? 'Loading...' : 'No listings'}</div>}
+              ))}
+              {filteredProducts.length === 0 && <div style={{ padding: 40, textAlign: 'center', color: c.textMuted }}>{syncing ? 'Loading...' : 'No listings'}</div>}
             </div>
           </div>
 
           {/* Product Detail */}
-          <div style={{ ...cardStyle, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ ...cardStyle, overflow: 'hidden' }}>
             {currentProduct ? (
               <>
-                <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', gap: 14, alignItems: 'center' }}>
-                  <div style={{ width: 52, height: 52, background: 'rgba(255,255,255,0.05)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, overflow: 'hidden' }}>
-                    {currentProduct.image ? <img src={currentProduct.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : '👟'}
+                <div style={{ padding: '20px 24px', borderBottom: `1px solid ${c.border}`, display: 'flex', gap: 16, alignItems: 'center' }}>
+                  <div style={{ width: 56, height: 56, background: 'rgba(255,255,255,0.05)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                    {currentProduct.image ? <img src={currentProduct.image} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 28 }}>👟</span>}
                   </div>
                   <div>
-                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{currentProduct.name}</h3>
-                    <div style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>
+                    <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{currentProduct.name}</h3>
+                    <div style={{ fontSize: 13, color: c.textMuted, marginTop: 4 }}>
                       {currentProduct.sku}
-                      {currentProduct.inventoryType === 'DIRECT' && <span style={{ marginLeft: 8, background: '#f97316', color: '#fff', padding: '2px 6px', borderRadius: 4, fontSize: 9, fontWeight: 700 }}>🚀 Direct</span>}
+                      {currentProduct.inventoryType === 'DIRECT' && <span style={{ marginLeft: 10, background: '#f97316', color: '#fff', padding: '3px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700 }}>🚀 Direct</span>}
                     </div>
                   </div>
                 </div>
 
-                <div style={{ padding: '10px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: c.textMuted }}>
-                    <input type="checkbox" checked={currentProduct.sizes.length > 0 && selectedSizes.size === currentProduct.sizes.length} onChange={handleSelectAll} style={{ width: 14, height: 14, accentColor: c.green }} />
+                <div style={{ padding: '12px 24px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: c.textMuted }}>
+                    <input type="checkbox" checked={currentProduct.sizes.length > 0 && selectedSizes.size === currentProduct.sizes.length} onChange={handleSelectAll} style={{ width: 16, height: 16, accentColor: c.green }} />
                     Select all
                   </label>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '36px 60px 50px 80px 80px 80px 70px', padding: '10px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', fontSize: 9, fontWeight: 700, color: c.textMuted }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '40px 70px 60px 100px 100px 100px auto', padding: '12px 24px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', fontSize: 10, fontWeight: 700, color: c.textMuted }}>
                   <span></span>
                   <span>SIZE</span>
                   <span style={{ textAlign: 'center' }}>QTY</span>
                   <span style={{ textAlign: 'center' }}>YOUR ASK</span>
-                  <span style={{ textAlign: 'center' }}>LOWEST</span>
-                  <span style={{ textAlign: 'center' }}>SELL FAST</span>
+                  <span style={{ textAlign: 'center' }}>LOWEST ASK</span>
+                  <span style={{ textAlign: 'center' }}>SELL FASTER</span>
                   <span style={{ textAlign: 'right' }}>COST</span>
                 </div>
 
-                <div style={{ flex: 1, overflowY: 'auto', maxHeight: 320 }}>
+                <div style={{ maxHeight: 340, overflowY: 'auto' }}>
                   {currentProduct.sizes.map(item => {
                     const isLowest = item.lowestAsk && item.yourAsk <= item.lowestAsk;
                     const isEdited = editedPrices[item.listingId] !== undefined;
                     const sameSize = currentProduct.sizes.filter(s => s.size === item.size).length;
                     return (
-                      <div key={item.listingId} style={{ display: 'grid', gridTemplateColumns: '36px 60px 50px 80px 80px 80px 70px', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', fontSize: 12 }}>
-                        <input type="checkbox" checked={selectedSizes.has(item.listingId)} onChange={e => { const n = new Set(selectedSizes); e.target.checked ? n.add(item.listingId) : n.delete(item.listingId); setSelectedSizes(n); }} style={{ width: 14, height: 14, accentColor: c.green }} />
+                      <div key={item.listingId} style={{ display: 'grid', gridTemplateColumns: '40px 70px 60px 100px 100px 100px auto', padding: '14px 24px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', fontSize: 13 }}>
+                        <input type="checkbox" checked={selectedSizes.has(item.listingId)} onChange={e => { const n = new Set(selectedSizes); e.target.checked ? n.add(item.listingId) : n.delete(item.listingId); setSelectedSizes(n); }} style={{ width: 16, height: 16, accentColor: c.green }} />
                         <span style={{ fontWeight: 600 }}>{item.size}</span>
-                        <span style={{ textAlign: 'center' }}>{sameSize > 1 ? <span style={{ background: c.gold, color: '#000', padding: '2px 6px', borderRadius: 8, fontSize: 10, fontWeight: 700 }}>x{sameSize}</span> : '1'}</span>
+                        <span style={{ textAlign: 'center' }}>{sameSize > 1 ? <span style={{ background: c.gold, color: '#000', padding: '3px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700 }}>x{sameSize}</span> : '1'}</span>
                         <div style={{ textAlign: 'center' }}>
-                          <input type="number" value={editedPrices[item.listingId] ?? item.yourAsk} onChange={e => setEditedPrices({ ...editedPrices, [item.listingId]: e.target.value })} style={{ width: 58, padding: '5px 6px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 5, color: c.text, fontSize: 12, textAlign: 'center' }} />
+                          <input type="number" value={editedPrices[item.listingId] ?? item.yourAsk} onChange={e => setEditedPrices({ ...editedPrices, [item.listingId]: e.target.value })} style={{ width: 70, padding: '8px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 6, color: c.text, fontSize: 13, textAlign: 'center' }} />
                         </div>
                         <div style={{ textAlign: 'center', color: isLowest ? c.green : c.text, fontWeight: 600 }}>
-                          ${item.lowestAsk || '—'}{isLowest && ' ✓'}
+                          ${item.lowestAsk || '—'}{isLowest && <span style={{ marginLeft: 4 }}>✓</span>}
                         </div>
                         <span style={{ textAlign: 'center', color: '#f97316', fontWeight: 600 }}>${item.sellFaster || item.highestBid || '—'}</span>
                         <span style={{ textAlign: 'right', color: c.textMuted }}>{item.cost ? `$${item.cost}` : '—'}</span>
@@ -263,44 +252,41 @@ export default function Listings({
                   })}
                 </div>
 
-                <div style={{ padding: '14px 20px', borderTop: `1px solid ${c.border}`, display: 'flex', gap: 10 }}>
-                  <button onClick={handleUpdatePrices} disabled={!Object.keys(editedPrices).length || loading} style={{ padding: '10px 20px', background: Object.keys(editedPrices).length ? c.green : 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700, cursor: Object.keys(editedPrices).length ? 'pointer' : 'not-allowed' }}>
+                <div style={{ padding: '16px 24px', borderTop: `1px solid ${c.border}`, display: 'flex', gap: 12 }}>
+                  <button onClick={handleUpdatePrices} disabled={!Object.keys(editedPrices).length || loading} style={{ padding: '12px 28px', background: Object.keys(editedPrices).length ? c.green : 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 10, color: '#fff', fontSize: 14, fontWeight: 700, cursor: Object.keys(editedPrices).length ? 'pointer' : 'not-allowed' }}>
                     Update Prices
                   </button>
-                  <button onClick={handleUnlistSelected} disabled={!selectedSizes.size || loading} style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 13, fontWeight: 600, cursor: selectedSizes.size ? 'pointer' : 'not-allowed' }}>
+                  <button onClick={handleUnlist} disabled={!selectedSizes.size || loading} style={{ padding: '12px 28px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 10, color: c.text, fontSize: 14, fontWeight: 600, cursor: selectedSizes.size ? 'pointer' : 'not-allowed' }}>
                     Unlist Selected
                   </button>
                 </div>
               </>
-            ) : <div style={{ padding: 60, textAlign: 'center', color: c.textMuted }}>{syncing ? 'Loading...' : 'Select a product'}</div>}
+            ) : <div style={{ padding: 80, textAlign: 'center', color: c.textMuted, fontSize: 15 }}>Select a product</div>}
           </div>
         </div>
       )}
 
-      {/* CROSS-LIST TAB */}
       {subTab === 'crosslist' && (
         <div style={{ ...cardStyle, padding: 60, textAlign: 'center' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🚀</div>
-          <h3 style={{ margin: '0 0 8px', fontSize: 18 }}>Cross-list to eBay</h3>
+          <h3 style={{ margin: '0 0 8px' }}>Cross-list to eBay</h3>
           <p style={{ color: c.textMuted }}>{crosslistProducts.length} products not on eBay</p>
         </div>
       )}
 
-      {/* ALL LISTINGS TAB */}
       {subTab === 'all' && (
         <div style={{ ...cardStyle, padding: 60, textAlign: 'center' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>📦</div>
-          <h3 style={{ margin: '0 0 8px', fontSize: 18 }}>All Listings</h3>
+          <h3 style={{ margin: '0 0 8px' }}>All Listings</h3>
           <p style={{ color: c.textMuted }}>{stockxListings.length} StockX + {ebayListings.length} eBay</p>
         </div>
       )}
 
-      {/* Toast */}
       {toast && (
-        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', padding: '12px 24px', borderRadius: 10, background: c.card, border: `1px solid ${toast.type === 'error' ? c.red : c.green}`, boxShadow: '0 4px 20px rgba(0,0,0,0.3)', zIndex: 9999 }}>
-          <span style={{ color: toast.type === 'error' ? c.red : c.green, fontWeight: 600 }}>{toast.type === 'error' ? '❌' : '✓'} {toast.message}</span>
+        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50)', padding: '12px 24px', borderRadius: 10, background: c.card, border: `1px solid ${toast.type === 'error' ? c.red : c.green}`, boxShadow: '0 4px 20px rgba(0,0,0,0.3)', zIndex: 9999 }}>
+          <span style={{ color: toast.type === 'error' ? c.red : c.green, fontWeight: 600 }}>{toast.type === 'error' ? '❌' : '✓'} {toast.msg}</span>
         </div>
       )}
-    </div>
+    </>
   );
 }
