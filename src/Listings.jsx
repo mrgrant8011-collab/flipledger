@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 
 export default function Listings({ stockxToken, purchases = [], c = { bg: '#0a0a0a', card: '#111111', border: '#1a1a1a', text: '#ffffff', textMuted: '#888888', gold: '#C9A962', green: '#10b981', red: '#ef4444' } }) {
   // Initialize from localStorage
@@ -65,15 +65,25 @@ export default function Listings({ stockxToken, purchases = [], c = { bg: '#0a0a
     }));
   }, [stockxListings]);
 
-  // Filter
+  // Filter - safe for undefined names
   const filteredProducts = useMemo(() => {
     if (!searchQuery.trim()) return groupedProducts;
     const q = searchQuery.toLowerCase();
-    return groupedProducts.filter(p => p.name?.toLowerCase().includes(q) || p.sku?.toLowerCase().includes(q));
+    return groupedProducts.filter(p =>
+      p.sku?.toLowerCase().includes(q) ||
+      p.name?.toLowerCase().includes(q)
+    );
   }, [groupedProducts, searchQuery]);
 
-  // Current product
-  const currentProduct = groupedProducts.find(p => p.sku === selectedProduct);
+  // Current product - MUST derive from filteredProducts (same array as rendered list)
+  const currentProduct = filteredProducts.find(p => p.sku === selectedProduct);
+
+  // Fix #3: Clear selection if product is filtered out
+  useEffect(() => {
+    if (selectedProduct && !filteredProducts.some(p => p.sku === selectedProduct)) {
+      setSelectedProduct(null);
+    }
+  }, [filteredProducts, selectedProduct]);
 
   // Update prices
   const handleUpdatePrices = async () => {
