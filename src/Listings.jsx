@@ -144,49 +144,49 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* ROW 1: Search + Sync */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-        <input type="text" placeholder="Search SKU or name..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: 220, padding: '12px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 10, color: c.text, fontSize: 14 }} />
-        <button onClick={syncListings} disabled={syncing} style={{ padding: '12px 24px', background: c.green, border: 'none', borderRadius: 10, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', opacity: syncing ? 0.7 : 1 }}>🔄 {syncing ? 'Syncing...' : 'Sync'}</button>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+        <input type="text" placeholder="Search SKU or name..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: 200, padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 13 }} />
+        <button onClick={syncListings} disabled={syncing} style={{ padding: '10px 20px', background: c.green, border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: syncing ? 0.7 : 1 }}>🔄 {syncing ? 'Syncing...' : 'Sync'}</button>
       </div>
 
       {/* ROW 2: Tabs */}
-      <div style={{ display: 'flex', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 10 }}>
         {[
           { id: 'reprice', icon: '⚡', label: 'Reprice', count: totalNotLowest },
           { id: 'crosslist', icon: '🚀', label: 'Cross-list', count: totalCrosslist },
           { id: 'all', icon: '📦', label: 'All Listings', count: stockxListings.length + ebayListings.length }
         ].map(t => (
-          <button key={t.id} onClick={() => setSubTab(t.id)} style={{ padding: '14px 24px', background: subTab === t.id ? 'rgba(255,255,255,0.08)' : 'transparent', border: `1px solid ${subTab === t.id ? 'rgba(255,255,255,0.2)' : c.border}`, borderRadius: 10, color: c.text, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-            {t.icon} {t.label} <span style={{ color: c.gold, marginLeft: 8 }}>{t.count}</span>
+          <button key={t.id} onClick={() => setSubTab(t.id)} style={{ padding: '10px 18px', background: subTab === t.id ? 'rgba(255,255,255,0.08)' : 'transparent', border: `1px solid ${subTab === t.id ? 'rgba(255,255,255,0.2)' : c.border}`, borderRadius: 8, color: c.text, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            {t.icon} {t.label} <span style={{ color: c.gold, marginLeft: 6 }}>{t.count}</span>
           </button>
         ))}
       </div>
 
       {/* ROW 3: Master-Detail */}
       {subTab === 'reprice' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 20 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16 }}>
           {/* Left: Products */}
           <div style={{ ...card, overflow: 'hidden' }}>
-            <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, fontSize: 12, fontWeight: 700, color: c.textMuted }}>PRODUCTS ({filteredProducts.length})</div>
+            <div style={{ padding: '12px 14px', borderBottom: `1px solid ${c.border}`, fontSize: 11, fontWeight: 700, color: c.textMuted }}>PRODUCTS ({filteredProducts.length})</div>
             <div style={{ maxHeight: 540, overflowY: 'auto' }}>
               {filteredProducts.map(p => (
-                <div key={p.sku} onClick={() => { setSelectedProduct(p.sku); setSelectedSizes(new Set()); setEditedPrices({}); }} style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}`, cursor: 'pointer', background: selectedProduct === p.sku ? 'rgba(255,255,255,0.05)' : 'transparent', borderLeft: selectedProduct === p.sku ? `4px solid ${c.gold}` : '4px solid transparent', display: 'flex', gap: 14, alignItems: 'center' }}>
-                  <div style={{ width: 48, height: 48, background: 'rgba(255,255,255,0.05)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-                    {p.image ? <img src={p.image} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.onerror = null; e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><text x="12" y="36" font-size="24">👟</text></svg>'; }} /> : <span style={{ fontSize: 24 }}>👟</span>}
+                <div key={p.sku} onClick={() => { setSelectedProduct(p.sku); setSelectedSizes(new Set()); setEditedPrices({}); }} style={{ padding: '10px 14px', borderBottom: `1px solid ${c.border}`, cursor: 'pointer', background: selectedProduct === p.sku ? 'rgba(255,255,255,0.05)' : 'transparent', borderLeft: selectedProduct === p.sku ? `3px solid ${c.gold}` : '3px solid transparent', display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <div style={{ width: 40, height: 40, background: 'rgba(255,255,255,0.05)', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                    {p.image ? <img src={p.image} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.onerror = null; e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><text x="8" y="30" font-size="20">👟</text></svg>'; }} /> : <span style={{ fontSize: 20 }}>👟</span>}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
-                    <div style={{ fontSize: 11, color: c.textMuted }}>{p.sku}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+                    <div style={{ fontSize: 10, color: c.textMuted }}>{p.sku}</div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 14, fontWeight: 700 }}>Qty: {p.totalQty}</div>
-                    {p.notLowest > 0 && <div style={{ fontSize: 11, color: c.red }}>{p.notLowest} not lowest</div>}
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700 }}>x{p.totalQty}</div>
+                    {p.notLowest > 0 && <div style={{ fontSize: 10, color: c.red }}>{p.notLowest} ↓</div>}
                   </div>
                 </div>
               ))}
-              {!filteredProducts.length && <div style={{ padding: 50, textAlign: 'center', color: c.textMuted }}>{syncing ? 'Loading...' : 'No listings'}</div>}
+              {!filteredProducts.length && <div style={{ padding: 40, textAlign: 'center', color: c.textMuted, fontSize: 13 }}>{syncing ? 'Loading...' : 'No listings'}</div>}
             </div>
           </div>
 
@@ -194,35 +194,35 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
           <div style={{ ...card, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             {currentProduct ? (
               <>
-                <div style={{ padding: '20px 24px', borderBottom: `1px solid ${c.border}`, display: 'flex', gap: 16, alignItems: 'center' }}>
-                  <div style={{ width: 60, height: 60, background: 'rgba(255,255,255,0.05)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                    {currentProduct.image ? <img src={currentProduct.image} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.onerror = null; e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60"><text x="15" y="42" font-size="30">👟</text></svg>'; }} /> : <span style={{ fontSize: 30 }}>👟</span>}
+                <div style={{ padding: '16px', borderBottom: `1px solid ${c.border}`, display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{ width: 50, height: 50, background: 'rgba(255,255,255,0.05)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                    {currentProduct.image ? <img src={currentProduct.image} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.onerror = null; e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="60" height="60"><text x="15" y="42" font-size="30">👟</text></svg>'; }} /> : <span style={{ fontSize: 26 }}>👟</span>}
                   </div>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>{currentProduct.name}</h3>
-                    <div style={{ fontSize: 13, color: c.textMuted, marginTop: 4 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentProduct.name}</h3>
+                    <div style={{ fontSize: 12, color: c.textMuted, marginTop: 2 }}>
                       {currentProduct.sku}
-                      {currentProduct.sizes[0]?.inventoryType === 'DIRECT' && <span style={{ marginLeft: 8, background: '#f97316', color: '#fff', padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>🚀 Direct</span>}
+                      {currentProduct.sizes[0]?.inventoryType === 'DIRECT' && <span style={{ marginLeft: 8, background: '#f97316', color: '#fff', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>🚀 Direct</span>}
                     </div>
                   </div>
                 </div>
 
-                <div style={{ padding: '12px 24px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13, color: c.textMuted }}>
+                <div style={{ padding: '10px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: c.textMuted }}>
                     <input type="checkbox" checked={currentProduct.sizes.length > 0 && selectedSizes.size === currentProduct.sizes.length} onChange={handleSelectAll} style={{ width: 16, height: 16, accentColor: c.green }} />
                     Select all
                   </label>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '44px 70px 50px 100px 100px 100px 80px 80px', padding: '14px 24px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', fontSize: 11, fontWeight: 700, color: c.textMuted }}>
-                  <span></span>
-                  <span>SIZE</span>
-                  <span style={{ textAlign: 'center' }}>QTY</span>
-                  <span style={{ textAlign: 'center' }}>YOUR ASK</span>
-                  <span style={{ textAlign: 'center' }}>LOWEST</span>
-                  <span style={{ textAlign: 'center' }}>SELL FASTER</span>
-                  <span style={{ textAlign: 'right' }}>COST</span>
-                  <span style={{ textAlign: 'right' }}>PROFIT</span>
+                <div style={{ display: 'flex', gap: 0, padding: '12px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', fontSize: 11, fontWeight: 700, color: c.textMuted }}>
+                  <span style={{ width: 32 }}></span>
+                  <span style={{ width: 50 }}>SIZE</span>
+                  <span style={{ width: 36 }}>QTY</span>
+                  <span style={{ width: 70 }}>YOUR ASK</span>
+                  <span style={{ width: 70 }}>LOWEST</span>
+                  <span style={{ width: 80 }}>SELL FASTER</span>
+                  <span style={{ width: 60 }}>COST</span>
+                  <span style={{ width: 70 }}>PROFIT</span>
                 </div>
 
                 <div style={{ flex: 1, overflowY: 'auto', maxHeight: 360 }}>
@@ -241,35 +241,27 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                         costNum = parseFloat(item.cost);
                       }
                     }
-                    const profit = costNum ? (currentPrice - costNum).toFixed(2) : null;
+                    const profit = costNum ? (currentPrice - costNum).toFixed(0) : null;
                     const profitColor = profit > 0 ? c.green : profit < 0 ? c.red : c.textMuted;
                     
                     return (
-                      <div key={item.listingId} style={{ display: 'grid', gridTemplateColumns: '44px 70px 50px 100px 100px 100px 80px 80px', padding: '14px 24px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', fontSize: 14 }}>
-                        <input type="checkbox" checked={selectedSizes.has(item.listingId)} onChange={e => { const n = new Set(selectedSizes); e.target.checked ? n.add(item.listingId) : n.delete(item.listingId); setSelectedSizes(n); }} style={{ width: 16, height: 16, accentColor: c.green }} />
-                        <span style={{ fontWeight: 600 }}>{item.size}</span>
-                        <span style={{ textAlign: 'center' }}>1</span>
-                        <div style={{ textAlign: 'center' }}>
-                          <input type="number" value={editedPrices[item.listingId] ?? item.yourAsk} onChange={e => setEditedPrices({ ...editedPrices, [item.listingId]: e.target.value })} style={{ width: 70, padding: '8px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 8, color: c.text, fontSize: 14, textAlign: 'center' }} />
-                        </div>
-                        <div style={{ textAlign: 'center', color: isLowest ? c.green : c.text, fontWeight: 600 }}>
-                          {item.lowestAsk ? `$${item.lowestAsk}` : '—'}{isLowest && <span style={{ marginLeft: 4 }}>✓</span>}
-                        </div>
-                        <div style={{ textAlign: 'center' }}>
-                          {sellFasterPrice ? (
-                            <button onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: sellFasterPrice })} style={{ background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: 6, padding: '6px 12px', color: '#f97316', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>${sellFasterPrice}</button>
-                          ) : '—'}
-                        </div>
-                        <span style={{ textAlign: 'right', color: c.textMuted }}>{formatCost(item.cost)}</span>
-                        <span style={{ textAlign: 'right', color: profitColor, fontWeight: 600 }}>{profit ? `$${profit}` : '—'}</span>
+                      <div key={item.listingId} style={{ display: 'flex', gap: 0, padding: '12px 16px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', fontSize: 13 }}>
+                        <span style={{ width: 32 }}><input type="checkbox" checked={selectedSizes.has(item.listingId)} onChange={e => { const n = new Set(selectedSizes); e.target.checked ? n.add(item.listingId) : n.delete(item.listingId); setSelectedSizes(n); }} style={{ width: 16, height: 16, accentColor: c.green }} /></span>
+                        <span style={{ width: 50, fontWeight: 600 }}>{item.size}</span>
+                        <span style={{ width: 36 }}>1</span>
+                        <span style={{ width: 70 }}><input type="number" value={editedPrices[item.listingId] ?? item.yourAsk} onChange={e => setEditedPrices({ ...editedPrices, [item.listingId]: e.target.value })} style={{ width: 54, padding: '6px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 6, color: c.text, fontSize: 13, textAlign: 'center' }} /></span>
+                        <span style={{ width: 70, color: isLowest ? c.green : c.text, fontWeight: 600 }}>{item.lowestAsk ? `$${item.lowestAsk}` : '—'}{isLowest && ' ✓'}</span>
+                        <span style={{ width: 80 }}>{sellFasterPrice ? <button onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: sellFasterPrice })} style={{ background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: 4, padding: '4px 8px', color: '#f97316', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>${sellFasterPrice}</button> : '—'}</span>
+                        <span style={{ width: 60, color: c.textMuted }}>{formatCost(item.cost)}</span>
+                        <span style={{ width: 70, color: profitColor, fontWeight: 600 }}>{profit ? `$${profit}` : '—'}</span>
                       </div>
                     );
                   })}
                 </div>
 
-                <div style={{ padding: '18px 24px', borderTop: `1px solid ${c.border}`, display: 'flex', gap: 14 }}>
-                  <button onClick={handleUpdatePrices} disabled={!Object.keys(editedPrices).length || loading} style={{ padding: '14px 32px', background: Object.keys(editedPrices).length ? c.green : 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 10, color: '#fff', fontSize: 14, fontWeight: 700, cursor: Object.keys(editedPrices).length ? 'pointer' : 'not-allowed' }}>Update Prices</button>
-                  <button onClick={handleUnlist} disabled={!selectedSizes.size || loading} style={{ padding: '14px 32px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 10, color: c.text, fontSize: 14, fontWeight: 600, cursor: selectedSizes.size ? 'pointer' : 'not-allowed' }}>Unlist Selected</button>
+                <div style={{ padding: '14px 16px', borderTop: `1px solid ${c.border}`, display: 'flex', gap: 10 }}>
+                  <button onClick={handleUpdatePrices} disabled={!Object.keys(editedPrices).length || loading} style={{ padding: '10px 24px', background: Object.keys(editedPrices).length ? c.green : 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8, color: '#fff', fontSize: 13, fontWeight: 700, cursor: Object.keys(editedPrices).length ? 'pointer' : 'not-allowed' }}>{loading ? 'Updating...' : 'Update Prices'}</button>
+                  <button onClick={handleUnlist} disabled={!selectedSizes.size || loading} style={{ padding: '10px 24px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 13, fontWeight: 600, cursor: selectedSizes.size ? 'pointer' : 'not-allowed' }}>Unlist Selected</button>
                 </div>
               </>
             ) : <div style={{ padding: 100, textAlign: 'center', color: c.textMuted, fontSize: 15 }}>Select a product</div>}
