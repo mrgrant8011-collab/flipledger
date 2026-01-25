@@ -231,7 +231,7 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                   <span style={{ width: 70 }}>SIZE</span>
                   <span style={{ width: 36 }}>QTY</span>
                   <span style={{ width: 70 }}>YOUR ASK</span>
-                  <span style={{ width: 70 }}>LOWEST</span>
+                  <span style={{ width: 80 }}>LOWEST</span>
                   <span style={{ width: 80 }}>SELL FASTER</span>
                   <span style={{ width: 60 }}>COST</span>
                   <span style={{ width: 70 }}>PROFIT</span>
@@ -239,7 +239,6 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
 
                 <div style={{ flex: 1, overflowY: 'auto', maxHeight: 360 }}>
                   {currentProduct.sizes.map(item => {
-                    const isLowest = item.lowestAsk && item.yourAsk <= item.lowestAsk;
                     const isEdited = editedPrices[item.listingId] !== undefined;
                     const currentPrice = parseFloat(editedPrices[item.listingId] ?? item.yourAsk) || 0;
                     const sellFasterPrice = item.sellFaster || item.highestBid || null;
@@ -249,6 +248,10 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                     const channelBadge = channel === 'DIRECT' ? { label: 'D', bg: '#f97316' } : 
                                         channel === 'FLEX' ? { label: 'F', bg: '#8b5cf6' } : 
                                         { label: 'S', bg: '#6b7280' };
+                    
+                    // Check if user is the lowest ask in their channel
+                    const isLowest = item.lowestAsk && item.yourAsk <= item.lowestAsk;
+                    const priceDiff = item.lowestAsk ? (item.yourAsk - item.lowestAsk) : null;
                     
                     // Calculate profit (price after ~15% StockX fees - cost)
                     let costNum = null;
@@ -273,7 +276,15 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                         </span>
                         <span style={{ width: 36 }}>1</span>
                         <span style={{ width: 70 }}><input type="number" value={editedPrices[item.listingId] ?? item.yourAsk} onChange={e => setEditedPrices({ ...editedPrices, [item.listingId]: e.target.value })} style={{ width: 54, padding: '6px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 6, color: c.text, fontSize: 13, textAlign: 'center' }} /></span>
-                        <span style={{ width: 70, color: isLowest ? c.green : c.text, fontWeight: 600 }}>{item.lowestAsk ? `$${item.lowestAsk}` : '—'}{isLowest && ' ✓'}</span>
+                        <span style={{ width: 80, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {item.lowestAsk ? (
+                            isLowest ? (
+                              <span style={{ background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: 4, padding: '4px 8px', color: c.green, fontWeight: 700, fontSize: 11 }}>✓ YOU</span>
+                            ) : (
+                              <span style={{ color: c.text, fontWeight: 600 }}>${item.lowestAsk}</span>
+                            )
+                          ) : '—'}
+                        </span>
                         <span style={{ width: 80 }}>{sellFasterPrice ? <button onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: sellFasterPrice })} style={{ background: 'rgba(249,115,22,0.15)', border: '1px solid rgba(249,115,22,0.3)', borderRadius: 4, padding: '4px 8px', color: '#f97316', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>${sellFasterPrice}</button> : '—'}</span>
                         <span style={{ width: 60, color: c.textMuted }}>{formatCost(item.cost)}</span>
                         <span style={{ width: 70, color: profitColor, fontWeight: 600 }}>{profit ? `$${profit}` : '—'}</span>
