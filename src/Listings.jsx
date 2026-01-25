@@ -232,7 +232,7 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                     const currentPrice = parseFloat(editedPrices[item.listingId] ?? item.yourAsk) || 0;
                     const sellFasterPrice = item.sellFaster || item.highestBid || null;
                     
-                    // Calculate profit (price - cost). If cost is range "41-45", use max
+                    // Calculate profit (price after ~15% StockX fees - cost)
                     let costNum = null;
                     if (item.cost) {
                       if (typeof item.cost === 'string' && item.cost.includes('-')) {
@@ -241,7 +241,9 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
                         costNum = parseFloat(item.cost);
                       }
                     }
-                    const profit = costNum ? (currentPrice - costNum).toFixed(0) : null;
+                    // StockX payout is roughly 85% of sale price (15% fees)
+                    const payout = currentPrice * 0.85;
+                    const profit = costNum ? (payout - costNum).toFixed(0) : null;
                     const profitColor = profit > 0 ? c.green : profit < 0 ? c.red : c.textMuted;
                     
                     return (
