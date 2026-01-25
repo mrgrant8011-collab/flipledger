@@ -113,13 +113,25 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
   const handleUpdatePrices = async () => {
     const u = Object.entries(editedPrices).map(([id, a]) => ({ listingId: id, amount: Math.round(parseFloat(a)) })).filter(x => x.amount > 0);
     if (!u.length) { showToast('No prices to update', 'error'); return; }
+    console.log('[Listings] Updating prices:', u);
     setLoading(true);
     try {
       const r = await fetch('/api/stockx-listings', { method: 'PATCH', headers: { 'Authorization': `Bearer ${stockxToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ items: u }) });
       const data = await r.json();
-      if (r.ok && data.success) { showToast(`Updated ${u.length} prices`); setEditedPrices({}); await syncListings(); }
-      else showToast(data.error || 'Update failed', 'error');
-    } catch (e) { showToast('Update failed: ' + e.message, 'error'); }
+      console.log('[Listings] Update response:', r.status, data);
+      if (r.ok && data.success) { 
+        showToast(`Updated ${u.length} prices`); 
+        setEditedPrices({}); 
+        await syncListings(); 
+      } else {
+        const errMsg = data.details || data.error || data.message || 'Update failed';
+        console.error('[Listings] Update error:', errMsg);
+        showToast(typeof errMsg === 'string' ? errMsg : JSON.stringify(errMsg), 'error');
+      }
+    } catch (e) { 
+      console.error('[Listings] Update exception:', e);
+      showToast('Update failed: ' + e.message, 'error'); 
+    }
     finally { setLoading(false); }
   };
   
