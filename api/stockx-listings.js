@@ -1,3 +1,4 @@
+
 /**
  * STOCKX LISTINGS API
  * GET - Fetch listings + market data (batched for speed)
@@ -115,10 +116,31 @@ export default async function handler(req, res) {
               // Response is an array of variant market data
               for (const v of (variants || [])) {
                 if (v.variantId) {
+                  // Get channel-specific data
+                  const std = v.standardMarketData || {};
+                  const flex = v.flexMarketData || {};
+                  const direct = v.directMarketData || {};
+                  
                   marketData[v.variantId] = { 
+                    // Overall lowest (across all channels)
                     lowestAsk: parseFloat(v.lowestAskAmount) || null, 
                     highestBid: parseFloat(v.highestBidAmount) || null, 
-                    sellFaster: parseFloat(v.sellFasterAmount) || null 
+                    sellFaster: parseFloat(v.sellFasterAmount) || null,
+                    
+                    // Standard channel
+                    standardLowest: parseFloat(std.lowestAsk) || null,
+                    standardSellFaster: parseFloat(std.sellFaster) || null,
+                    standardBid: parseFloat(std.highestBidAmount) || null,
+                    
+                    // Flex channel
+                    flexLowest: parseFloat(flex.lowestAsk) || parseFloat(v.flexLowestAskAmount) || null,
+                    flexSellFaster: parseFloat(flex.sellFaster) || null,
+                    flexBid: parseFloat(flex.highestBidAmount) || null,
+                    
+                    // Direct channel
+                    directLowest: parseFloat(direct.lowestAsk) || null,
+                    directSellFaster: parseFloat(direct.sellFaster) || null,
+                    directBid: parseFloat(direct.highestBidAmount) || null
                   };
                 }
               }
@@ -137,6 +159,23 @@ export default async function handler(req, res) {
         const v = l.variant || {};
         const md = marketData[v.variantId] || {};
         const pd = productDetails[p.productId] || {};
+        const channel = l.inventoryType || 'STANDARD';
+        
+        // Pick the right market data based on listing's channel
+        let lowestAsk, sellFaster, highestBid;
+        if (channel === 'DIRECT') {
+          lowestAsk = md.directLowest || md.lowestAsk;
+          sellFaster = md.directSellFaster || md.sellFaster;
+          highestBid = md.directBid || md.highestBid;
+        } else if (channel === 'FLEX') {
+          lowestAsk = md.flexLowest || md.lowestAsk;
+          sellFaster = md.flexSellFaster || md.sellFaster;
+          highestBid = md.flexBid || md.highestBid;
+        } else {
+          lowestAsk = md.standardLowest || md.lowestAsk;
+          sellFaster = md.standardSellFaster || md.sellFaster;
+          highestBid = md.standardBid || md.highestBid;
+        }
         
         // Use urlKey from catalog API, or fallback to generated slug from product name
         let image = '';
@@ -148,8 +187,14 @@ export default async function handler(req, res) {
         return {
           listingId: l.listingId, productId: p.productId, variantId: v.variantId,
           name: p.productName || pd.title || 'Unknown', sku: p.styleId || '', size: v.variantValue || '', image,
-          yourAsk: parseFloat(l.amount) || 0, inventoryType: l.inventoryType || 'STANDARD',
-          lowestAsk: md.lowestAsk || null, highestBid: md.highestBid || null, sellFaster: md.sellFaster || null,
+          yourAsk: parseFloat(l.amount) || 0, inventoryType: channel,
+          lowestAsk: lowestAsk || null, highestBid: highestBid || null, sellFaster: sellFaster || null,
+          // Include all channel data for reference
+          allChannels: {
+            standard: { lowest: md.standardLowest, sellFaster: md.standardSellFaster },
+            flex: { lowest: md.flexLowest, sellFaster: md.flexSellFaster },
+            direct: { lowest: md.directLowest, sellFaster: md.directSellFaster }
+          },
           createdAt: l.createdAt
         };
       });
