@@ -1,3 +1,4 @@
+
 /**
  * STOCKX LISTINGS API
  * GET - Fetch listings + market data (batched for speed)
@@ -54,22 +55,65 @@ export default async function handler(req, res) {
         pageNumber++;
       }
 
-      // Get unique variants for market data (limit to 100 for speed)
+      // Get unique products and variants
+      const productIds = new Set();
       const variants = [];
       const seen = new Set();
       for (const l of allListings) {
+        if (l.product?.productId) productIds.add(l.product.productId);
         const key = `${l.product?.productId}|${l.variant?.variantId}`;
         if (!seen.has(key) && l.product?.productId && l.variant?.variantId) {
           seen.add(key);
           variants.push({ productId: l.product.productId, variantId: l.variant.variantId });
         }
-        if (variants.length >= 100) break;
       }
 
-      // Fetch market data in parallel (batches of 25)
+      // Fetch product details (including urlKey for images) - batch of 25
+      const productDetails = {};
+      const productArray = Array.from(productIds);
+      for (let i = 0; i < productArray.length; i += 25) {
+        const batch = productArray.slice(i, i + 25);
+        await Promise.all(batch.map(async (productId) => {
+          try {
+            const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}`, {
+              headers: { 'Authorization': authHeader, 'x-api-key': apiKey }
+            });
+            if (r.ok) {
+              const p = await r.json();
+              productDetails[productId] = { urlKey: p.urlKey, title: p.title };
+            }
+          } catch {}
+        }));
+      }
+      
+      // Helper to generate fallback slug from product name
+      const generateSlug = (name) => {
+        if (!name) return '';
+        let n = name;
+        if (/^Jordan\s/i.test(n) && !/^Air\s+Jordan/i.test(n)) n = 'Air ' + n;
+        return n
+          .replace(/\(Women's\)/gi, 'W')
+          .replace(/\(Men's\)/gi, '')
+          .replace(/\(GS\)/gi, 'GS')
+          .replace(/\(PS\)/gi, 'PS')
+          .replace(/\(TD\)/gi, 'TD')
+          .replace(/\([^)]*\)/g, '')
+          .replace(/'/g, '')
+          .replace(/"/g, '')
+          .replace(/&/g, 'and')
+          .replace(/\+/g, 'Plus')
+          .replace(/[^a-zA-Z0-9\s-]/g, '')
+          .trim()
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '');
+      };
+
+      // Fetch market data in parallel (batches of 25, limit 100)
       const marketData = {};
-      for (let i = 0; i < variants.length; i += 25) {
-        const batch = variants.slice(i, i + 25);
+      const limitedVariants = variants.slice(0, 100);
+      for (let i = 0; i < limitedVariants.length; i += 25) {
+        const batch = limitedVariants.slice(i, i + 25);
         await Promise.all(batch.map(async ({ productId, variantId }) => {
           try {
             const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}/variants/${variantId}/market-data?currencyCode=USD`, {
@@ -88,18 +132,18 @@ export default async function handler(req, res) {
         const p = l.product || {};
         const v = l.variant || {};
         const md = marketData[v.variantId] || {};
+        const pd = productDetails[p.productId] || {};
         
+        // Use urlKey from catalog API, or fallback to generated slug from product name
         let image = '';
-        if (p.productName) {
-          let n = p.productName;
-          if (/^Jordan\s/i.test(n) && !/^Air\s+Jordan/i.test(n)) n = 'Air ' + n;
-          const slug = n.replace(/\(Women's\)/gi, 'W').replace(/\(Men's\)/gi, '').replace(/\(GS\)/gi, 'GS').replace(/\(PS\)/gi, 'PS').replace(/\(TD\)/gi, 'TD').replace(/\([^)]*\)/g, '').replace(/'/g, '').replace(/"/g, '').replace(/&/g, 'and').replace(/\+/g, 'Plus').replace(/[^a-zA-Z0-9\s-]/g, '').trim().replace(/\s+/g, '-').replace(/-+/g, '-');
-          if (slug) image = `https://images.stockx.com/images/${slug}.jpg?fit=fill&bg=FFFFFF&w=300&h=214&fm=webp&auto=compress&q=90&dpr=2&trim=color`;
+        const slug = pd.urlKey || generateSlug(p.productName || pd.title);
+        if (slug) {
+          image = `https://images.stockx.com/images/${slug}.jpg?fit=fill&bg=FFFFFF&w=300&h=214&fm=webp&auto=compress&q=90&dpr=2&trim=color`;
         }
         
         return {
           listingId: l.listingId, productId: p.productId, variantId: v.variantId,
-          name: p.productName || 'Unknown', sku: p.styleId || '', size: v.variantValue || '', image,
+          name: p.productName || pd.title || 'Unknown', sku: p.styleId || '', size: v.variantValue || '', image,
           yourAsk: parseFloat(l.amount) || 0, inventoryType: l.inventoryType || 'STANDARD',
           lowestAsk: md.lowestAsk || null, highestBid: md.highestBid || null, sellFaster: md.sellFaster || null,
           createdAt: l.createdAt
