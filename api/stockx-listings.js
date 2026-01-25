@@ -138,12 +138,15 @@ export default async function handler(req, res) {
                     // Channel-specific - strictly from each channel
                     standardLowest: parseFloat(std.lowestAsk) || null,
                     standardSellFaster: parseFloat(std.sellFaster) || null,
+                    standardBid: parseFloat(std.highestBidAmount) || null,
                     
                     flexLowest: parseFloat(flex.lowestAsk) || null,
                     flexSellFaster: parseFloat(flex.sellFaster) || null,
+                    flexBid: parseFloat(flex.highestBidAmount) || null,
                     
                     directLowest: parseFloat(direct.lowestAsk) || null,
-                    directSellFaster: parseFloat(direct.sellFaster) || null
+                    directSellFaster: parseFloat(direct.sellFaster) || null,
+                    directBid: parseFloat(direct.highestBidAmount) || null
                   };
                 }
               }
@@ -168,17 +171,20 @@ export default async function handler(req, res) {
         // Direct sellers compete with Direct sellers only
         // Flex sellers compete with Flex sellers only
         // Standard sellers compete with Standard sellers only
-        let lowestAsk = null, sellFaster = null;
+        let lowestAsk = null, sellFaster = null, highestBid = null;
         
         if (channel === 'DIRECT') {
           lowestAsk = md.directLowest;
           sellFaster = md.directSellFaster;
+          highestBid = md.directBid || md.highestBid;
         } else if (channel === 'FLEX') {
           lowestAsk = md.flexLowest;
           sellFaster = md.flexSellFaster;
+          highestBid = md.flexBid || md.highestBid;
         } else {
           lowestAsk = md.standardLowest;
           sellFaster = md.standardSellFaster;
+          highestBid = md.standardBid || md.highestBid;
         }
         
         // Use urlKey from catalog API, or fallback to generated slug from product name
@@ -193,8 +199,9 @@ export default async function handler(req, res) {
           name: p.productName || pd.title || 'Unknown', sku: p.styleId || '', size: v.variantValue || '', image,
           yourAsk: parseFloat(l.amount) || 0, inventoryType: channel,
           lowestAsk: lowestAsk || null, 
-          highestBid: md.highestBid || null, 
+          highestBid: highestBid || null, 
           sellFaster: sellFaster || null,
+          qty: l.quantity || 1,
           createdAt: l.createdAt
         };
       });
