@@ -591,10 +591,82 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
   };
 
   const handleOversellSync = async () => {
-    showToast('Checking for sales...');
+    showToast('Checking for oversells...');
+    
     const activeMappings = mappings.filter(m => m.status === 'active');
-    console.log('[CrossList] Active cross-list mappings:', activeMappings.length);
-    showToast(`${activeMappings.length} active cross-listings monitored`);
+    if (!activeMappings.length) {
+      showToast('No active cross-listings to check');
+      return;
+    }
+    
+    console.log('[CrossList] Checking', activeMappings.length, 'active mappings for oversells');
+    
+    // Get current listings from both platforms
+    const currentStockX = await syncStockX();
+    const currentEbay = await syncEbay();
+    
+    const stockxListingIds = new Set(currentStockX.map(l => l.listingId));
+    const ebayOfferIds = new Set(currentEbay.map(l => l.offerId));
+    
+    let delistedFromEbay = 0;
+    let delistedFromStockX = 0;
+    let errors = [];
+    
+    for (const mapping of activeMappings) {
+      const hasStockX = mapping.stockx_listing_id && stockxListingIds.has(mapping.stockx_listing_id);
+      const hasEbay = mapping.ebay_offer_id && ebayOfferIds.has(mapping.ebay_offer_id);
+      
+      // Sold on StockX (listing gone) but still on eBay → delist from eBay
+      if (!hasStockX && hasEbay && mapping.stockx_listing_id) {
+        console.log('[Oversell] StockX sold, delisting from eBay:', mapping.ebay_sku);
+        try {
+          const res = await fetch('/api/ebay-listings', {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${ebayToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ offerIds: [mapping.ebay_offer_id] })
+          });
+          if (res.ok) {
+            await updateMappingStatus(mapping.ebay_offer_id, 'sold_stockx');
+            delistedFromEbay++;
+          }
+        } catch (e) {
+          errors.push(`eBay ${mapping.ebay_sku}: ${e.message}`);
+        }
+      }
+      
+      // Sold on eBay (listing gone) but still on StockX → delist from StockX
+      if (!hasEbay && hasStockX && mapping.ebay_offer_id) {
+        console.log('[Oversell] eBay sold, delisting from StockX:', mapping.ebay_sku);
+        try {
+          const res = await fetch('/api/stockx-listings', {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${stockxToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ listingIds: [mapping.stockx_listing_id] })
+          });
+          if (res.ok) {
+            await updateMappingStatus(mapping.ebay_offer_id, 'sold_ebay');
+            delistedFromStockX++;
+          }
+        } catch (e) {
+          errors.push(`StockX ${mapping.sku}: ${e.message}`);
+        }
+      }
+      
+      // Both gone → mark as sold
+      if (!hasStockX && !hasEbay) {
+        await updateMappingStatus(mapping.ebay_offer_id, 'sold');
+      }
+    }
+    
+    await loadMappings();
+    
+    if (delistedFromEbay || delistedFromStockX) {
+      showToast(`🛡️ Oversell prevented! Removed ${delistedFromEbay} from eBay, ${delistedFromStockX} from StockX`);
+    } else if (errors.length) {
+      showToast(`Errors: ${errors.join(', ')}`, 'error');
+    } else {
+      showToast('✓ All clear - no oversells detected');
+    }
   };
 
   // ============================================
