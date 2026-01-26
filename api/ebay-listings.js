@@ -20,9 +20,18 @@ export default async function handler(req, res) {
   }
   
   const accessToken = authHeader.replace('Bearer ', '');
+  
+  // ============================================
+  // FIX: Explicit headers for ALL eBay API calls
+  // DO NOT forward browser headers - eBay rejects them
+  // This fixes errorId 25709 (Unsupported Accept-Language)
+  // ============================================
   const baseHeaders = {
     'Authorization': `Bearer ${accessToken}`,
     'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'Accept-Language': 'en-US',
+    'Content-Language': 'en-US',
     'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
   };
 
@@ -42,6 +51,7 @@ export default async function handler(req, res) {
         
         if (!response.ok) {
           const err = await response.text();
+          console.error('[eBay GET] Inventory fetch error:', response.status, err);
           if (offset === 0) {
             return res.status(response.status).json({ error: 'Failed to fetch inventory', details: err });
           }
@@ -128,10 +138,10 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'products array is required' });
       }
       
-      // Get business policies from env vars ONLY
-      const fulfillmentPolicyId = process.env.EBAY_FULFILLMENT_POLICY_ID;
-      const paymentPolicyId = process.env.EBAY_PAYMENT_POLICY_ID;
-      const returnPolicyId = process.env.EBAY_RETURN_POLICY_ID;
+      // Get business policies from env vars ONLY (with trim to handle whitespace)
+      const fulfillmentPolicyId = process.env.EBAY_FULFILLMENT_POLICY_ID?.trim();
+      const paymentPolicyId = process.env.EBAY_PAYMENT_POLICY_ID?.trim();
+      const returnPolicyId = process.env.EBAY_RETURN_POLICY_ID?.trim();
       
       console.log('[eBay] Policy IDs from env:', { fulfillmentPolicyId, paymentPolicyId, returnPolicyId });
       
@@ -176,18 +186,22 @@ export default async function handler(req, res) {
               }
             };
             
+            // FIX: Use baseHeaders (includes Accept-Language: en-US)
             const invRes = await fetch(`https://api.ebay.com/sell/inventory/v1/inventory_item/${encodeURIComponent(ebaySku)}`, {
               method: 'PUT',
-              headers: { ...baseHeaders, 'Content-Language': 'en-US' },
+              headers: baseHeaders,
               body: JSON.stringify(inventoryItem)
             });
             
             if (!invRes.ok && invRes.status !== 204) {
               const err = await invRes.text();
-              results.errors.push({ sku: ebaySku, step: 'inventory', error: err });
+              console.error('[eBay] Inventory item error:', invRes.status, err);
+              results.errors.push({ sku: ebaySku, step: 'inventory', error: parseEbayError(err) });
               results.failed++;
               continue;
             }
+            
+            console.log('[eBay] Inventory item created:', ebaySku);
             
             // Create Offer
             const offer = {
@@ -202,6 +216,7 @@ export default async function handler(req, res) {
               merchantLocationKey: 'default'
             };
             
+            // FIX: Use baseHeaders (includes Accept-Language: en-US)
             const offerRes = await fetch('https://api.ebay.com/sell/inventory/v1/offer', {
               method: 'POST',
               headers: baseHeaders,
@@ -210,15 +225,18 @@ export default async function handler(req, res) {
             
             if (!offerRes.ok) {
               const err = await offerRes.text();
-              results.errors.push({ sku: ebaySku, step: 'offer', error: err });
+              console.error('[eBay] Create offer error:', offerRes.status, err);
+              results.errors.push({ sku: ebaySku, step: 'offer', error: parseEbayError(err) });
               results.failed++;
               continue;
             }
             
             const offerData = await offerRes.json();
             const offerId = offerData.offerId;
+            console.log('[eBay] Offer created:', offerId);
             
             // Publish Offer
+            // FIX: Use baseHeaders (includes Accept-Language: en-US)
             const publishRes = await fetch(`https://api.ebay.com/sell/inventory/v1/offer/${offerId}/publish`, {
               method: 'POST',
               headers: baseHeaders
@@ -228,9 +246,11 @@ export default async function handler(req, res) {
             if (publishRes.ok) {
               const publishData = await publishRes.json();
               listingId = publishData.listingId || null;
+              console.log('[eBay] Offer published, listingId:', listingId);
             } else {
               const err = await publishRes.text();
-              results.errors.push({ sku: ebaySku, step: 'publish', error: err });
+              console.error('[eBay] Publish error:', publishRes.status, err);
+              results.errors.push({ sku: ebaySku, step: 'publish', error: parseEbayError(err) });
               results.failed++;
               continue;
             }
@@ -249,6 +269,7 @@ export default async function handler(req, res) {
             results.created++;
             
           } catch (e) {
+            console.error('[eBay] Unexpected error:', e.message);
             results.errors.push({ sku: `${product.sku}-${sizeData.size}`, error: e.message });
             results.failed++;
           }
@@ -290,6 +311,7 @@ export default async function handler(req, res) {
         }]
       }));
       
+      // FIX: Use baseHeaders (includes Accept-Language: en-US)
       const bulkRes = await fetch('https://api.ebay.com/sell/inventory/v1/bulk_update_price_quantity', {
         method: 'POST',
         headers: baseHeaders,
@@ -298,7 +320,8 @@ export default async function handler(req, res) {
       
       if (!bulkRes.ok) {
         const err = await bulkRes.text();
-        return res.status(bulkRes.status).json({ error: 'Bulk update failed', details: err });
+        console.error('[eBay] Bulk update error:', bulkRes.status, err);
+        return res.status(bulkRes.status).json({ error: 'Bulk update failed', details: parseEbayError(err) });
       }
       
       const bulkData = await bulkRes.json();
@@ -332,6 +355,7 @@ export default async function handler(req, res) {
       
       for (const offerId of offerIds) {
         try {
+          // FIX: Use baseHeaders (includes Accept-Language: en-US)
           const withdrawRes = await fetch(`https://api.ebay.com/sell/inventory/v1/offer/${offerId}/withdraw`, {
             method: 'POST',
             headers: baseHeaders
@@ -341,7 +365,8 @@ export default async function handler(req, res) {
             results.ended++;
           } else {
             const err = await withdrawRes.text();
-            results.errors.push({ offerId, error: err });
+            console.error('[eBay] Withdraw error:', withdrawRes.status, err);
+            results.errors.push({ offerId, error: parseEbayError(err) });
             results.failed++;
           }
         } catch (e) {
@@ -364,4 +389,22 @@ export default async function handler(req, res) {
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
+}
+
+// ============================================
+// Helper: Parse eBay error for readable message
+// ============================================
+function parseEbayError(errorBody) {
+  try {
+    const parsed = JSON.parse(errorBody);
+    if (parsed.errors && parsed.errors.length > 0) {
+      return parsed.errors.map(e => `${e.errorId}: ${e.message}`).join('; ');
+    }
+    if (parsed.error_description) {
+      return parsed.error_description;
+    }
+    return errorBody;
+  } catch {
+    return errorBody;
+  }
 }
