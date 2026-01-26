@@ -3,16 +3,6 @@
  * 
  * Handles automatic token refresh to keep users connected.
  * Access tokens expire after 2 hours, refresh tokens last 18 months.
- * 
- * Usage:
- *   import { getValidEbayToken, storeEbayTokens } from './ebayTokenHelper';
- *   
- *   // When connecting (after OAuth callback):
- *   storeEbayTokens(accessToken, refreshToken, expiresIn);
- *   
- *   // Before any eBay API call:
- *   const token = await getValidEbayToken();
- *   if (!token) { /* prompt reconnect */ }
  */
 
 const STORAGE_KEYS = {
@@ -26,9 +16,6 @@ const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
 /**
  * Store eBay tokens after successful OAuth
- * @param {string} accessToken - The access token
- * @param {string} refreshToken - The refresh token (lasts 18 months)
- * @param {number} expiresIn - Seconds until access token expires (usually 7200 = 2 hours)
  */
 export function storeEbayTokens(accessToken, refreshToken, expiresIn) {
   const expiryTime = Date.now() + (expiresIn * 1000);
@@ -44,8 +31,6 @@ export function storeEbayTokens(accessToken, refreshToken, expiresIn) {
 
 /**
  * Get a valid eBay access token, auto-refreshing if needed
- * @param {function} onTokenRefresh - Optional callback when token is refreshed
- * @returns {Promise<string|null>} - Valid access token or null if refresh failed
  */
 export async function getValidEbayToken(onTokenRefresh) {
   const accessToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
@@ -65,7 +50,7 @@ export async function getValidEbayToken(onTokenRefresh) {
   if (!needsRefresh) {
     // Token is still valid
     const minutesLeft = Math.round((expiryTime - Date.now()) / 60000);
-    console.log(`[eBay:Token] Token valid for ${minutesLeft} more minutes`);
+    console.log('[eBay:Token] Token valid for ' + minutesLeft + ' more minutes');
     return accessToken;
   }
   
@@ -100,7 +85,7 @@ export async function getValidEbayToken(onTokenRefresh) {
         onTokenRefresh(data.access_token);
       }
       
-      console.log('[eBay:Token] ✓ Token refreshed successfully');
+      console.log('[eBay:Token] Token refreshed successfully');
       return data.access_token;
     }
     
@@ -121,37 +106,6 @@ export async function getValidEbayToken(onTokenRefresh) {
 }
 
 /**
- * Check if user has a potentially valid eBay connection
- * (doesn't verify token, just checks if stored)
- */
-export function hasEbayConnection() {
-  return !!localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-}
-
-/**
- * Check if token needs refresh (without actually refreshing)
- */
-export function tokenNeedsRefresh() {
-  const tokenExpiry = localStorage.getItem(STORAGE_KEYS.TOKEN_EXPIRY);
-  if (!tokenExpiry) return true;
-  
-  const expiryTime = parseInt(tokenExpiry) || 0;
-  return Date.now() > (expiryTime - REFRESH_BUFFER_MS);
-}
-
-/**
- * Get time until token expires (in minutes)
- */
-export function getTokenMinutesRemaining() {
-  const tokenExpiry = localStorage.getItem(STORAGE_KEYS.TOKEN_EXPIRY);
-  if (!tokenExpiry) return 0;
-  
-  const expiryTime = parseInt(tokenExpiry) || 0;
-  const remaining = Math.max(0, expiryTime - Date.now());
-  return Math.round(remaining / 60000);
-}
-
-/**
  * Clear all eBay tokens (disconnect)
  */
 export function clearEbayTokens() {
@@ -159,21 +113,4 @@ export function clearEbayTokens() {
   localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
   localStorage.removeItem(STORAGE_KEYS.TOKEN_EXPIRY);
   console.log('[eBay:Token] Tokens cleared');
-}
-
-/**
- * Get raw token values (for debugging)
- */
-export function getEbayTokenInfo() {
-  const accessToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-  const refreshToken = localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
-  const tokenExpiry = localStorage.getItem(STORAGE_KEYS.TOKEN_EXPIRY);
-  
-  return {
-    hasAccessToken: !!accessToken,
-    hasRefreshToken: !!refreshToken,
-    expiryTime: tokenExpiry ? new Date(parseInt(tokenExpiry)).toLocaleString() : 'Not set',
-    minutesRemaining: getTokenMinutesRemaining(),
-    needsRefresh: tokenNeedsRefresh()
-  };
 }
