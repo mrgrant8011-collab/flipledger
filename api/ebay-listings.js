@@ -484,6 +484,170 @@ function getBrand(item) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════
+// EPID LOOKUP HELPERS - Extract data from eBay Browse API results
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Extract multiple images from eBay search result
+ * Tries to get different angles, not the same image repeated
+ */
+function extractMultipleImages(item) {
+  const images = [];
+  const seenUrls = new Set();
+
+  // Primary image
+  if (item.image?.imageUrl) {
+    images.push(item.image.imageUrl);
+    seenUrls.add(item.image.imageUrl);
+  }
+
+  // Additional images
+  if (item.additionalImages && Array.isArray(item.additionalImages)) {
+    for (const img of item.additionalImages) {
+      if (img.imageUrl && !seenUrls.has(img.imageUrl)) {
+        images.push(img.imageUrl);
+        seenUrls.add(img.imageUrl);
+      }
+      if (images.length >= 5) break;
+    }
+  }
+
+  // Thumbnail as fallback
+  if (images.length === 0 && item.thumbnailImages?.[0]?.imageUrl) {
+    images.push(item.thumbnailImages[0].imageUrl);
+  }
+
+  return images;
+}
+
+/**
+ * Extract brand from eBay listing title
+ */
+function extractBrandFromTitle(title) {
+  if (!title) return null;
+  const t = title.toLowerCase();
+  
+  if (t.includes('jordan') || t.includes('air jordan')) return 'Jordan';
+  if (t.includes('nike') || t.includes('dunk') || t.includes('air force') || t.includes('air max')) return 'Nike';
+  if (t.includes('yeezy')) return 'adidas';
+  if (t.includes('adidas')) return 'adidas';
+  if (t.includes('new balance')) return 'New Balance';
+  if (t.includes('converse')) return 'Converse';
+  if (t.includes('vans')) return 'Vans';
+  if (t.includes('puma')) return 'Puma';
+  if (t.includes('reebok')) return 'Reebok';
+  if (t.includes('asics')) return 'ASICS';
+  if (t.includes('salomon')) return 'Salomon';
+  if (t.includes('hoka')) return 'Hoka';
+  if (t.includes('on running') || t.includes('on cloud')) return 'On';
+  
+  return null;
+}
+
+/**
+ * Extract color from eBay listing title
+ */
+function extractColorFromTitle(title) {
+  if (!title) return null;
+  const t = title.toLowerCase();
+  
+  // Check for common color keywords
+  const colorKeywords = {
+    'black': 'Black',
+    'white': 'White',
+    'red': 'Red',
+    'blue': 'Blue',
+    'green': 'Green',
+    'yellow': 'Yellow',
+    'orange': 'Orange',
+    'purple': 'Purple',
+    'pink': 'Pink',
+    'brown': 'Brown',
+    'grey': 'Gray',
+    'gray': 'Gray',
+    'navy': 'Blue',
+    'gold': 'Gold',
+    'silver': 'Silver',
+    'beige': 'Beige',
+    'cream': 'Beige',
+    'tan': 'Tan',
+    // Sneaker colorways
+    'chicago': 'Red',
+    'bred': 'Black',
+    'royal': 'Blue',
+    'unc': 'Blue',
+    'university blue': 'Blue',
+    'obsidian': 'Blue',
+    'midnight navy': 'Blue',
+    'panda': 'Black',
+    'zebra': 'White',
+    'mocha': 'Brown',
+    'travis': 'Brown',
+    'shadow': 'Gray',
+    'cool grey': 'Gray',
+    'cement': 'Gray'
+  };
+  
+  for (const [keyword, color] of Object.entries(colorKeywords)) {
+    if (t.includes(keyword)) {
+      return color;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Infer department from eBay listing title
+ */
+function inferDepartmentFromTitle(title) {
+  if (!title) return 'Men';
+  const t = title.toLowerCase();
+  
+  if (t.includes("women's") || t.includes('wmns') || t.includes('(w)')) return 'Women';
+  if (t.includes("men's") || t.includes('(m)')) return 'Men';
+  if (t.includes('(gs)') || t.includes('grade school')) return 'Unisex Kids';
+  if (t.includes('(ps)') || t.includes('preschool')) return 'Unisex Kids';
+  if (t.includes('(td)') || t.includes('toddler')) return 'Unisex Kids';
+  if (t.includes('(y)') || t.includes('youth')) return 'Unisex Kids';
+  if (t.includes('kids') || t.includes('boys') || t.includes('girls')) return 'Unisex Kids';
+  
+  return 'Men';
+}
+
+/**
+ * Infer silhouette from eBay listing title
+ */
+function inferSilhouetteFromTitle(title) {
+  if (!title) return '';
+  const t = title.toLowerCase();
+  
+  if (t.includes('jordan 1') || t.includes('aj1')) return 'Air Jordan 1';
+  if (t.includes('jordan 3') || t.includes('aj3')) return 'Air Jordan 3';
+  if (t.includes('jordan 4') || t.includes('aj4')) return 'Air Jordan 4';
+  if (t.includes('jordan 5') || t.includes('aj5')) return 'Air Jordan 5';
+  if (t.includes('jordan 6') || t.includes('aj6')) return 'Air Jordan 6';
+  if (t.includes('jordan 11') || t.includes('aj11')) return 'Air Jordan 11';
+  if (t.includes('jordan 12') || t.includes('aj12')) return 'Air Jordan 12';
+  if (t.includes('jordan 13') || t.includes('aj13')) return 'Air Jordan 13';
+  if (t.includes('dunk low')) return 'Nike Dunk Low';
+  if (t.includes('dunk high')) return 'Nike Dunk High';
+  if (t.includes('air force 1') || t.includes('af1')) return 'Nike Air Force 1';
+  if (t.includes('air max 1')) return 'Nike Air Max 1';
+  if (t.includes('air max 90')) return 'Nike Air Max 90';
+  if (t.includes('air max 95')) return 'Nike Air Max 95';
+  if (t.includes('air max 97')) return 'Nike Air Max 97';
+  if (t.includes('yeezy 350') || t.includes('350 v2')) return 'Yeezy Boost 350';
+  if (t.includes('yeezy 500')) return 'Yeezy 500';
+  if (t.includes('yeezy 700')) return 'Yeezy 700';
+  if (t.includes('550')) return 'New Balance 550';
+  if (t.includes('990')) return 'New Balance 990';
+  if (t.includes('2002r')) return 'New Balance 2002R';
+  
+  return '';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════
 // SIZE PARSING - Handle various StockX size formats
 // ═══════════════════════════════════════════════════════════════════════════════════
 
@@ -1709,10 +1873,82 @@ async function createSingleListing(headers, item, config) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════
-// HANDLER: GET - List or Diagnose
+// HANDLER: GET - List, Diagnose, or EPID Lookup
 // ═══════════════════════════════════════════════════════════════════════════════════
 
 async function handleGet(headers, query, res) {
+  // ─────────────────────────────────────────────────────────────────────────
+  // EPID Lookup Mode - Search eBay Catalog for product data
+  // ─────────────────────────────────────────────────────────────────────────
+  if (query.lookup) {
+    const searchQuery = query.lookup;
+    console.log(`[eBay:GET] EPID Lookup for: ${searchQuery}`);
+    
+    try {
+      // Search eBay Browse API for product
+      const searchUrl = `https://api.ebay.com/buy/browse/v1/item_summary/search?q=${encodeURIComponent(searchQuery)}&category_ids=15709&limit=5`;
+      
+      const searchRes = await fetch(searchUrl, {
+        method: 'GET',
+        headers: {
+          ...headers,
+          'X-EBAY-C-MARKETPLACE-ID': EBAY_MARKETPLACE_ID
+        }
+      });
+
+      if (!searchRes.ok) {
+        console.log('[eBay:GET] Browse API search failed:', searchRes.status);
+        return res.status(200).json({ found: false, query: searchQuery });
+      }
+
+      const searchData = await searchRes.json();
+      const items = searchData.itemSummaries || [];
+      
+      if (items.length === 0) {
+        console.log('[eBay:GET] No items found for:', searchQuery);
+        return res.status(200).json({ found: false, query: searchQuery });
+      }
+
+      // Find best match (prefer items with EPID)
+      const bestMatch = items.find(item => item.epid) || items[0];
+      
+      // Extract data from the match
+      const result = {
+        found: true,
+        query: searchQuery,
+        epid: bestMatch.epid || null,
+        title: bestMatch.title || null,
+        categoryId: bestMatch.categoryId || bestMatch.categories?.[0]?.categoryId || '15709',
+        categoryName: bestMatch.categories?.[0]?.categoryName || 'Athletic Shoes',
+        // Extract images - try to get multiple angles
+        images: extractMultipleImages(bestMatch),
+        // Extract item specifics from title/listing
+        brand: extractBrandFromTitle(bestMatch.title),
+        color: extractColorFromTitle(bestMatch.title),
+        colorway: null, // Not usually in browse results
+        department: inferDepartmentFromTitle(bestMatch.title),
+        silhouette: inferSilhouetteFromTitle(bestMatch.title),
+        type: 'Athletic',
+        // Additional info
+        price: bestMatch.price?.value || null,
+        condition: bestMatch.condition || 'New',
+        itemUrl: bestMatch.itemWebUrl || null
+      };
+
+      console.log(`[eBay:GET] EPID Lookup result:`, {
+        epid: result.epid,
+        title: result.title?.substring(0, 50),
+        images: result.images?.length || 0
+      });
+
+      return res.status(200).json(result);
+      
+    } catch (e) {
+      console.error('[eBay:GET] EPID Lookup error:', e);
+      return res.status(200).json({ found: false, query: searchQuery, error: e.message });
+    }
+  }
+
   // Debug/diagnose mode
   if (query.debug === '1' || query.diagnose === 'true') {
     const envCheck = validateAndLogEnv();
