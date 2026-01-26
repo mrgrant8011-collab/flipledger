@@ -1646,11 +1646,11 @@ async function createSingleListing(headers, item, config) {
   const { merchantLocationKey, policies, publishImmediately = true } = config;
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Build SKU from base SKU + size
+  // Build SKU from base SKU + size (alphanumeric only - eBay requirement)
   // ─────────────────────────────────────────────────────────────────────────
-  const baseSku = (item.sku || item.styleId || 'ITEM').replace(/[^a-zA-Z0-9\-]/g, '');
-  const sizeClean = String(item.size || '').replace(/[^a-zA-Z0-9.]/g, '');
-  const sku = item.size ? `${baseSku}-${sizeClean}`.substring(0, 50) : baseSku.substring(0, 50);
+  const baseSku = (item.sku || item.styleId || 'ITEM').replace(/[^a-zA-Z0-9]/g, '');
+  const sizeClean = String(item.size || '').replace(/[^a-zA-Z0-9]/g, '');
+  const sku = item.size ? `${baseSku}S${sizeClean}`.substring(0, 50) : baseSku.substring(0, 50);
 
   // Build title with size
   const baseTitle = item.name || item.title || 'Item';
