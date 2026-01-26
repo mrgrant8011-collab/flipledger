@@ -70,14 +70,22 @@ Questions? Message me before purchasing!`
       // Build description
       const description = buildDescription(item, catalogData);
       
+      // Build title with correct size
+      const baseTitle = (catalogData?.title || item.name || 'Unknown Product')
+        .replace(/\s*Size\s+[\d\.]+[A-Z]?\s*/gi, ' ')  // Remove any existing size
+        .replace(/\s*Men'?s?\s*Size\s*/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const titleWithSize = `${baseTitle} Size ${item.size}`;
+      
       return {
         ...item,
         id: `${item.sku}-${item.size}-${Date.now()}`,
         // EPID data (from eBay Catalog)
         epid: catalogData?.epid || null,
         epidFound: !!catalogData?.epid,
-        // Title - prefer EPID, fallback to StockX
-        title: catalogData?.title || item.name || 'Unknown Product',
+        // Title - with correct size appended
+        title: titleWithSize,
         titleSource: catalogData?.title ? 'ebay' : 'stockx',
         // Category
         categoryId: catalogData?.categoryId || '15709',
