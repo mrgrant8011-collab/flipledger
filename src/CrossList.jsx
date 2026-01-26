@@ -14,6 +14,68 @@ import ListingReview from './ListingReview';
 
 const CACHE_KEYS = { SX: 'fl_crosslist_sx', EB: 'fl_crosslist_eb' };
 
+// ════════════════════════════════════════════════════════════════════════════════
+// CANONICAL EBAY SKU BUILDER - MUST MATCH SERVER EXACTLY (api/ebay-listings.js)
+// ════════════════════════════════════════════════════════════════════════════════
+/**
+ * Create an eBay-safe SKU from base SKU + size
+ * eBay requires: alphanumeric only, max 50 chars
+ * 
+ * @param {string} baseSku - Original SKU (e.g., "CZ0775-133")
+ * @param {string} size - Size (e.g., "9W", "10.5", "M 10 / W 11.5")
+ * @returns {string} Sanitized SKU (e.g., "CZ0775133S9W")
+ */
+function makeEbaySku(baseSku, size) {
+  // Uppercase and remove all non-alphanumeric characters
+  const cleanBase = (baseSku || 'ITEM').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const cleanSize = (size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  
+  // Combine with S separator (S is alphanumeric so it's safe)
+  let sku = cleanSize ? `${cleanBase}S${cleanSize}` : cleanBase;
+  
+  // Ensure max 50 chars
+  if (sku.length > 50) {
+    // Keep first 45 chars + simple hash suffix for uniqueness
+    const hash = simpleHash(sku).toString(36).toUpperCase().substring(0, 4);
+    sku = sku.substring(0, 45) + hash;
+  }
+  
+  return sku;
+}
+
+/**
+ * Simple hash function for SKU collision avoidance
+ * MUST MATCH SERVER VERSION
+ */
+function simpleHash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash);
+}
+
+/**
+ * Parse an eBay SKU back to base SKU and size
+ * @param {string} ebaySku - Sanitized SKU (e.g., "CZ0775133S9W")
+ * @returns {object} { baseSku: string, size: string }
+ */
+function parseEbaySku(ebaySku) {
+  if (!ebaySku) return { baseSku: '', size: '' };
+  
+  const lastS = ebaySku.lastIndexOf('S');
+  if (lastS > 0 && lastS < ebaySku.length - 1) {
+    return {
+      baseSku: ebaySku.substring(0, lastS),
+      size: ebaySku.substring(lastS + 1)
+    };
+  }
+  return { baseSku: ebaySku, size: '' };
+}
+// ════════════════════════════════════════════════════════════════════════════════
+
 export default function CrossList({ stockxToken, ebayToken, purchases = [], c }) {
   const [source, setSource] = useState('stockx');
   const [syncing, setSyncing] = useState(false);
@@ -142,7 +204,14 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         const data = await res.json();
         console.log('[CrossList] eBay raw response:', data);
         // FIX: API returns "offers" not "listings"
-        return data.offers || data.listings || [];
+        const offers = data.offers || data.listings || [];
+        
+        // DEBUG: Log sample eBay SKUs for troubleshooting
+        if (offers.length > 0) {
+          console.log('[CrossList] eBay SKU samples:', offers.slice(0, 5).map(o => o.sku));
+        }
+        
+        return offers;
       }
     } catch (e) {
       console.error('[CrossList] eBay sync error:', e);
@@ -159,6 +228,12 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       
       console.log('[CrossList] Synced:', sx.length, 'StockX,', eb.length, 'eBay');
       
+      // DEBUG: Show how many eBay offers we're working with
+      if (eb.length > 0) {
+        console.log('[CrossList] eBay offers received:', eb.length);
+        console.log('[CrossList] Sample eBay offer:', eb[0]);
+      }
+      
       // Update state and cache
       setStockxListings(sx);
       setEbayListings(eb);
@@ -169,26 +244,29 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       await loadMappings();
       
       // Auto-detect new mappings from eBay SKUs
-      // New format: CZ0790400S14 (alphanumeric, S separates SKU from size)
+      // Format: CZ0790400S14 (alphanumeric, S separates SKU from size)
       for (const ebItem of eb) {
         const ebSku = ebItem.sku || '';
-        const lastS = ebSku.lastIndexOf('S');
-        const baseSkuClean = lastS > 0 ? ebSku.substring(0, lastS) : ebSku;
-        const size = lastS > 0 ? ebSku.substring(lastS + 1) : '';
+        const { baseSku: baseSkuClean, size } = parseEbaySku(ebSku);
         
-        // Match to StockX by comparing without dashes
-        const sxMatch = sx.find(s => s.sku.replace(/-/g, '') === baseSkuClean && s.size === size);
+        // Match to StockX by comparing cleaned base SKUs
+        const sxMatch = sx.find(s => {
+          const sxBaseClean = (s.sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          const sxSizeClean = (s.size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          return sxBaseClean === baseSkuClean && sxSizeClean === size;
+        });
+        
         const baseSku = sxMatch?.sku || baseSkuClean; // Use original StockX SKU if found
         
         const existingMapping = mappings.find(m => 
           m.ebay_offer_id === ebItem.offerId || 
-          (m.sku.replace(/-/g, '') === baseSkuClean && m.size === size && m.status === 'active')
+          (m.ebay_sku === ebSku && m.status === 'active')
         );
         
         if (!existingMapping && ebItem.offerId) {
           await insertMapping({
             sku: baseSku,
-            size,
+            size: sxMatch?.size || size,
             stockx_listing_id: sxMatch?.listingId || null,
             ebay_offer_id: ebItem.offerId,
             ebay_listing_id: ebItem.listingId || null,
@@ -223,6 +301,24 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
   };
 
   // ============================================
+  // BUILD EBAY SKU SET FOR FAST LOOKUP
+  // ============================================
+  const ebaySkuSet = useMemo(() => {
+    const set = new Set();
+    const skuToOffer = new Map();
+    
+    ebayListings.forEach(eb => {
+      if (eb.sku) {
+        set.add(eb.sku);
+        skuToOffer.set(eb.sku, eb);
+      }
+    });
+    
+    console.log('[CrossList] Built eBay SKU set with', set.size, 'SKUs');
+    return { set, skuToOffer };
+  }, [ebayListings]);
+
+  // ============================================
   // GROUPED PRODUCTS
   // ============================================
   const stockxProducts = useMemo(() => {
@@ -249,8 +345,17 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         g[sku].colorway = l.colorway;
       }
       
+      // FIX: Use canonical makeEbaySku() for matching instead of string concat
+      const expectedEbaySku = makeEbaySku(sku, l.size);
+      const ebayMatch = ebaySkuSet.skuToOffer.get(expectedEbaySku);
+      
+      // Also check mappings by stockx_listing_id
       const mapping = mappings.find(m => m.stockx_listing_id === l.listingId && m.status === 'active');
-      const ebayMatch = ebayListings.find(eb => (eb.sku || '') === `${sku}-${l.size}`);
+      
+      // DEBUG: Log matching attempt for first few items
+      if (g[sku].sizes.length === 0) {
+        console.log(`[CrossList] Matching ${sku} size ${l.size} → expected eBay SKU: ${expectedEbaySku}, found: ${ebayMatch ? 'YES' : 'NO'}`);
+      }
       
       g[sku].sizes.push({
         ...l,
@@ -258,7 +363,8 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         source: 'stockx',
         isOnEbay: !!(mapping || ebayMatch),
         ebayOfferId: mapping?.ebay_offer_id || ebayMatch?.offerId || null,
-        mappingId: mapping?.id || null
+        mappingId: mapping?.id || null,
+        expectedEbaySku // Store for debugging
       });
     });
     
@@ -268,7 +374,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       listedOnEbay: p.sizes.filter(s => s.isOnEbay).length,
       sizes: p.sizes.sort((a, b) => parseFloat(a.size) - parseFloat(b.size))
     }));
-  }, [stockxListings, ebayListings, mappings]);
+  }, [stockxListings, ebaySkuSet, mappings]);
 
   const inventoryProducts = useMemo(() => {
     const unsold = (purchases || []).filter(p => !p.sold);
@@ -292,7 +398,9 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         g[sku].colorway = p.colorway;
       }
       
-      const ebayMatch = ebayListings.find(eb => (eb.sku || '') === `${sku}-${p.size}`);
+      // FIX: Use canonical makeEbaySku() for matching instead of string concat
+      const expectedEbaySku = makeEbaySku(sku, p.size);
+      const ebayMatch = ebaySkuSet.skuToOffer.get(expectedEbaySku);
       
       g[sku].sizes.push({
         key: `inv_${idx}_${sku}_${p.size}`,
@@ -302,7 +410,8 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         cost: p.cost || 0,
         purchaseId: p.id || idx,
         isOnEbay: !!ebayMatch,
-        ebayOfferId: ebayMatch?.offerId || null
+        ebayOfferId: ebayMatch?.offerId || null,
+        expectedEbaySku // Store for debugging
       });
     });
     
@@ -312,7 +421,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       listedOnEbay: p.sizes.filter(s => s.isOnEbay).length,
       sizes: p.sizes.sort((a, b) => parseFloat(a.size) - parseFloat(b.size))
     }));
-  }, [purchases, ebayListings]);
+  }, [purchases, ebaySkuSet]);
 
   const currentProducts = source === 'stockx' ? stockxProducts : inventoryProducts;
 
@@ -417,7 +526,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       for (const offer of data.createdOffers) {
         const exists = mappings.find(m => 
           m.ebay_offer_id === offer.offerId ||
-          (m.sku === offer.baseSku && m.size === offer.size && m.status === 'active')
+          (m.ebay_sku === offer.ebaySku && m.status === 'active')
         );
         
         if (!exists) {
@@ -505,7 +614,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         for (const offer of (data.createdOffers || [])) {
           const exists = mappings.find(m => 
             m.ebay_offer_id === offer.offerId ||
-            (m.sku === offer.baseSku && m.size === offer.size && m.status === 'active')
+            (m.ebay_sku === offer.ebaySku && m.status === 'active')
           );
           
           if (!exists) {
@@ -541,10 +650,11 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         setSelectedItems(new Set());
         await syncAll();
       } else {
-        // Show detailed error
+        // Show detailed error including SKU that failed
         const errorMsg = data.errors?.[0]?.error || data.error || 'Failed to create listings';
+        const failedSku = data.errors?.[0]?.sku || '';
         const hint = data.errors?.[0]?.hint || '';
-        showToast(`${errorMsg}${hint ? ` - ${hint}` : ''}`, 'error');
+        showToast(`${errorMsg}${failedSku ? ` (SKU: ${failedSku})` : ''}${hint ? ` - ${hint}` : ''}`, 'error');
         console.error('[CrossList] Create errors:', data.errors);
       }
       
@@ -602,117 +712,67 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       return;
     }
     
-    console.log('[CrossList] Checking', activeMappings.length, 'active mappings for oversells');
-    
-    // Get current listings from both platforms
-    const currentStockX = await syncStockX();
-    const currentEbay = await syncEbay();
-    
-    const stockxListingIds = new Set(currentStockX.map(l => l.listingId));
-    const ebayOfferIds = new Set(currentEbay.map(l => l.offerId));
-    
-    let delistedFromEbay = 0;
-    let delistedFromStockX = 0;
-    let errors = [];
+    // Find StockX listings that are sold but still on eBay
+    let oversells = 0;
+    const toRemove = [];
     
     for (const mapping of activeMappings) {
-      const hasStockX = mapping.stockx_listing_id && stockxListingIds.has(mapping.stockx_listing_id);
-      const hasEbay = mapping.ebay_offer_id && ebayOfferIds.has(mapping.ebay_offer_id);
+      // Check if the StockX listing still exists
+      const sxListing = stockxListings.find(s => s.listingId === mapping.stockx_listing_id);
       
-      // Sold on StockX (listing gone) but still on eBay → delist from eBay
-      if (!hasStockX && hasEbay && mapping.stockx_listing_id) {
-        console.log('[Oversell] StockX sold, delisting from eBay:', mapping.ebay_sku);
-        try {
-          const res = await fetch('/api/ebay-listings', {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${ebayToken}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ offerIds: [mapping.ebay_offer_id] })
-          });
-          if (res.ok) {
-            await updateMappingStatus(mapping.ebay_offer_id, 'sold_stockx');
-            delistedFromEbay++;
-          }
-        } catch (e) {
-          errors.push(`eBay ${mapping.ebay_sku}: ${e.message}`);
-        }
-      }
-      
-      // Sold on eBay (listing gone) but still on StockX → delist from StockX
-      if (!hasEbay && hasStockX && mapping.ebay_offer_id) {
-        console.log('[Oversell] eBay sold, delisting from StockX:', mapping.ebay_sku);
-        try {
-          const res = await fetch('/api/stockx-listings', {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${stockxToken}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ listingIds: [mapping.stockx_listing_id] })
-          });
-          if (res.ok) {
-            await updateMappingStatus(mapping.ebay_offer_id, 'sold_ebay');
-            delistedFromStockX++;
-          }
-        } catch (e) {
-          errors.push(`StockX ${mapping.sku}: ${e.message}`);
-        }
-      }
-      
-      // Both gone → mark as sold
-      if (!hasStockX && !hasEbay) {
-        await updateMappingStatus(mapping.ebay_offer_id, 'sold');
+      // If not found in active StockX listings, it might be sold
+      if (mapping.stockx_listing_id && !sxListing && mapping.ebay_offer_id) {
+        toRemove.push(mapping.ebay_offer_id);
+        oversells++;
       }
     }
     
-    await loadMappings();
-    
-    if (delistedFromEbay || delistedFromStockX) {
-      showToast(`🛡️ Oversell prevented! Removed ${delistedFromEbay} from eBay, ${delistedFromStockX} from StockX`);
-    } else if (errors.length) {
-      showToast(`Errors: ${errors.join(', ')}`, 'error');
+    if (toRemove.length > 0) {
+      showToast(`Found ${oversells} potential oversells. Removing from eBay...`);
+      await handleDelistFromEbay(toRemove);
     } else {
-      showToast('✓ All clear - no oversells detected');
+      showToast('No oversells detected ✓');
     }
   };
 
-  // ============================================
-  // RENDER
-  // ============================================
-  const card = { background: c.card, borderRadius: 12, border: `1px solid ${c.border}` };
-
-  // Show Review Screen when active
+  // If showing review screen, render that instead
   if (showReview) {
     return (
       <ListingReview
         items={itemsToReview}
         ebayToken={ebayToken}
-        onBack={handleReviewBack}
         onComplete={handleReviewComplete}
+        onBack={handleReviewBack}
         c={c}
+        publishImmediately={publishImmediately}
       />
     );
   }
 
+  const card = { background: c.card, borderRadius: 12, border: `1px solid ${c.border}` };
+
   return (
-    <div style={{ width: '100%' }}>
+    <div style={{ padding: '20px 0' }}>
+      {/* Toast */}
       {toast && (
-        <div style={{ position: 'fixed', top: 20, right: 20, padding: '12px 20px', background: toast.type === 'error' ? c.red : c.green, borderRadius: 8, color: '#fff', fontWeight: 600, zIndex: 1000, maxWidth: 400 }}>
+        <div style={{ position: 'fixed', top: 20, right: 20, padding: '12px 20px', background: toast.type === 'error' ? '#ef4444' : c.green, color: '#fff', borderRadius: 8, zIndex: 1000, boxShadow: '0 4px 12px rgba(0,0,0,0.3)', fontWeight: 600 }}>
           {toast.msg}
         </div>
       )}
 
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>Cross List</h2>
-          <p style={{ margin: '4px 0 0', fontSize: 13, color: c.textMuted }}>List inventory across StockX & eBay</p>
+          <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Cross-List</h2>
+          <p style={{ margin: '4px 0 0', color: c.textMuted, fontSize: 13 }}>Manage listings across StockX → eBay</p>
         </div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <input type="text" placeholder="Search SKU..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-            style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, width: 160 }} />
-          <button onClick={handleOversellSync}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={handleOversellSync} disabled={syncing}
             style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, fontWeight: 600, cursor: 'pointer' }}>
-            🛡️ Check Sales
+            🔍 Check Oversells
           </button>
           <button onClick={syncAll} disabled={syncing}
-            style={{ padding: '10px 20px', background: c.green, border: 'none', borderRadius: 8, color: '#fff', fontWeight: 700, cursor: syncing ? 'wait' : 'pointer' }}>
+            style={{ padding: '10px 16px', background: c.gold, border: 'none', borderRadius: 8, color: '#000', fontWeight: 700, cursor: syncing ? 'wait' : 'pointer' }}>
             {syncing ? '⏳ Syncing...' : '🔄 Sync'}
           </button>
         </div>
@@ -863,6 +923,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
                 <tr style={{ borderBottom: `1px solid ${c.border}` }}>
                   <th style={{ textAlign: 'left', padding: 4, color: c.textMuted }}>SKU</th>
                   <th style={{ textAlign: 'left', padding: 4, color: c.textMuted }}>Size</th>
+                  <th style={{ textAlign: 'left', padding: 4, color: c.textMuted }}>eBay SKU</th>
                   <th style={{ textAlign: 'left', padding: 4, color: c.textMuted }}>StockX ID</th>
                   <th style={{ textAlign: 'left', padding: 4, color: c.textMuted }}>eBay Offer</th>
                   <th style={{ textAlign: 'left', padding: 4, color: c.textMuted }}>Status</th>
@@ -873,6 +934,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
                   <tr key={m.id} style={{ borderBottom: `1px solid ${c.border}` }}>
                     <td style={{ padding: 4 }}>{m.sku}</td>
                     <td style={{ padding: 4 }}>{m.size}</td>
+                    <td style={{ padding: 4, fontFamily: 'monospace', fontSize: 10 }}>{m.ebay_sku || '—'}</td>
                     <td style={{ padding: 4, color: c.textMuted }}>{m.stockx_listing_id || '—'}</td>
                     <td style={{ padding: 4, color: c.textMuted }}>{m.ebay_offer_id || '—'}</td>
                     <td style={{ padding: 4, color: m.status === 'active' ? c.green : c.red }}>{m.status}</td>
@@ -880,6 +942,33 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
                 ))}
               </tbody>
             </table>
+          )}
+        </div>
+      </details>
+      
+      {/* Debug Info */}
+      <details style={{ marginTop: 8 }}>
+        <summary style={{ cursor: 'pointer', color: c.textMuted, fontSize: 12 }}>
+          🐛 Debug: eBay SKU Matching
+        </summary>
+        <div style={{ ...card, marginTop: 8, padding: 12, fontSize: 11, fontFamily: 'monospace' }}>
+          <div>eBay listings in cache: {ebayListings.length}</div>
+          <div>eBay SKUs in lookup set: {ebaySkuSet.set.size}</div>
+          {ebayListings.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ color: c.textMuted, marginBottom: 4 }}>Sample eBay SKUs:</div>
+              {ebayListings.slice(0, 5).map((eb, i) => (
+                <div key={i}>{eb.sku} → offerId: {eb.offerId?.substring(0, 8)}...</div>
+              ))}
+            </div>
+          )}
+          {stockxListings.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ color: c.textMuted, marginBottom: 4 }}>Sample expected eBay SKUs (from StockX):</div>
+              {stockxListings.slice(0, 5).map((sx, i) => (
+                <div key={i}>{sx.sku} size {sx.size} → {makeEbaySku(sx.sku, sx.size)}</div>
+              ))}
+            </div>
           )}
         </div>
       </details>
