@@ -169,17 +169,20 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       await loadMappings();
       
       // Auto-detect new mappings from eBay SKUs
+      // New format: CZ0790400S14 (alphanumeric, S separates SKU from size)
       for (const ebItem of eb) {
         const ebSku = ebItem.sku || '';
-        const lastDash = ebSku.lastIndexOf('-');
-        const baseSku = lastDash > 0 ? ebSku.substring(0, lastDash) : ebSku;
-        const size = lastDash > 0 ? ebSku.substring(lastDash + 1) : '';
+        const lastS = ebSku.lastIndexOf('S');
+        const baseSkuClean = lastS > 0 ? ebSku.substring(0, lastS) : ebSku;
+        const size = lastS > 0 ? ebSku.substring(lastS + 1) : '';
         
-        const sxMatch = sx.find(s => s.sku === baseSku && s.size === size);
+        // Match to StockX by comparing without dashes
+        const sxMatch = sx.find(s => s.sku.replace(/-/g, '') === baseSkuClean && s.size === size);
+        const baseSku = sxMatch?.sku || baseSkuClean; // Use original StockX SKU if found
         
         const existingMapping = mappings.find(m => 
           m.ebay_offer_id === ebItem.offerId || 
-          (m.sku === baseSku && m.size === size && m.status === 'active')
+          (m.sku.replace(/-/g, '') === baseSkuClean && m.size === size && m.status === 'active')
         );
         
         if (!existingMapping && ebItem.offerId) {
