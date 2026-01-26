@@ -356,7 +356,7 @@ Questions? Message me before purchasing!`
   if (loading) {
     return (
       <div style={{ padding: 40, textAlign: 'center' }}>
-        <div style={{ fontSize: 24, marginBottom: 16 }}>🔍</div>
+        <div style={{ fontSize: 24, marginBottom: 16 }}>{'🔍'}</div>
         <div style={{ color: c.textMuted }}>Searching eBay Catalog for product data...</div>
       </div>
     );
@@ -436,7 +436,7 @@ Questions? Message me before purchasing!`
                   {item.photos[0] ? (
                     <img src={item.photos[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : (
-                    <span style={{ fontSize: 20, opacity: 0.5 }}>📷</span>
+                    <span style={{ fontSize: 20, opacity: 0.5 }}>{'📷'}</span>
                   )}
                 </div>
 
@@ -452,10 +452,10 @@ Questions? Message me before purchasing!`
                     {item.color ? (
                       <span style={{ color: c.green }}>Color: {item.color}</span>
                     ) : (
-                      <span style={{ color: c.gold }}>⚠️ Color needed</span>
+                      <span style={{ color: c.gold }}>{'⚠️'} Color needed</span>
                     )}
                     {item.photos.length === 0 && (
-                      <span style={{ color: c.gold }}>⚠️ Photos needed</span>
+                      <span style={{ color: c.gold }}>{'⚠️'} Photos needed</span>
                     )}
                   </div>
                 </div>
@@ -535,7 +535,7 @@ Questions? Message me before purchasing!`
                     </div>
                     {item.photos.length === 0 && (
                       <div style={{ marginTop: 8, fontSize: 12, color: c.gold }}>
-                        ⚠️ At least 1 photo required. Upload photos above.
+                        {'⚠️'} At least 1 photo required. Upload photos above.
                       </div>
                     )}
                   </div>
@@ -685,7 +685,7 @@ Questions? Message me before purchasing!`
                         fontSize: 12, cursor: 'pointer'
                       }}
                     >
-                      🗑️ Remove from batch
+                      {'🗑️'} Remove from batch
                     </button>
                   </div>
                 </div>
@@ -754,7 +754,7 @@ Questions? Message me before purchasing!`
         border: `1px solid ${c.gold}30`,
         borderRadius: 8
       }}>
-        <div style={{ fontSize: 12, color: c.gold, fontWeight: 600, marginBottom: 4 }}>💡 Tips</div>
+        <div style={{ fontSize: 12, color: c.gold, fontWeight: 600, marginBottom: 4 }}>{'💡'} Tips</div>
         <div style={{ fontSize: 11, color: c.textMuted, lineHeight: 1.5 }}>
           • Items with <span style={{ color: '#3b82f6' }}>✨ EPID</span> have auto-filled data from eBay's catalog<br />
           • Click any item to expand and edit all fields<br />
