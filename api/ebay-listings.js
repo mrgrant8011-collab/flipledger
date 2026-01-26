@@ -133,6 +133,8 @@ export default async function handler(req, res) {
       let paymentPolicyId = process.env.EBAY_PAYMENT_POLICY_ID;
       let returnPolicyId = process.env.EBAY_RETURN_POLICY_ID;
       
+      console.log('[eBay] Env vars:', { fulfillmentPolicyId, paymentPolicyId, returnPolicyId });
+      
       // If not in env vars, try fetching from eBay API
       if (!fulfillmentPolicyId || !paymentPolicyId || !returnPolicyId) {
         try {
