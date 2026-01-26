@@ -157,6 +157,12 @@ export default async function handler(req, res) {
         });
       }
       
+      // ============================================
+      // FIX for error 25002: Ensure merchant location exists
+      // ============================================
+      const merchantLocationKey = await ensureMerchantLocation(baseHeaders);
+      console.log('[eBay] Using merchant location:', merchantLocationKey);
+      
       const results = { created: 0, failed: 0, errors: [], createdOffers: [] };
       
       for (const product of products) {
@@ -213,7 +219,7 @@ export default async function handler(req, res) {
               categoryId: '15709',
               pricingSummary: { price: { value: String(price), currency: 'USD' } },
               listingPolicies: { fulfillmentPolicyId, paymentPolicyId, returnPolicyId },
-              merchantLocationKey: 'default'
+              merchantLocationKey: merchantLocationKey
             };
             
             // FIX: Use baseHeaders (includes Accept-Language: en-US)
@@ -389,6 +395,85 @@ export default async function handler(req, res) {
   }
 
   return res.status(405).json({ error: 'Method not allowed' });
+}
+
+// ============================================
+// Helper: Ensure merchant location exists (fixes error 25002)
+// ============================================
+async function ensureMerchantLocation(headers) {
+  const LOCATION_KEY = 'flipledger-default';
+  
+  // First, check if location already exists
+  try {
+    const checkRes = await fetch(
+      `https://api.ebay.com/sell/inventory/v1/location/${LOCATION_KEY}`,
+      { method: 'GET', headers }
+    );
+    
+    if (checkRes.ok) {
+      console.log('[eBay] Merchant location exists:', LOCATION_KEY);
+      return LOCATION_KEY;
+    }
+  } catch (e) {
+    console.log('[eBay] Location check failed, will try to create');
+  }
+  
+  // Location doesn't exist, create it
+  // You can customize this address - it's used for "item location" display on eBay
+  const locationData = {
+    location: {
+      address: {
+        addressLine1: process.env.EBAY_LOCATION_ADDRESS || '123 Main St',
+        city: process.env.EBAY_LOCATION_CITY || 'Los Angeles',
+        stateOrProvince: process.env.EBAY_LOCATION_STATE || 'CA',
+        postalCode: process.env.EBAY_LOCATION_ZIP || '90001',
+        country: 'US'
+      }
+    },
+    locationTypes: ['WAREHOUSE'],
+    name: 'FlipLedger Warehouse',
+    merchantLocationStatus: 'ENABLED'
+  };
+  
+  console.log('[eBay] Creating merchant location:', LOCATION_KEY);
+  
+  const createRes = await fetch(
+    `https://api.ebay.com/sell/inventory/v1/location/${LOCATION_KEY}`,
+    {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(locationData)
+    }
+  );
+  
+  if (createRes.ok || createRes.status === 204) {
+    console.log('[eBay] Merchant location created successfully');
+    return LOCATION_KEY;
+  }
+  
+  // If creation failed, try to get any existing location
+  const listRes = await fetch(
+    'https://api.ebay.com/sell/inventory/v1/location?limit=1',
+    { method: 'GET', headers }
+  );
+  
+  if (listRes.ok) {
+    const listData = await listRes.json();
+    if (listData.locations && listData.locations.length > 0) {
+      const existingKey = listData.locations[0].merchantLocationKey;
+      console.log('[eBay] Using existing location:', existingKey);
+      return existingKey;
+    }
+  }
+  
+  // Last resort - throw error with helpful message
+  const errBody = await createRes.text();
+  console.error('[eBay] Failed to create/find merchant location:', errBody);
+  throw new Error(
+    'Could not create merchant location. Please create one manually in eBay Seller Hub ' +
+    '(Account Settings → Business Policies → Shipping → Location) or set EBAY_LOCATION_* env vars. ' +
+    `eBay error: ${parseEbayError(errBody)}`
+  );
 }
 
 // ============================================
