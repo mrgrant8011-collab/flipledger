@@ -1,13 +1,14 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════
- * EBAY LISTINGS API - v6.0 Production
+ * EBAY LISTINGS API - v7.0 Production (Fixed Item Specifics)
  * ═══════════════════════════════════════════════════════════════════════════════════
  * 
- * Complete rewrite with proper eBay API flow:
+ * Complete fix for eBay listing creation with proper:
  * 1. Dynamic category resolution via Browse API
  * 2. Required aspects fetched via Taxonomy API
- * 3. Correct inventory item → offer → publish flow
- * 4. Proper StockX → eBay field mapping
+ * 3. Smart color/brand/department extraction from product name
+ * 4. Validation before API calls
+ * 5. Correct inventory item → offer → publish flow
  * 
  * Endpoints:
  *   GET    /api/ebay-listings              - List active eBay listings
@@ -41,6 +42,389 @@ const FALLBACK_CATEGORIES = {
 
 const PRICE_MARKUP = 1.10; // 10% markup to cover eBay fees
 const LOCATION_KEY = 'flipledger-warehouse';
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// COLOR EXTRACTION - Comprehensive color inference from product names
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Known sneaker color mappings - common colorway names to eBay-accepted colors
+ */
+const COLOR_MAPPINGS = {
+  // Standard colors
+  'black': 'Black',
+  'white': 'White',
+  'red': 'Red',
+  'blue': 'Blue',
+  'green': 'Green',
+  'yellow': 'Yellow',
+  'orange': 'Orange',
+  'purple': 'Purple',
+  'pink': 'Pink',
+  'brown': 'Brown',
+  'gray': 'Gray',
+  'grey': 'Gray',
+  'navy': 'Blue',
+  'beige': 'Beige',
+  'cream': 'Beige',
+  'tan': 'Tan',
+  'gold': 'Gold',
+  'silver': 'Silver',
+  'bronze': 'Bronze',
+  'ivory': 'Ivory',
+  'maroon': 'Red',
+  'burgundy': 'Red',
+  'teal': 'Green',
+  'turquoise': 'Blue',
+  'coral': 'Orange',
+  'salmon': 'Pink',
+  'khaki': 'Beige',
+  'olive': 'Green',
+  'mint': 'Green',
+  'lavender': 'Purple',
+  'violet': 'Purple',
+  'cyan': 'Blue',
+  'magenta': 'Pink',
+  'indigo': 'Blue',
+  
+  // Sneaker-specific colorway names
+  'bred': 'Black',           // Black/Red
+  'royal': 'Blue',           // Royal Blue
+  'chicago': 'Red',          // Red/White/Black
+  'concord': 'White',        // White/Black/Purple
+  'infrared': 'Red',         // Infrared Red
+  'fire red': 'Red',
+  'university blue': 'Blue',
+  'unc': 'Blue',             // UNC Blue
+  'georgetown': 'Gray',      // Georgetown Gray
+  'cool grey': 'Gray',
+  'cement': 'Gray',          // Cement Gray
+  'shadow': 'Gray',
+  'obsidian': 'Blue',        // Dark Blue
+  'midnight navy': 'Blue',
+  'panda': 'Black',          // Black/White
+  'reverse panda': 'White',
+  'sail': 'White',
+  'bone': 'White',
+  'phantom': 'Gray',
+  'summit white': 'White',
+  'triple white': 'White',
+  'triple black': 'Black',
+  'core black': 'Black',
+  'cloud white': 'White',
+  'zebra': 'White',
+  'beluga': 'Gray',
+  'turtle dove': 'Gray',
+  'pirate black': 'Black',
+  'moonrock': 'Gray',
+  'oxford tan': 'Tan',
+  'sesame': 'Beige',
+  'butter': 'Yellow',
+  'cream white': 'White',
+  'static': 'White',
+  'clay': 'Orange',
+  'citrin': 'Yellow',
+  'synth': 'Pink',
+  'glow': 'Green',
+  'yecheil': 'Black',
+  'yeezreel': 'Green',
+  'carbon': 'Gray',
+  'ash': 'Gray',
+  'light bone': 'White',
+  'muslin': 'Beige',
+  'fossil': 'Beige',
+  'atmosphere': 'Gray',
+  'desert sand': 'Beige',
+  'particle': 'Pink',
+  'vast grey': 'Gray',
+  'wolf grey': 'Gray',
+  'photon dust': 'Gray',
+  'barely': 'Pink',
+  'volt': 'Yellow',
+  'electric green': 'Green',
+  'hyper royal': 'Blue',
+  'dark mocha': 'Brown',
+  'travis scott': 'Brown',   // Often brown-based
+  'travis': 'Brown',
+  'off-white': 'White',
+  'off white': 'White',
+  'reverse mocha': 'Brown',
+  'low mocha': 'Brown',
+  'mochas': 'Brown',
+  'mocha': 'Brown',
+  'baroque brown': 'Brown',
+  'cacao': 'Brown',
+  'palomino': 'Brown',
+  'wheat': 'Brown',
+  'flax': 'Brown',
+  'denim': 'Blue',
+  'washed denim': 'Blue',
+  'laser orange': 'Orange',
+  'lucky green': 'Green',
+  'pine green': 'Green',
+  'court purple': 'Purple',
+  'metallic': 'Silver',
+  'metallic gold': 'Gold',
+  'metallic silver': 'Silver',
+  'chrome': 'Silver',
+  'pewter': 'Gray',
+  'multicolor': 'Multicolor',
+  'multi': 'Multicolor',
+  'multi-color': 'Multicolor',
+  'rainbow': 'Multicolor',
+  'tie-dye': 'Multicolor',
+  'tie dye': 'Multicolor',
+  'what the': 'Multicolor',
+};
+
+/**
+ * Extract color from StockX colorway string
+ * StockX format: "Black/White/University Red" or "CORE BLACK/CORE BLACK/GUM"
+ */
+function extractColorFromColorway(colorway) {
+  if (!colorway) return null;
+  
+  // Take the first color from slash-separated list
+  const primaryColor = colorway.split('/')[0].trim().toLowerCase();
+  
+  // Direct match in our mapping
+  if (COLOR_MAPPINGS[primaryColor]) {
+    return COLOR_MAPPINGS[primaryColor];
+  }
+  
+  // Check if any known color is contained in the primary color string
+  for (const [key, value] of Object.entries(COLOR_MAPPINGS)) {
+    if (primaryColor.includes(key)) {
+      return value;
+    }
+  }
+  
+  // Capitalize first letter as fallback
+  return primaryColor.charAt(0).toUpperCase() + primaryColor.slice(1);
+}
+
+/**
+ * Extract color from product name/title
+ * Searches for known color keywords in the product name
+ */
+function extractColorFromProductName(productName) {
+  if (!productName) return null;
+  
+  const nameLower = productName.toLowerCase();
+  
+  // Check for exact colorway names first (longer matches)
+  const sortedMappings = Object.entries(COLOR_MAPPINGS)
+    .sort((a, b) => b[0].length - a[0].length); // Sort by length descending
+  
+  for (const [key, value] of sortedMappings) {
+    // Use word boundary matching for multi-word keys
+    const regex = new RegExp(`\\b${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+    if (regex.test(nameLower)) {
+      return value;
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Get color with smart fallback chain:
+ * 1. StockX colorway field
+ * 2. Explicit color field
+ * 3. Extract from product name
+ * 4. Return null (will be handled by validation)
+ */
+function getColor(item) {
+  // 1. Try colorway field
+  if (item.colorway) {
+    const color = extractColorFromColorway(item.colorway);
+    if (color) {
+      console.log(`[Color] Extracted "${color}" from colorway: ${item.colorway}`);
+      return color;
+    }
+  }
+  
+  // 2. Try explicit color field
+  if (item.color) {
+    const colorValue = Array.isArray(item.color) ? item.color[0] : item.color;
+    if (colorValue) {
+      const normalized = COLOR_MAPPINGS[colorValue.toLowerCase()] || colorValue;
+      console.log(`[Color] Using explicit color field: ${normalized}`);
+      return normalized;
+    }
+  }
+  
+  // 3. Try to extract from product name
+  const productName = item.name || item.title || item.productName;
+  if (productName) {
+    const color = extractColorFromProductName(productName);
+    if (color) {
+      console.log(`[Color] Extracted "${color}" from product name: ${productName}`);
+      return color;
+    }
+  }
+  
+  console.log(`[Color] Could not determine color for: ${productName || 'unknown product'}`);
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// BRAND EXTRACTION - Infer brand from product name
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+const KNOWN_BRANDS = [
+  'Nike', 'Air Jordan', 'Jordan', 'Adidas', 'Yeezy', 'New Balance', 
+  'Converse', 'Vans', 'Puma', 'Reebok', 'ASICS', 'Salomon',
+  'Saucony', 'Brooks', 'Hoka', 'On', 'Under Armour', 'Fila',
+  'Timberland', 'Dr. Martens', 'Birkenstock', 'Crocs', 'UGG',
+  'Balenciaga', 'Gucci', 'Louis Vuitton', 'Dior', 'Prada',
+  'Off-White', 'Fear of God', 'Essentials', 'Supreme', 'Stussy',
+  'A Bathing Ape', 'BAPE', 'Palace', 'Travis Scott', 'Cactus Jack'
+];
+
+/**
+ * Extract brand from product name if not provided
+ */
+function getBrand(item) {
+  // Use explicit brand if provided
+  if (item.brand && item.brand.trim()) {
+    return item.brand.trim();
+  }
+  
+  const productName = (item.name || item.title || item.productName || '').toLowerCase();
+  
+  // Check for known brands in product name
+  for (const brand of KNOWN_BRANDS) {
+    if (productName.includes(brand.toLowerCase())) {
+      // Special handling for Jordan vs Nike
+      if (brand.toLowerCase() === 'jordan' && productName.includes('air jordan')) {
+        return 'Jordan';
+      }
+      if (brand.toLowerCase() === 'jordan' && !productName.includes('jordan')) {
+        continue; // Skip if "jordan" is part of another word
+      }
+      console.log(`[Brand] Extracted "${brand}" from product name`);
+      return brand;
+    }
+  }
+  
+  // Check for "Yeezy" pattern (Adidas Yeezy)
+  if (productName.includes('yeezy')) {
+    return 'adidas';
+  }
+  
+  console.log(`[Brand] Could not determine brand, using "Unbranded"`);
+  return 'Unbranded';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// SIZE PARSING - Handle various StockX size formats
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Parse size string to extract numeric size and department
+ * StockX formats: "10", "10.5", "10W", "10Y", "10C", "10 GS", "Men's 10", "Women's 8"
+ */
+function parseSize(sizeStr) {
+  if (!sizeStr) {
+    return { numericSize: null, department: 'Men', sizeType: 'US Shoe Size' };
+  }
+  
+  const str = String(sizeStr).trim().toUpperCase();
+  
+  // Determine department from size notation
+  let department = 'Men';
+  let sizeType = 'US Shoe Size';
+  
+  if (str.includes('W') || str.includes('WOMEN') || str.includes("WOMEN'S")) {
+    department = 'Women';
+    sizeType = "US Shoe Size (Women's)";
+  } else if (str.includes('GS') || str.includes('GRADE SCHOOL')) {
+    department = 'Unisex Kids';
+    sizeType = 'US Shoe Size (Youth)';
+  } else if (str.includes('PS') || str.includes('PRESCHOOL') || str.includes('PRE-SCHOOL')) {
+    department = 'Unisex Kids';
+    sizeType = 'US Shoe Size (Kids)';
+  } else if (str.includes('TD') || str.includes('TODDLER')) {
+    department = 'Unisex Kids';
+    sizeType = 'US Shoe Size (Toddler)';
+  } else if (str.includes('C') && !str.includes('10C')) { // C for child, but not 10C pattern
+    department = 'Unisex Kids';
+    sizeType = 'US Shoe Size (Kids)';
+  } else if (str.includes('Y') || str.includes('YOUTH')) {
+    department = 'Unisex Kids';
+    sizeType = 'US Shoe Size (Youth)';
+  } else if (str.includes('M') || str.includes('MEN') || str.includes("MEN'S")) {
+    department = 'Men';
+    sizeType = "US Shoe Size (Men's)";
+  }
+  
+  // Extract numeric size
+  const numericMatch = str.match(/[\d]+\.?[\d]*/);
+  const numericSize = numericMatch ? numericMatch[0] : null;
+  
+  // Additional check: very small sizes are likely kids
+  if (numericSize && parseFloat(numericSize) < 4 && department === 'Men') {
+    department = 'Unisex Kids';
+    sizeType = 'US Shoe Size (Kids)';
+  }
+  
+  console.log(`[Size] Parsed "${sizeStr}" → size: ${numericSize}, dept: ${department}`);
+  
+  return { numericSize, department, sizeType };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// SHOE TYPE DETECTION - Required for footwear categories
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Determine shoe type from product name
+ */
+function getShoeType(productName, brand) {
+  const name = (productName || '').toLowerCase();
+  const brandLower = (brand || '').toLowerCase();
+  
+  // Basketball shoes
+  if (name.includes('jordan') || name.includes('lebron') || name.includes('kobe') ||
+      name.includes('kyrie') || name.includes('basketball')) {
+    return 'Basketball Shoes';
+  }
+  
+  // Running shoes
+  if (name.includes('running') || name.includes('ultra boost') || name.includes('ultraboost') ||
+      name.includes('pegasus') || name.includes('vapormax') || name.includes('zoom fly') ||
+      brandLower.includes('hoka') || brandLower.includes('brooks')) {
+    return 'Running Shoes';
+  }
+  
+  // Skateboarding
+  if (name.includes('sb ') || name.includes(' sb') || name.includes('skate') ||
+      name.includes('dunk') && name.includes('low')) {
+    return 'Skateboarding Shoes';
+  }
+  
+  // Boots
+  if (name.includes('boot') || name.includes('timberland')) {
+    return 'Boots';
+  }
+  
+  // Sandals/Slides
+  if (name.includes('slide') || name.includes('sandal') || name.includes('yeezy slide') ||
+      name.includes('foam runner')) {
+    return 'Sandals';
+  }
+  
+  // Casual/Lifestyle sneakers (default for most sneakers)
+  if (name.includes('air force') || name.includes('af1') || name.includes('air max') ||
+      name.includes('stan smith') || name.includes('superstar') || name.includes('old skool') ||
+      name.includes('chuck taylor') || name.includes('all star')) {
+    return 'Athletic Shoes';
+  }
+  
+  // Default to Athletic Shoes for sneaker app
+  return 'Athletic Shoes';
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════════
 // HEADERS - Per eBay REST API Documentation
@@ -145,11 +529,6 @@ function validateAndLogEnv() {
 /**
  * Search eBay Browse API to find the best category for a product
  * Returns categoryId and categoryName
- * 
- * Strategy:
- * 1. Search for the product title on eBay
- * 2. Extract categoryId from the first matching item
- * 3. Fall back to predefined categories if search fails
  */
 async function resolveCategoryFromBrowseAPI(headers, productTitle, brand) {
   console.log(`[eBay:Category] Resolving category for: "${productTitle}"`);
@@ -166,9 +545,9 @@ async function resolveCategoryFromBrowseAPI(headers, productTitle, brand) {
     const res = await fetch(url, {
       method: 'GET',
       headers: {
-        ...headers,
-        // Browse API doesn't need Content-Language
-        'Content-Language': undefined
+        'Authorization': headers['Authorization'],
+        'Accept': 'application/json',
+        'X-EBAY-C-MARKETPLACE-ID': EBAY_MARKETPLACE_ID
       }
     });
     
@@ -216,7 +595,7 @@ function getFallbackCategory(productTitle, brand) {
   const combined = `${titleLower} ${brandLower}`;
   
   // Check for shoe/sneaker keywords
-  if (combined.match(/shoe|sneaker|jordan|yeezy|dunk|air max|air force|nike|adidas|new balance|converse|vans|boot/)) {
+  if (combined.match(/shoe|sneaker|jordan|yeezy|dunk|air max|air force|nike|adidas|new balance|converse|vans|boot|slide|foam runner/)) {
     return { categoryId: FALLBACK_CATEGORIES.shoes, categoryName: 'Athletic Shoes (Fallback)' };
   }
   
@@ -273,6 +652,7 @@ async function getCategoryAspects(headers, categoryId) {
     );
     
     console.log(`[eBay:Taxonomy] ✓ Found ${required.length} required, ${recommended.length} recommended aspects`);
+    console.log(`[eBay:Taxonomy] Required aspects: ${required.map(a => a.localizedAspectName).join(', ')}`);
     
     return {
       required: required.map(a => ({
@@ -297,144 +677,159 @@ async function getCategoryAspects(headers, categoryId) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════
-// ASPECT MAPPING - Map StockX fields to eBay aspects
+// ASPECT BUILDING - Build complete, validated eBay aspects
 // ═══════════════════════════════════════════════════════════════════════════════════
 
 /**
  * Build eBay product aspects from StockX item data
- * Handles the mapping of StockX fields to eBay's expected aspect names
+ * Returns { aspects, missingRequired } for validation
  */
 function buildProductAspects(item, categoryAspects) {
   const aspects = {};
+  const missingRequired = [];
   
   // ─────────────────────────────────────────────────────────────────────────
-  // Core aspects that are almost always required for shoes
+  // Extract all values using smart inference
   // ─────────────────────────────────────────────────────────────────────────
   
-  // Brand - Required for most categories
-  if (item.brand) {
-    aspects['Brand'] = [item.brand];
-  } else {
-    aspects['Brand'] = ['Unbranded'];
-  }
+  const productName = item.name || item.title || item.productName || '';
+  const brand = getBrand(item);
+  const color = getColor(item);
+  const sizeInfo = parseSize(item.size);
+  const shoeType = getShoeType(productName, brand);
   
   // ─────────────────────────────────────────────────────────────────────────
-  // Shoe-specific aspects
+  // Set Brand - REQUIRED
   // ─────────────────────────────────────────────────────────────────────────
+  aspects['Brand'] = [brand];
   
-  if (item.size) {
-    const sizeStr = String(item.size);
+  // ─────────────────────────────────────────────────────────────────────────
+  // Set Size aspects - REQUIRED for footwear
+  // ─────────────────────────────────────────────────────────────────────────
+  if (sizeInfo.numericSize) {
+    aspects['US Shoe Size'] = [sizeInfo.numericSize];
     
-    // US Shoe Size - Clean up the size value
-    const cleanSize = sizeStr.replace(/[^\d.]/g, '');
-    if (cleanSize) {
-      aspects['US Shoe Size'] = [cleanSize];
-    }
-    
-    // Department - Determine from size notation
-    if (sizeStr.toUpperCase().includes('W') || sizeStr.toUpperCase().includes('WOMEN')) {
-      aspects['Department'] = ['Women'];
-      // Women's shoe sizes
-      aspects['US Shoe Size (Women\'s)'] = [cleanSize];
-    } else if (sizeStr.toUpperCase().includes('Y') || sizeStr.toUpperCase().includes('GS') || 
-               sizeStr.toUpperCase().includes('PS') || sizeStr.toUpperCase().includes('TD') ||
-               sizeStr.toUpperCase().includes('C')) {
-      // Youth/Kids sizes: GS (Grade School), PS (Preschool), TD (Toddler), C (Child)
-      aspects['Department'] = ['Kids'];
-    } else if (parseFloat(cleanSize) < 4) {
-      // Very small sizes are likely kids
-      aspects['Department'] = ['Kids'];
-    } else {
-      aspects['Department'] = ['Men'];
-      aspects['US Shoe Size (Men\'s)'] = [cleanSize];
+    // Add gender-specific size
+    if (sizeInfo.sizeType === "US Shoe Size (Men's)") {
+      aspects["US Shoe Size (Men's)"] = [sizeInfo.numericSize];
+    } else if (sizeInfo.sizeType === "US Shoe Size (Women's)") {
+      aspects["US Shoe Size (Women's)"] = [sizeInfo.numericSize];
     }
   }
   
   // ─────────────────────────────────────────────────────────────────────────
-  // Extract additional details from StockX data
+  // Set Department - REQUIRED
+  // ─────────────────────────────────────────────────────────────────────────
+  aspects['Department'] = [sizeInfo.department];
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // Set Color - REQUIRED (most footwear categories)
+  // ─────────────────────────────────────────────────────────────────────────
+  if (color) {
+    aspects['Color'] = [color];
+  }
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // Set Shoe Type/Style - REQUIRED for Athletic Shoes
+  // ─────────────────────────────────────────────────────────────────────────
+  aspects['Type'] = [shoeType];
+  aspects['Style'] = ['Sneaker'];
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // Set additional aspects
   // ─────────────────────────────────────────────────────────────────────────
   
-  // Style Code (often in StockX data as styleId or sku)
-  if (item.styleId || item.styleCode) {
-    aspects['Style Code'] = [item.styleId || item.styleCode];
-  }
-  
-  // Color - Extract from colorway or title
-  if (item.colorway) {
-    // StockX colorway format: "Black/White/University Red"
-    const primaryColor = item.colorway.split('/')[0].trim();
-    aspects['Color'] = [primaryColor];
-    // Some categories want the full colorway
-    aspects['Colorway'] = [item.colorway];
-  } else if (item.color) {
-    aspects['Color'] = [Array.isArray(item.color) ? item.color[0] : item.color];
-  }
-  
-  // Model - Extract from title if not provided
+  // Model - if available
   if (item.model) {
     aspects['Model'] = [item.model];
   }
   
-  // Silhouette/Type - Common for sneakers
+  // Silhouette - if available (common for sneakers)
   if (item.silhouette) {
     aspects['Silhouette'] = [item.silhouette];
   }
   
-  // Type - Athletic shoes category often requires this
-  aspects['Type'] = ['Athletic'];
+  // Style Code - if available
+  if (item.styleId || item.styleCode) {
+    aspects['Style Code'] = [item.styleId || item.styleCode];
+  }
   
-  // Performance/Activity - Common required aspect
+  // Full colorway for categories that support it
+  if (item.colorway) {
+    aspects['Colorway'] = [item.colorway];
+  }
+  
+  // Performance/Activity
   aspects['Performance/Activity'] = ['Casual'];
   
-  // Upper Material - If available
+  // Closure - default for sneakers
+  aspects['Closure'] = ['Lace Up'];
+  
+  // Outsole Material - common default
+  aspects['Outsole Material'] = ['Rubber'];
+  
+  // Upper Material - if provided
   if (item.upperMaterial) {
     aspects['Upper Material'] = [item.upperMaterial];
   }
   
   // ─────────────────────────────────────────────────────────────────────────
-  // Fill in missing required aspects with sensible defaults
+  // Validate against required aspects from Taxonomy API
   // ─────────────────────────────────────────────────────────────────────────
   
   if (categoryAspects?.required) {
     for (const reqAspect of categoryAspects.required) {
       const aspectName = reqAspect.name;
       
-      // Skip if we already have this aspect
-      if (aspects[aspectName]) continue;
+      // Skip if we have this aspect
+      if (aspects[aspectName] && aspects[aspectName][0]) {
+        continue;
+      }
       
-      // Try to provide reasonable defaults for common required aspects
+      // Try to provide fallback for known aspects
       switch (aspectName) {
-        case 'Department':
-          if (!aspects['Department']) {
-            aspects['Department'] = ['Men']; // Default to Men's
+        case 'Brand':
+          // Already set above
+          break;
+        case 'Color':
+          if (!aspects['Color']) {
+            missingRequired.push({
+              aspect: 'Color',
+              message: 'Color is required but could not be determined from product data. Please provide colorway or color field.'
+            });
           }
           break;
+        case 'Department':
+          // Already set above
+          break;
+        case 'US Shoe Size':
+        case "US Shoe Size (Men's)":
+        case "US Shoe Size (Women's)":
+          if (!sizeInfo.numericSize) {
+            missingRequired.push({
+              aspect: aspectName,
+              message: 'Size is required but not provided.'
+            });
+          }
+          break;
+        case 'Type':
         case 'Style':
-          aspects['Style'] = ['Sneaker'];
-          break;
-        case 'Closure':
-          aspects['Closure'] = ['Lace Up'];
-          break;
-        case 'Features':
-          aspects['Features'] = ['Cushioned'];
-          break;
-        case 'Outsole Material':
-          aspects['Outsole Material'] = ['Rubber'];
+          // Already set above
           break;
         case 'Character':
-          // Only add if we have a value, otherwise skip (not always required)
+        case 'Character Family':
+          // These are optional for non-character items
           break;
         default:
-          // For other required aspects, check if there are valid values we can use
-          if (reqAspect.values && reqAspect.values.length > 0) {
-            console.log(`[eBay:Aspects] Missing required aspect "${aspectName}" - no default available`);
-          }
+          // Log but don't block for other aspects
+          console.log(`[eBay:Aspects] Missing aspect "${aspectName}" - may cause listing issues`);
       }
     }
   }
   
   console.log('[eBay:Aspects] Built aspects:', JSON.stringify(aspects, null, 2));
-  return aspects;
+  
+  return { aspects, missingRequired };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════
@@ -547,9 +942,6 @@ async function ensureMerchantLocation(headers) {
 /**
  * Create or replace an inventory item
  * PUT /sell/inventory/v1/inventory_item/{sku}
- * 
- * This creates the product in eBay's inventory system.
- * The inventory item contains: product details, aspects, images, condition, availability
  */
 async function createInventoryItem(headers, sku, itemData, aspects) {
   console.log(`[eBay:Inventory] ═══════════════════════════════════════════════`);
@@ -567,10 +959,6 @@ async function createInventoryItem(headers, sku, itemData, aspects) {
     },
     
     // Condition - required
-    // Valid values: NEW, LIKE_NEW, NEW_OTHER, NEW_WITH_DEFECTS, 
-    // MANUFACTURER_REFURBISHED, CERTIFIED_REFURBISHED, EXCELLENT_REFURBISHED,
-    // VERY_GOOD_REFURBISHED, GOOD_REFURBISHED, SELLER_REFURBISHED,
-    // USED_EXCELLENT, USED_VERY_GOOD, USED_GOOD, USED_ACCEPTABLE, FOR_PARTS_OR_NOT_WORKING
     condition: mapCondition(condition),
     
     // Product details - required
@@ -730,8 +1118,6 @@ function buildImageUrls(primaryImage, additionalImages) {
 /**
  * Create an offer for an inventory item
  * POST /sell/inventory/v1/offer
- * 
- * The offer defines: price, category, policies, and marketplace details
  */
 async function createOffer(headers, sku, offerData, policies, merchantLocationKey, categoryId) {
   console.log(`[eBay:Offer] ═══════════════════════════════════════════════`);
@@ -911,16 +1297,18 @@ async function publishOffer(headers, offerId) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════
-// CREATE SINGLE LISTING - Complete flow
+// CREATE SINGLE LISTING - Complete flow with validation
 // ═══════════════════════════════════════════════════════════════════════════════════
 
 /**
  * Creates a single eBay listing using the complete flow:
- * 1. Resolve category via Browse API
- * 2. Fetch required aspects via Taxonomy API
- * 3. Create inventory item with proper aspects
- * 4. Create offer with resolved category
- * 5. Publish offer to make it live
+ * 1. Validate required data before making API calls
+ * 2. Resolve category via Browse API
+ * 3. Fetch required aspects via Taxonomy API
+ * 4. Build and validate aspects
+ * 5. Create inventory item with proper aspects
+ * 6. Create offer with resolved category
+ * 7. Publish offer to make it live
  */
 async function createSingleListing(headers, item, config) {
   const { merchantLocationKey, policies } = config;
@@ -972,12 +1360,31 @@ async function createSingleListing(headers, item, config) {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Build product aspects with proper mapping
+  // Build and VALIDATE product aspects
   // ─────────────────────────────────────────────────────────────────────────
-  const productAspects = buildProductAspects({
+  const { aspects: productAspects, missingRequired } = buildProductAspects({
     ...item,
     title: title
   }, categoryAspects);
+
+  // Check for missing required aspects BEFORE making API calls
+  if (missingRequired.length > 0) {
+    console.error(`[eBay:Listing] ✗ VALIDATION FAILED - Missing required aspects`);
+    
+    // Build helpful error message
+    const errorDetails = missingRequired.map(m => `${m.aspect}: ${m.message}`).join('; ');
+    
+    return {
+      success: false,
+      step: 'validation',
+      sku,
+      baseSku,
+      size: item.size,
+      error: `Missing required item specifics: ${errorDetails}`,
+      missingAspects: missingRequired,
+      hint: 'Ensure product data includes: colorway (or color), size, brand. These fields are required by eBay for footwear listings.'
+    };
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Step 1: Create Inventory Item
@@ -1054,6 +1461,8 @@ async function createSingleListing(headers, item, config) {
       listingId: offerResult.listingId,
       ebayUrl: offerResult.listingId ? `https://www.ebay.com/itm/${offerResult.listingId}` : null,
       price: offerResult.price,
+      categoryId,
+      categoryName: categoryInfo.categoryName,
       alreadyExisted: true
     };
   }
@@ -1115,6 +1524,7 @@ async function handleGet(headers, query, res) {
       tokenTest: {},
       locations: {},
       categoryTest: {},
+      colorExtractionTest: {},
       recommendation: ''
     };
 
@@ -1151,6 +1561,15 @@ async function handleGet(headers, query, res) {
     } catch (e) {
       diag.categoryTest = { error: e.message };
     }
+
+    // Test color extraction
+    diag.colorExtractionTest = {
+      'Nike Air Jordan 1 Retro High OG Chicago': getColor({ name: 'Nike Air Jordan 1 Retro High OG Chicago' }),
+      'Yeezy Boost 350 V2 Zebra': getColor({ name: 'Yeezy Boost 350 V2 Zebra' }),
+      'Nike Dunk Low Panda': getColor({ name: 'Nike Dunk Low Panda' }),
+      'colorway: Black/White/University Red': getColor({ colorway: 'Black/White/University Red' }),
+      'colorway: CORE BLACK/CORE BLACK': getColor({ colorway: 'CORE BLACK/CORE BLACK' })
+    };
 
     if (locationResult.success && diag.tokenTest.ok) {
       diag.recommendation = 'All systems operational. Ready to create listings.';
@@ -1240,7 +1659,12 @@ async function handlePost(headers, body, res) {
     return res.status(400).json({
       success: false,
       error: 'products array required',
-      hint: 'Send { products: [{ sku, name, price, sizes: [{ size, price, qty }] }] }'
+      hint: 'Send { products: [{ sku, name, price, colorway, brand, image, sizes: [{ size, price, qty }] }] }',
+      requiredFields: {
+        required: ['name', 'price', 'size'],
+        stronglyRecommended: ['colorway', 'brand', 'image'],
+        optional: ['sku', 'styleId', 'model', 'description', 'condition']
+      }
     });
   }
 
@@ -1302,6 +1726,7 @@ async function handlePost(headers, body, res) {
         image: prod.image || prod.thumbnail,
         images: prod.images,
         colorway: prod.colorway,
+        color: prod.color,
         model: prod.model,
         silhouette: prod.silhouette,
         size: sizeData.size,
@@ -1340,7 +1765,9 @@ async function handlePost(headers, body, res) {
           step: result.step,
           status: result.status,
           error: result.error,
-          ebayErrors: result.ebayErrors
+          ebayErrors: result.ebayErrors,
+          missingAspects: result.missingAspects,
+          hint: result.hint
         });
       }
     }
