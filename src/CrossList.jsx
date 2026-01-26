@@ -18,6 +18,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
   const [syncing, setSyncing] = useState(false);
   const [creating, setCreating] = useState(false);
   const [delisting, setDelisting] = useState(false);
+  const [publishImmediately, setPublishImmediately] = useState(false); // Default to draft mode
   
   // Listings from localStorage cache
   const [stockxListings, setStockxListings] = useState(() => {
@@ -392,12 +393,13 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
     }
     
     console.log('[CrossList] Creating eBay listings with products:', JSON.stringify(products, null, 2));
+    console.log('[CrossList] Publish mode:', publishImmediately ? 'PUBLISH NOW' : 'DRAFT');
     
     try {
       const res = await fetch('/api/ebay-listings', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${ebayToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ products })
+        body: JSON.stringify({ products, publishImmediately })
       });
       
       const data = await res.json();
@@ -424,7 +426,14 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         }
         
         await loadMappings();
-        showToast(`Created ${data.created} eBay listings`);
+        
+        // Show appropriate message based on draft vs published
+        if (data.drafts > 0) {
+          showToast(`Created ${data.drafts} draft(s) → Review in eBay Seller Hub`);
+        } else {
+          showToast(`Published ${data.published} listing(s) on eBay`);
+        }
+        
         setSelectedItems(new Set());
         await syncAll();
       } else {
@@ -568,16 +577,39 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
 
       {/* Action Bar */}
       {selectedItems.size > 0 && (
-        <div style={{ ...card, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ ...card, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, color: c.textMuted }}>{selectedItems.size} selected</span>
+          
+          {/* Draft/Publish Toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.05)', padding: '4px 8px', borderRadius: 6 }}>
+            <span style={{ fontSize: 11, color: c.textMuted }}>Mode:</span>
+            <button onClick={() => setPublishImmediately(false)}
+              style={{ padding: '4px 8px', background: !publishImmediately ? c.gold : 'transparent', border: 'none', borderRadius: 4, color: !publishImmediately ? '#000' : c.textMuted, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+              📝 Draft
+            </button>
+            <button onClick={() => setPublishImmediately(true)}
+              style={{ padding: '4px 8px', background: publishImmediately ? c.green : 'transparent', border: 'none', borderRadius: 4, color: publishImmediately ? '#fff' : c.textMuted, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
+              🚀 Publish
+            </button>
+          </div>
+          
           <button onClick={handleCreateEbayListings} disabled={creating || !ebayToken}
-            style={{ padding: '8px 16px', background: c.green, border: 'none', borderRadius: 6, color: '#fff', fontWeight: 700, fontSize: 13, cursor: creating ? 'wait' : 'pointer' }}>
-            {creating ? '⏳ Creating...' : `🚀 List ${selectedItems.size} on eBay`}
+            style={{ padding: '8px 16px', background: publishImmediately ? c.green : c.gold, border: 'none', borderRadius: 6, color: publishImmediately ? '#fff' : '#000', fontWeight: 700, fontSize: 13, cursor: creating ? 'wait' : 'pointer' }}>
+            {creating ? '⏳ Creating...' : publishImmediately ? `🚀 Publish ${selectedItems.size} on eBay` : `📝 Create ${selectedItems.size} Draft(s)`}
           </button>
+          
           <button onClick={() => setSelectedItems(new Set())}
             style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: 'none', borderRadius: 6, color: c.textMuted, cursor: 'pointer' }}>
             Clear
           </button>
+          
+          {!publishImmediately && (
+            <a href="https://www.ebay.com/sh/lst/drafts" target="_blank" rel="noopener noreferrer"
+              style={{ fontSize: 11, color: c.gold, textDecoration: 'none' }}>
+              📋 View eBay Drafts →
+            </a>
+          )}
+          
           {!ebayToken && <span style={{ fontSize: 12, color: c.red }}>⚠️ Connect eBay in Settings</span>}
         </div>
       )}
