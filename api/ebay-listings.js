@@ -429,8 +429,9 @@ function getColor(item) {
     }
   }
   
-  console.log(`[Color] Could not determine color for: ${productName || sku || 'unknown product'}`);
-  return null;
+  // Fallback to Multicolor - listing will publish, user can edit on eBay if needed
+  console.log(`[Color] Could not determine color for: ${productName || sku || 'unknown product'} → Using "Multicolor" fallback`);
+  return 'Multicolor';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════
@@ -1478,7 +1479,7 @@ async function publishOffer(headers, offerId) {
  * @param {boolean} config.publishImmediately - If false, creates draft only
  */
 async function createSingleListing(headers, item, config) {
-  const { merchantLocationKey, policies, publishImmediately = false } = config;
+  const { merchantLocationKey, policies, publishImmediately = true } = config;
 
   // ─────────────────────────────────────────────────────────────────────────
   // Build SKU from base SKU + size
@@ -1850,7 +1851,7 @@ async function handlePost(headers, body, res) {
   // ─────────────────────────────────────────────────────────────────────────
   // Validate request body
   // ─────────────────────────────────────────────────────────────────────────
-  const { products, publishImmediately = false } = body || {};
+  const { products, publishImmediately = true } = body || {};
 
   if (!products || !Array.isArray(products) || products.length === 0) {
     return res.status(400).json({
