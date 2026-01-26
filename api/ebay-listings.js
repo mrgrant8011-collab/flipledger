@@ -128,43 +128,22 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: 'products array is required' });
       }
       
-      // Get business policies (check env vars first, then API)
-      let fulfillmentPolicyId = process.env.EBAY_FULFILLMENT_POLICY_ID;
-      let paymentPolicyId = process.env.EBAY_PAYMENT_POLICY_ID;
-      let returnPolicyId = process.env.EBAY_RETURN_POLICY_ID;
+      // Get business policies from env vars ONLY
+      const fulfillmentPolicyId = process.env.EBAY_FULFILLMENT_POLICY_ID;
+      const paymentPolicyId = process.env.EBAY_PAYMENT_POLICY_ID;
+      const returnPolicyId = process.env.EBAY_RETURN_POLICY_ID;
       
-      console.log('[eBay] Env vars:', { fulfillmentPolicyId, paymentPolicyId, returnPolicyId });
-      
-      // If not in env vars, try fetching from eBay API
-      if (!fulfillmentPolicyId || !paymentPolicyId || !returnPolicyId) {
-        try {
-          const [fulfillRes, paymentRes, returnRes] = await Promise.all([
-            fetch('https://api.ebay.com/sell/account/v1/fulfillment_policy?marketplace_id=EBAY_US', { headers: baseHeaders }),
-            fetch('https://api.ebay.com/sell/account/v1/payment_policy?marketplace_id=EBAY_US', { headers: baseHeaders }),
-            fetch('https://api.ebay.com/sell/account/v1/return_policy?marketplace_id=EBAY_US', { headers: baseHeaders })
-          ]);
-          
-          if (fulfillRes.ok && !fulfillmentPolicyId) {
-            const data = await fulfillRes.json();
-            fulfillmentPolicyId = data.fulfillmentPolicies?.[0]?.fulfillmentPolicyId;
-          }
-          if (paymentRes.ok && !paymentPolicyId) {
-            const data = await paymentRes.json();
-            paymentPolicyId = data.paymentPolicies?.[0]?.paymentPolicyId;
-          }
-          if (returnRes.ok && !returnPolicyId) {
-            const data = await returnRes.json();
-            returnPolicyId = data.returnPolicies?.[0]?.returnPolicyId;
-          }
-        } catch (e) {
-          console.log('[eBay] Error fetching policies:', e.message);
-        }
-      }
+      console.log('[eBay] Policy IDs from env:', { fulfillmentPolicyId, paymentPolicyId, returnPolicyId });
       
       if (!fulfillmentPolicyId || !paymentPolicyId || !returnPolicyId) {
         return res.status(400).json({ 
-          error: 'Missing business policies', 
-          message: 'Please set up fulfillment, payment, and return policies in eBay Seller Hub'
+          error: 'Missing policy env vars', 
+          message: 'Set EBAY_FULFILLMENT_POLICY_ID, EBAY_PAYMENT_POLICY_ID, EBAY_RETURN_POLICY_ID in Vercel',
+          missing: {
+            EBAY_FULFILLMENT_POLICY_ID: !fulfillmentPolicyId,
+            EBAY_PAYMENT_POLICY_ID: !paymentPolicyId,
+            EBAY_RETURN_POLICY_ID: !returnPolicyId
+          }
         });
       }
       
