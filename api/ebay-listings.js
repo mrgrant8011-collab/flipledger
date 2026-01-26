@@ -51,11 +51,16 @@ const LOCATION_KEY = 'flipledger-warehouse';
  * Create an eBay-safe SKU from base SKU + size
  * eBay error 25707: Only alphanumeric characters allowed, max 50 chars
  * 
+ * CANONICAL SKU FORMAT - Must match client-side implementation in CrossList.jsx
+ * 
  * @param {string} baseSku - Original SKU (e.g., "CZ0775-133")
- * @param {string} size - Size (e.g., "9W", "10.5")
+ * @param {string} size - Size (e.g., "9W", "10.5", "M 10 / W 11.5")
  * @returns {string} Sanitized SKU (e.g., "CZ0775133S9W")
  */
 function makeEbaySku(baseSku, size) {
+  // DEBUG: Log input for troubleshooting
+  console.log(`[eBay:SKU] makeEbaySku called: baseSku="${baseSku}", size="${size}"`);
+  
   // Uppercase and remove all non-alphanumeric
   const cleanBase = (baseSku || 'ITEM').toUpperCase().replace(/[^A-Z0-9]/g, '');
   const cleanSize = (size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -68,6 +73,20 @@ function makeEbaySku(baseSku, size) {
     // Keep first 45 chars + simple hash suffix for uniqueness
     const hash = simpleHash(sku).toString(36).toUpperCase().substring(0, 4);
     sku = sku.substring(0, 45) + hash;
+    console.log(`[eBay:SKU] Truncated long SKU to: ${sku}`);
+  }
+  
+  // VALIDATION CHECK: Ensure SKU is truly valid before returning
+  const isAlphanumeric = /^[A-Z0-9]+$/.test(sku);
+  const isValidLength = sku.length > 0 && sku.length <= 50;
+  
+  if (!isAlphanumeric || !isValidLength) {
+    console.error(`[eBay:SKU] ⚠️ INVALID SKU GENERATED!`);
+    console.error(`[eBay:SKU]   Input: baseSku="${baseSku}", size="${size}"`);
+    console.error(`[eBay:SKU]   Output: "${sku}" (length=${sku.length})`);
+    console.error(`[eBay:SKU]   isAlphanumeric=${isAlphanumeric}, isValidLength=${isValidLength}`);
+  } else {
+    console.log(`[eBay:SKU] ✓ Valid SKU: "${sku}" (length=${sku.length})`);
   }
   
   return sku;
@@ -1336,7 +1355,9 @@ async function ensureMerchantLocation(headers) {
  */
 async function createInventoryItem(headers, sku, itemData, aspects) {
   console.log(`[eBay:Inventory] ═══════════════════════════════════════════════`);
-  console.log(`[eBay:Inventory] Creating inventory item: ${sku}`);
+  console.log(`[eBay:Inventory] Creating inventory item`);
+  console.log(`[eBay:Inventory] SKU: "${sku}" (length=${sku.length})`);
+  console.log(`[eBay:Inventory] SKU valid: ${/^[A-Z0-9]+$/.test(sku) && sku.length <= 50 ? 'YES' : 'NO ⚠️'}`);
 
   const { title, description, quantity, condition, image, images } = itemData;
 
@@ -1512,7 +1533,9 @@ function buildImageUrls(primaryImage, additionalImages) {
  */
 async function createOffer(headers, sku, offerData, policies, merchantLocationKey, categoryId) {
   console.log(`[eBay:Offer] ═══════════════════════════════════════════════`);
-  console.log(`[eBay:Offer] Creating offer for SKU: ${sku}`);
+  console.log(`[eBay:Offer] Creating offer`);
+  console.log(`[eBay:Offer] SKU: "${sku}" (length=${sku.length})`);
+  console.log(`[eBay:Offer] SKU valid: ${/^[A-Z0-9]+$/.test(sku) && sku.length <= 50 ? 'YES' : 'NO ⚠️'}`);
   console.log(`[eBay:Offer] Category: ${categoryId}, Location: ${merchantLocationKey}`);
 
   const { price, quantity, description } = offerData;
@@ -1721,9 +1744,13 @@ async function createSingleListing(headers, item, config) {
 
   console.log(`\n[eBay:Listing] ════════════════════════════════════════════════════════════`);
   console.log(`[eBay:Listing] STARTING LISTING CREATION`);
-  console.log(`[eBay:Listing] Original SKU: ${baseSku}`);
-  console.log(`[eBay:Listing] eBay SKU: ${ebaySku}`);
-  console.log(`[eBay:Listing] Size: ${size}`);
+  console.log(`[eBay:Listing] ────────────────────────────────────────────────────────────`);
+  console.log(`[eBay:Listing] Original baseSku: "${baseSku}"`);
+  console.log(`[eBay:Listing] Size: "${size}"`);
+  console.log(`[eBay:Listing] eBay SKU (sanitized): "${ebaySku}"`);
+  console.log(`[eBay:Listing] SKU length: ${ebaySku.length} (max 50)`);
+  console.log(`[eBay:Listing] SKU valid chars: ${/^[A-Z0-9]+$/.test(ebaySku) ? 'YES' : 'NO ⚠️'}`);
+  console.log(`[eBay:Listing] ────────────────────────────────────────────────────────────`);
   console.log(`[eBay:Listing] Title: ${title}`);
   console.log(`[eBay:Listing] Price: $${item.price}`);
   console.log(`[eBay:Listing] ════════════════════════════════════════════════════════════\n`);
@@ -2097,6 +2124,15 @@ async function handleGet(headers, query, res) {
     const data = await offerRes.json();
     const offers = data.offers || [];
 
+    // DEBUG: Log offer count and sample SKUs for sync troubleshooting
+    console.log(`[eBay:GET] ═══════════════════════════════════════════════`);
+    console.log(`[eBay:GET] Found ${offers.length} offers from eBay API`);
+    if (offers.length > 0) {
+      const sampleSkus = offers.slice(0, 5).map(o => o.sku);
+      console.log(`[eBay:GET] Sample SKUs: ${sampleSkus.join(', ')}`);
+    }
+    console.log(`[eBay:GET] ═══════════════════════════════════════════════`);
+
     // Enrich with listing URLs
     const enriched = offers.map(o => ({
       offerId: o.offerId,
@@ -2110,10 +2146,13 @@ async function handleGet(headers, query, res) {
       ebayUrl: o.listing?.listingId ? `https://www.ebay.com/itm/${o.listing.listingId}` : null
     }));
 
+    // Return both 'offers' AND 'listings' for backwards compatibility
+    // Client may expect either field name
     return res.status(200).json({
       success: true,
       total: enriched.length,
-      offers: enriched
+      offers: enriched,
+      listings: enriched  // FIX: Add alias for clients expecting 'listings'
     });
 
   } catch (e) {
