@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { supabase } from './supabase';
+import ListingReview from './ListingReview';
 
 /**
  * CROSS LIST - Multi-platform listing management
@@ -19,6 +20,10 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
   const [creating, setCreating] = useState(false);
   const [delisting, setDelisting] = useState(false);
   const [publishImmediately, setPublishImmediately] = useState(true); // Default to publish mode
+  
+  // Review Screen state
+  const [showReview, setShowReview] = useState(false);
+  const [itemsToReview, setItemsToReview] = useState([]);
   
   // Listings from localStorage cache
   const [stockxListings, setStockxListings] = useState(() => {
@@ -348,8 +353,82 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
   }
 
   // ============================================
-  // CREATE EBAY LISTINGS
+  // PREPARE ITEMS FOR REVIEW SCREEN
   // ============================================
+  const handlePrepareForReview = () => {
+    if (!selectedItems.size || !ebayToken) {
+      if (!ebayToken) showToast('Connect eBay in Settings first', 'error');
+      return;
+    }
+    
+    // Gather selected items with all their data
+    const items = [];
+    currentProducts.forEach(product => {
+      product.sizes.forEach(sizeItem => {
+        if (selectedItems.has(sizeItem.key) && !sizeItem.isOnEbay) {
+          items.push({
+            sku: product.sku,
+            styleId: product.styleId || product.sku,
+            name: product.name,
+            brand: product.brand,
+            colorway: product.colorway,
+            image: product.image,
+            images: product.images || (product.image ? [product.image] : []),
+            size: sizeItem.size,
+            price: sizeItem.yourAsk || 100,
+            yourAsk: sizeItem.yourAsk,
+            listingId: sizeItem.source === 'stockx' ? sizeItem.listingId : null,
+            stockxListingId: sizeItem.source === 'stockx' ? sizeItem.listingId : null
+          });
+        }
+      });
+    });
+    
+    if (items.length === 0) {
+      showToast('No valid items to list', 'error');
+      return;
+    }
+    
+    console.log('[CrossList] Opening Review Screen with', items.length, 'items');
+    setItemsToReview(items);
+    setShowReview(true);
+  };
+
+  const handleReviewComplete = async (data) => {
+    // After publishing from review screen, update mappings and refresh
+    if (data?.createdOffers?.length > 0) {
+      for (const offer of data.createdOffers) {
+        const exists = mappings.find(m => 
+          m.ebay_offer_id === offer.offerId ||
+          (m.sku === offer.baseSku && m.size === offer.size && m.status === 'active')
+        );
+        
+        if (!exists) {
+          await insertMapping({
+            sku: offer.baseSku,
+            size: offer.size,
+            stockx_listing_id: offer.stockxListingId || null,
+            ebay_offer_id: offer.offerId,
+            ebay_listing_id: offer.listingId || null,
+            ebay_sku: offer.ebaySku
+          });
+        }
+      }
+      await loadMappings();
+    }
+    
+    setShowReview(false);
+    setItemsToReview([]);
+    setSelectedItems(new Set());
+    await syncAll();
+  };
+
+  const handleReviewBack = () => {
+    setShowReview(false);
+    setItemsToReview([]);
+  };
+
+  // Legacy direct publish (keeping for backwards compatibility)
   const handleCreateEbayListings = async () => {
     if (!selectedItems.size || !ebayToken) {
       if (!ebayToken) showToast('Connect eBay in Settings first', 'error');
@@ -363,13 +442,12 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       product.sizes.forEach(sizeItem => {
         if (selectedItems.has(sizeItem.key) && !sizeItem.isOnEbay) {
           if (!productMap[product.sku]) {
-            // FIX: Include ALL required fields for eBay listing creation
             productMap[product.sku] = { 
               sku: product.sku, 
               styleId: product.styleId || product.sku,
               name: product.name, 
               brand: product.brand,
-              colorway: product.colorway,  // CRITICAL: Required for eBay Color aspect
+              colorway: product.colorway,
               image: product.image, 
               sizes: [] 
             };
@@ -510,6 +588,19 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
   // ============================================
   const card = { background: c.card, borderRadius: 12, border: `1px solid ${c.border}` };
 
+  // Show Review Screen when active
+  if (showReview) {
+    return (
+      <ListingReview
+        items={itemsToReview}
+        ebayToken={ebayToken}
+        onBack={handleReviewBack}
+        onComplete={handleReviewComplete}
+        c={c}
+      />
+    );
+  }
+
   return (
     <div style={{ width: '100%' }}>
       {toast && (
@@ -589,35 +680,16 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         <div style={{ ...card, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, color: c.textMuted }}>{selectedItems.size} selected</span>
           
-          {/* Draft/Publish Toggle */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.05)', padding: '4px 8px', borderRadius: 6 }}>
-            <span style={{ fontSize: 11, color: c.textMuted }}>Mode:</span>
-            <button onClick={() => setPublishImmediately(false)}
-              style={{ padding: '4px 8px', background: !publishImmediately ? c.gold : 'transparent', border: 'none', borderRadius: 4, color: !publishImmediately ? '#000' : c.textMuted, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-              📝 Draft
-            </button>
-            <button onClick={() => setPublishImmediately(true)}
-              style={{ padding: '4px 8px', background: publishImmediately ? c.green : 'transparent', border: 'none', borderRadius: 4, color: publishImmediately ? '#fff' : c.textMuted, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-              🚀 Publish
-            </button>
-          </div>
-          
-          <button onClick={handleCreateEbayListings} disabled={creating || !ebayToken}
-            style={{ padding: '8px 16px', background: publishImmediately ? c.green : c.gold, border: 'none', borderRadius: 6, color: publishImmediately ? '#fff' : '#000', fontWeight: 700, fontSize: 13, cursor: creating ? 'wait' : 'pointer' }}>
-            {creating ? '⏳ Creating...' : publishImmediately ? `🚀 Publish ${selectedItems.size} on eBay` : `📝 Create ${selectedItems.size} Draft(s)`}
+          {/* Main Action - Review Screen */}
+          <button onClick={handlePrepareForReview} disabled={!ebayToken}
+            style={{ padding: '8px 16px', background: c.green, border: 'none', borderRadius: 6, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+            📋 Review & List {selectedItems.size} on eBay
           </button>
           
           <button onClick={() => setSelectedItems(new Set())}
             style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: 'none', borderRadius: 6, color: c.textMuted, cursor: 'pointer' }}>
             Clear
           </button>
-          
-          {!publishImmediately && (
-            <a href="https://www.ebay.com/sh/lst/drafts" target="_blank" rel="noopener noreferrer"
-              style={{ fontSize: 11, color: c.gold, textDecoration: 'none' }}>
-              📋 View eBay Drafts →
-            </a>
-          )}
           
           {!ebayToken && <span style={{ fontSize: 12, color: c.red }}>⚠️ Connect eBay in Settings</span>}
         </div>
