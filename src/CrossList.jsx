@@ -76,7 +76,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
     try {
       const { data, error } = await supabase
         .from('cross_list_links')
-        .insert([{
+       .upsert([{
           sku: mapping.sku,
           size: mapping.size,
           stockx_listing_id: mapping.stockx_listing_id,
@@ -84,7 +84,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
           ebay_listing_id: mapping.ebay_listing_id,
           ebay_sku: mapping.ebay_sku,
           status: 'active'
-        }])
+        }], { onConflict: 'sku,size' })
         .select()
         .single();
       
