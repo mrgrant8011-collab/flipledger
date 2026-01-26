@@ -427,7 +427,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
             stockx_listing_id: offer.stockxListingId || null,
             ebay_offer_id: offer.offerId,
             ebay_listing_id: offer.listingId || null,
-            ebay_sku: offer.ebaySku
+            ebay_sku: offer.ebaySku  // The sanitized eBay SKU
           });
         }
       }
