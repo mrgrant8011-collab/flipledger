@@ -194,8 +194,22 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         }
       }
       
+      // Verify mappings - mark as delisted if not found on eBay
+      const ebOfferIds = new Set(eb.map(e => e.offerId));
+      const activeMappings = mappings.filter(m => m.status === 'active');
+      let delistedCount = 0;
+      
+      for (const mapping of activeMappings) {
+        if (mapping.ebay_offer_id && !ebOfferIds.has(mapping.ebay_offer_id)) {
+          await updateMappingStatus(mapping.ebay_offer_id, 'delisted');
+          delistedCount++;
+          console.log('[CrossList] Auto-delisted missing:', mapping.ebay_sku);
+        }
+      }
+      
       await loadMappings();
-      showToast(`Synced ${sx.length} StockX + ${eb.length} eBay listings`);
+      const msg = `Synced ${sx.length} StockX + ${eb.length} eBay`;
+      showToast(delistedCount > 0 ? `${msg} (${delistedCount} removed)` : msg);
       
     } catch (e) {
       console.error('[CrossList] Sync error:', e);
