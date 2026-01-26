@@ -7,6 +7,11 @@ import ListingReview from './ListingReview';
  * Sources: StockX Listings, FlipLedger Inventory
  * Features: List to eBay, track mappings in Supabase, prevent oversells
  * 
+ * v2.0 CHANGES:
+ * - Fixed SKU matching: Now uses makeEbaySku() to match sanitized eBay SKUs
+ * - eBay requires alphanumeric-only SKUs, so CZ0775-133 becomes CZ0775133
+ * - Properly detects "On eBay" status using sanitized SKU comparison
+ * 
  * Storage:
  * - Listings cache → localStorage (temporary, refreshed on sync)
  * - Mappings → Supabase (permanent, for oversell prevention)
@@ -14,12 +19,123 @@ import ListingReview from './ListingReview';
 
 const CACHE_KEYS = { SX: 'fl_crosslist_sx', EB: 'fl_crosslist_eb' };
 
+// ═══════════════════════════════════════════════════════════════════════════════════
+// SKU SANITIZATION - MUST MATCH SERVER-SIDE makeEbaySku() EXACTLY
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Create an eBay-safe SKU from base SKU + size
+ * This MUST match the server-side function in ebay-listings.js
+ * 
+ * eBay Error 25707: "Only alphanumeric characters can be used for SKUs"
+ * 
+ * Examples:
+ *   makeEbaySku('CZ0775-133', '9W') → 'CZ0775133S9W'
+ *   makeEbaySku('FQ1759-100', '10.5') → 'FQ1759100S105'
+ * 
+ * @param {string} baseSku - Original SKU (e.g., "CZ0775-133")
+ * @param {string} size - Size (e.g., "9W", "10.5")
+ * @returns {string} Sanitized SKU (e.g., "CZ0775133S9W")
+ */
+function makeEbaySku(baseSku, size) {
+  // Remove ALL non-alphanumeric characters and convert to uppercase
+  const cleanBase = (baseSku || 'ITEM').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const cleanSize = (size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  
+  // Combine with 'S' separator (S is alphanumeric, so it's safe)
+  let sku = cleanSize ? `${cleanBase}S${cleanSize}` : cleanBase;
+  
+  // Ensure max 50 chars (eBay limit)
+  if (sku.length > 50) {
+    const hash = simpleHash(sku).toString(36).toUpperCase().substring(0, 4);
+    sku = sku.substring(0, 45) + hash;
+  }
+  
+  return sku;
+}
+
+/**
+ * Simple hash function for SKU collision avoidance
+ */
+function simpleHash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash);
+}
+
+/**
+ * Parse an eBay SKU back to base SKU and size
+ * @param {string} ebaySku - Sanitized SKU (e.g., "CZ0775133S9W")
+ * @returns {object} { baseSku: string, size: string }
+ */
+function parseEbaySku(ebaySku) {
+  if (!ebaySku) return { baseSku: '', size: '' };
+  
+  const lastS = ebaySku.lastIndexOf('S');
+  if (lastS > 0 && lastS < ebaySku.length - 1) {
+    return {
+      baseSku: ebaySku.substring(0, lastS),
+      size: ebaySku.substring(lastS + 1)
+    };
+  }
+  return { baseSku: ebaySku, size: '' };
+}
+
+/**
+ * Check if an item is on eBay by comparing sanitized SKUs
+ * @param {Array} ebayListings - Array of eBay offers
+ * @param {string} stockxSku - Original StockX SKU (may contain hyphens)
+ * @param {string} size - Size
+ * @returns {object|null} Matching eBay offer or null
+ */
+function findEbayMatch(ebayListings, stockxSku, size) {
+  if (!ebayListings || !stockxSku) return null;
+  
+  // Build the expected eBay SKU using the same logic as the server
+  const expectedEbaySku = makeEbaySku(stockxSku, size);
+  
+  // Also compute just the cleaned base SKU for comparison
+  const cleanedBase = (stockxSku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const cleanedSize = (size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  
+  // Find matching eBay offer
+  const match = ebayListings.find(eb => {
+    const ebSku = (eb.sku || '').toUpperCase();
+    
+    // Primary match: exact sanitized SKU match
+    if (ebSku === expectedEbaySku) return true;
+    
+    // Secondary match: parse eBay SKU and compare base+size
+    const parsed = parseEbaySku(ebSku);
+    if (parsed.baseSku === cleanedBase && parsed.size === cleanedSize) return true;
+    
+    // Tertiary match: eBay SKU contains our base and size (for edge cases)
+    if (ebSku.startsWith(cleanedBase) && cleanedSize && ebSku.endsWith(cleanedSize)) return true;
+    
+    return false;
+  });
+  
+  if (match) {
+    console.log(`[CrossList] eBay match found: "${stockxSku}" + "${size}" → "${match.sku}"`);
+  }
+  
+  return match || null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════
+// COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════════════
+
 export default function CrossList({ stockxToken, ebayToken, purchases = [], c }) {
   const [source, setSource] = useState('stockx');
   const [syncing, setSyncing] = useState(false);
   const [creating, setCreating] = useState(false);
   const [delisting, setDelisting] = useState(false);
-  const [publishImmediately, setPublishImmediately] = useState(true); // Default to publish mode
+  const [publishImmediately, setPublishImmediately] = useState(true);
   
   // Review Screen state
   const [showReview, setShowReview] = useState(false);
@@ -141,8 +257,21 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       if (res.ok) {
         const data = await res.json();
         console.log('[CrossList] eBay raw response:', data);
-        // FIX: API returns "offers" not "listings"
-        return data.offers || data.listings || [];
+        // API returns both "offers" and "listings" for compatibility
+        const offers = data.offers || data.listings || [];
+        console.log(`[CrossList] eBay returned ${offers.length} offers`);
+        // Log a sample SKU for debugging
+        if (offers.length > 0) {
+          console.log('[CrossList] Sample eBay SKU:', offers[0].sku);
+        }
+        return offers;
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('[CrossList] eBay sync failed:', res.status, errorData);
+        // If there's a SKU error, log it
+        if (errorData.failedSkus) {
+          console.error('[CrossList] Failed SKUs:', errorData.failedSkus);
+        }
       }
     } catch (e) {
       console.error('[CrossList] eBay sync error:', e);
@@ -169,26 +298,30 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       await loadMappings();
       
       // Auto-detect new mappings from eBay SKUs
-      // New format: CZ0790400S14 (alphanumeric, S separates SKU from size)
       for (const ebItem of eb) {
         const ebSku = ebItem.sku || '';
-        const lastS = ebSku.lastIndexOf('S');
-        const baseSkuClean = lastS > 0 ? ebSku.substring(0, lastS) : ebSku;
-        const size = lastS > 0 ? ebSku.substring(lastS + 1) : '';
+        const parsed = parseEbaySku(ebSku);
+        const cleanedBase = parsed.baseSku;
+        const size = parsed.size;
         
-        // Match to StockX by comparing without dashes
-        const sxMatch = sx.find(s => s.sku.replace(/-/g, '') === baseSkuClean && s.size === size);
-        const baseSku = sxMatch?.sku || baseSkuClean; // Use original StockX SKU if found
+        // Match to StockX by comparing cleaned SKUs
+        const sxMatch = sx.find(s => {
+          const sxClean = (s.sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          const sxSizeClean = (s.size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          return sxClean === cleanedBase && sxSizeClean === size;
+        });
+        
+        const baseSku = sxMatch?.sku || cleanedBase;
         
         const existingMapping = mappings.find(m => 
           m.ebay_offer_id === ebItem.offerId || 
-          (m.sku.replace(/-/g, '') === baseSkuClean && m.size === size && m.status === 'active')
+          (m.ebay_sku === ebSku && m.status === 'active')
         );
         
         if (!existingMapping && ebItem.offerId) {
           await insertMapping({
             sku: baseSku,
-            size,
+            size: sxMatch?.size || size,
             stockx_listing_id: sxMatch?.listingId || null,
             ebay_offer_id: ebItem.offerId,
             ebay_listing_id: ebItem.listingId || null,
@@ -223,41 +356,44 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
   };
 
   // ============================================
-  // GROUPED PRODUCTS
+  // GROUPED PRODUCTS - With Fixed eBay Detection
   // ============================================
   const stockxProducts = useMemo(() => {
     const g = {};
     stockxListings.forEach(l => {
       const sku = l.sku || l.styleId || 'UNKNOWN';
       if (!g[sku]) {
-        // FIX: Capture ALL fields from StockX listing for eBay
         g[sku] = { 
           sku, 
           name: l.name || l.productName || 'Unknown Product', 
           image: l.image || l.thumbnail || '',
-          // FIX: Use actual brand from StockX, don't hardcode
           brand: l.brand || extractBrandFromName(l.name || l.productName || ''),
-          // FIX: Capture colorway for eBay item specifics
           colorway: l.colorway || '',
           styleId: l.styleId || l.sku || '',
           sizes: [] 
         };
       }
       
-      // Update colorway if this listing has it and group doesn't
       if (l.colorway && !g[sku].colorway) {
         g[sku].colorway = l.colorway;
       }
       
+      // Check mapping first
       const mapping = mappings.find(m => m.stockx_listing_id === l.listingId && m.status === 'active');
-      const ebayMatch = ebayListings.find(eb => (eb.sku || '') === `${sku}-${l.size}`);
+      
+      // Then check direct eBay match using sanitized SKU comparison
+      const ebayMatch = findEbayMatch(ebayListings, sku, l.size);
+      
+      const isOnEbay = !!(mapping || ebayMatch);
       
       g[sku].sizes.push({
         ...l,
         key: `sx_${l.listingId}`,
         source: 'stockx',
-        isOnEbay: !!(mapping || ebayMatch),
+        isOnEbay,
         ebayOfferId: mapping?.ebay_offer_id || ebayMatch?.offerId || null,
+        ebayListingId: mapping?.ebay_listing_id || ebayMatch?.listingId || null,
+        ebaySku: mapping?.ebay_sku || ebayMatch?.sku || null,
         mappingId: mapping?.id || null
       });
     });
@@ -292,7 +428,8 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         g[sku].colorway = p.colorway;
       }
       
-      const ebayMatch = ebayListings.find(eb => (eb.sku || '') === `${sku}-${p.size}`);
+      // Use sanitized SKU comparison for eBay match
+      const ebayMatch = findEbayMatch(ebayListings, sku, p.size);
       
       g[sku].sizes.push({
         key: `inv_${idx}_${sku}_${p.size}`,
@@ -302,7 +439,9 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         cost: p.cost || 0,
         purchaseId: p.id || idx,
         isOnEbay: !!ebayMatch,
-        ebayOfferId: ebayMatch?.offerId || null
+        ebayOfferId: ebayMatch?.offerId || null,
+        ebayListingId: ebayMatch?.listingId || null,
+        ebaySku: ebayMatch?.sku || null
       });
     });
     
@@ -355,7 +494,6 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
     
     for (const brand of brands) {
       if (nameLower.includes(brand.toLowerCase())) {
-        // Special handling for Jordan
         if (brand.toLowerCase() === 'jordan' && nameLower.includes('air jordan')) {
           return 'Jordan';
         }
@@ -363,7 +501,6 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       }
     }
     
-    // Check for Yeezy (Adidas)
     if (nameLower.includes('yeezy')) return 'adidas';
     
     return '';
@@ -378,7 +515,6 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       return;
     }
     
-    // Gather selected items with all their data
     const items = [];
     currentProducts.forEach(product => {
       product.sizes.forEach(sizeItem => {
@@ -395,7 +531,9 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
             price: sizeItem.yourAsk || 100,
             yourAsk: sizeItem.yourAsk,
             listingId: sizeItem.source === 'stockx' ? sizeItem.listingId : null,
-            stockxListingId: sizeItem.source === 'stockx' ? sizeItem.listingId : null
+            stockxListingId: sizeItem.source === 'stockx' ? sizeItem.listingId : null,
+            // Include expected eBay SKU for reference
+            expectedEbaySku: makeEbaySku(product.sku, sizeItem.size)
           });
         }
       });
@@ -407,17 +545,17 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
     }
     
     console.log('[CrossList] Opening Review Screen with', items.length, 'items');
+    console.log('[CrossList] Sample expected eBay SKU:', items[0]?.expectedEbaySku);
     setItemsToReview(items);
     setShowReview(true);
   };
 
   const handleReviewComplete = async (data) => {
-    // After publishing from review screen, update mappings and refresh
     if (data?.createdOffers?.length > 0) {
       for (const offer of data.createdOffers) {
         const exists = mappings.find(m => 
           m.ebay_offer_id === offer.offerId ||
-          (m.sku === offer.baseSku && m.size === offer.size && m.status === 'active')
+          (m.ebay_sku === offer.ebaySku && m.status === 'active')
         );
         
         if (!exists) {
@@ -427,7 +565,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
             stockx_listing_id: offer.stockxListingId || null,
             ebay_offer_id: offer.offerId,
             ebay_listing_id: offer.listingId || null,
-            ebay_sku: offer.ebaySku  // The sanitized eBay SKU
+            ebay_sku: offer.ebaySku
           });
         }
       }
@@ -445,7 +583,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
     setItemsToReview([]);
   };
 
-  // Legacy direct publish (keeping for backwards compatibility)
+  // Legacy direct publish
   const handleCreateEbayListings = async () => {
     if (!selectedItems.size || !ebayToken) {
       if (!ebayToken) showToast('Connect eBay in Settings first', 'error');
@@ -500,12 +638,16 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       const data = await res.json();
       console.log('[CrossList] eBay create response:', data);
       
+      // Log any failed SKUs for debugging
+      if (data.failedSkus?.length > 0) {
+        console.error('[CrossList] Failed SKUs:', data.failedSkus);
+      }
+      
       if (res.ok && data.created > 0) {
-        // Insert mappings to Supabase
         for (const offer of (data.createdOffers || [])) {
           const exists = mappings.find(m => 
             m.ebay_offer_id === offer.offerId ||
-            (m.sku === offer.baseSku && m.size === offer.size && m.status === 'active')
+            (m.ebay_sku === offer.ebaySku && m.status === 'active')
           );
           
           if (!exists) {
@@ -522,14 +664,12 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         
         await loadMappings();
         
-        // Show appropriate message based on draft vs published
         if (data.drafts > 0 && data.published === 0) {
           showToast(`Created ${data.drafts} draft(s) → Review in eBay Seller Hub`);
         } else if (data.published > 0) {
           const firstListing = data.createdOffers?.find(o => o.ebayUrl);
           if (firstListing?.ebayUrl && data.published === 1) {
             showToast(`✅ Published on eBay! Click to view listing`);
-            // Open listing in new tab
             window.open(firstListing.ebayUrl, '_blank');
           } else {
             showToast(`✅ Published ${data.published} listing(s) on eBay`);
@@ -541,10 +681,17 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         setSelectedItems(new Set());
         await syncAll();
       } else {
-        // Show detailed error
         const errorMsg = data.errors?.[0]?.error || data.error || 'Failed to create listings';
         const hint = data.errors?.[0]?.hint || '';
-        showToast(`${errorMsg}${hint ? ` - ${hint}` : ''}`, 'error');
+        const failedSku = data.failedSkus?.[0];
+        let fullError = errorMsg;
+        if (failedSku) {
+          fullError += ` (SKU: ${failedSku.rawSku} → ${failedSku.ebaySku})`;
+        }
+        if (hint) {
+          fullError += ` - ${hint}`;
+        }
+        showToast(fullError, 'error');
         console.error('[CrossList] Create errors:', data.errors);
       }
       
@@ -604,7 +751,6 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
     
     console.log('[CrossList] Checking', activeMappings.length, 'active mappings for oversells');
     
-    // Get current listings from both platforms
     const currentStockX = await syncStockX();
     const currentEbay = await syncEbay();
     
@@ -619,7 +765,6 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       const hasStockX = mapping.stockx_listing_id && stockxListingIds.has(mapping.stockx_listing_id);
       const hasEbay = mapping.ebay_offer_id && ebayOfferIds.has(mapping.ebay_offer_id);
       
-      // Sold on StockX (listing gone) but still on eBay → delist from eBay
       if (!hasStockX && hasEbay && mapping.stockx_listing_id) {
         console.log('[Oversell] StockX sold, delisting from eBay:', mapping.ebay_sku);
         try {
@@ -637,7 +782,6 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         }
       }
       
-      // Sold on eBay (listing gone) but still on StockX → delist from StockX
       if (!hasEbay && hasStockX && mapping.ebay_offer_id) {
         console.log('[Oversell] eBay sold, delisting from StockX:', mapping.ebay_sku);
         try {
@@ -655,7 +799,6 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         }
       }
       
-      // Both gone → mark as sold
       if (!hasStockX && !hasEbay) {
         await updateMappingStatus(mapping.ebay_offer_id, 'sold');
       }
@@ -677,7 +820,6 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
   // ============================================
   const card = { background: c.card, borderRadius: 12, border: `1px solid ${c.border}` };
 
-  // Show Review Screen when active
   if (showReview) {
     return (
       <ListingReview
@@ -769,7 +911,6 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         <div style={{ ...card, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, color: c.textMuted }}>{selectedItems.size} selected</span>
           
-          {/* Main Action - Review Screen */}
           <button onClick={handlePrepareForReview} disabled={!ebayToken}
             style={{ padding: '8px 16px', background: c.green, border: 'none', borderRadius: 6, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
             📋 Review & List {selectedItems.size} on eBay
@@ -863,7 +1004,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
                 <tr style={{ borderBottom: `1px solid ${c.border}` }}>
                   <th style={{ textAlign: 'left', padding: 4, color: c.textMuted }}>SKU</th>
                   <th style={{ textAlign: 'left', padding: 4, color: c.textMuted }}>Size</th>
-                  <th style={{ textAlign: 'left', padding: 4, color: c.textMuted }}>StockX ID</th>
+                  <th style={{ textAlign: 'left', padding: 4, color: c.textMuted }}>eBay SKU</th>
                   <th style={{ textAlign: 'left', padding: 4, color: c.textMuted }}>eBay Offer</th>
                   <th style={{ textAlign: 'left', padding: 4, color: c.textMuted }}>Status</th>
                 </tr>
@@ -873,7 +1014,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
                   <tr key={m.id} style={{ borderBottom: `1px solid ${c.border}` }}>
                     <td style={{ padding: 4 }}>{m.sku}</td>
                     <td style={{ padding: 4 }}>{m.size}</td>
-                    <td style={{ padding: 4, color: c.textMuted }}>{m.stockx_listing_id || '—'}</td>
+                    <td style={{ padding: 4, color: c.textMuted, fontFamily: 'monospace' }}>{m.ebay_sku || '—'}</td>
                     <td style={{ padding: 4, color: c.textMuted }}>{m.ebay_offer_id || '—'}</td>
                     <td style={{ padding: 4, color: m.status === 'active' ? c.green : c.red }}>{m.status}</td>
                   </tr>
@@ -881,6 +1022,34 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
               </tbody>
             </table>
           )}
+        </div>
+      </details>
+
+      {/* SKU Debug Info */}
+      <details style={{ marginTop: 8 }}>
+        <summary style={{ cursor: 'pointer', color: c.textMuted, fontSize: 12 }}>
+          🔧 SKU Debug Info
+        </summary>
+        <div style={{ ...card, marginTop: 8, padding: 12, fontSize: 11 }}>
+          <div style={{ marginBottom: 8 }}>
+            <strong>SKU Format:</strong> eBay requires alphanumeric only (A-Z, 0-9), max 50 chars
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <strong>Conversion Example:</strong>
+            <ul style={{ margin: '4px 0', paddingLeft: 20 }}>
+              <li><code>CZ0775-133</code> + <code>9W</code> → <code>{makeEbaySku('CZ0775-133', '9W')}</code></li>
+              <li><code>FQ1759-100</code> + <code>10.5</code> → <code>{makeEbaySku('FQ1759-100', '10.5')}</code></li>
+              <li><code>DD1391-100</code> + <code>9 GS</code> → <code>{makeEbaySku('DD1391-100', '9 GS')}</code></li>
+            </ul>
+          </div>
+          <div>
+            <strong>eBay Listings in Cache:</strong> {ebayListings.length}
+            {ebayListings.slice(0, 3).map((eb, i) => (
+              <div key={i} style={{ marginTop: 4, fontFamily: 'monospace', color: c.textMuted }}>
+                • {eb.sku} (offerId: {eb.offerId?.substring(0, 12)}...)
+              </div>
+            ))}
+          </div>
         </div>
       </details>
     </div>
