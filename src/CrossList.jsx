@@ -18,7 +18,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
   const [syncing, setSyncing] = useState(false);
   const [creating, setCreating] = useState(false);
   const [delisting, setDelisting] = useState(false);
-  const [publishImmediately, setPublishImmediately] = useState(false); // Default to draft mode
+  const [publishImmediately, setPublishImmediately] = useState(true); // Default to publish mode
   
   // Listings from localStorage cache
   const [stockxListings, setStockxListings] = useState(() => {
@@ -428,10 +428,19 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         await loadMappings();
         
         // Show appropriate message based on draft vs published
-        if (data.drafts > 0) {
+        if (data.drafts > 0 && data.published === 0) {
           showToast(`Created ${data.drafts} draft(s) → Review in eBay Seller Hub`);
+        } else if (data.published > 0) {
+          const firstListing = data.createdOffers?.find(o => o.ebayUrl);
+          if (firstListing?.ebayUrl && data.published === 1) {
+            showToast(`✅ Published on eBay! Click to view listing`);
+            // Open listing in new tab
+            window.open(firstListing.ebayUrl, '_blank');
+          } else {
+            showToast(`✅ Published ${data.published} listing(s) on eBay`);
+          }
         } else {
-          showToast(`Published ${data.published} listing(s) on eBay`);
+          showToast(`Created ${data.created} listing(s)`);
         }
         
         setSelectedItems(new Set());
