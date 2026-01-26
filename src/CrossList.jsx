@@ -76,7 +76,95 @@ function parseEbaySku(ebaySku) {
 }
 // ════════════════════════════════════════════════════════════════════════════════
 
-export default function CrossList({ stockxToken, ebayToken, purchases = [], c }) {
+// ════════════════════════════════════════════════════════════════════════════════
+// TOKEN HELPER - Read eBay token from localStorage with multiple key fallbacks
+// ════════════════════════════════════════════════════════════════════════════════
+function getEbayTokenFromStorage() {
+  // Try multiple possible localStorage keys - CORRECT KEY FIRST
+  const possibleKeys = [
+    'flipledger_ebay_token',  // ACTUAL KEY USED BY APP
+    'ebay_access_token',
+    'ebayToken', 
+    'ebay_token',
+    'fl_ebay_token'
+  ];
+  
+  for (const key of possibleKeys) {
+    const token = localStorage.getItem(key);
+    if (token && token.length > 10) {
+      console.log(`[CrossList:Auth] ✓ Found eBay token in localStorage key: "${key}" (length: ${token.length})`);
+      return token;
+    }
+  }
+  
+  console.log('[CrossList:Auth] ✗ No eBay token found in localStorage. Checked keys:', possibleKeys.join(', '));
+  return null;
+}
+
+function getStockxTokenFromStorage() {
+  // CORRECT KEY FIRST
+  const possibleKeys = [
+    'flipledger_stockx_token',  // ACTUAL KEY USED BY APP
+    'stockx_access_token',
+    'stockxToken',
+    'stockx_token', 
+    'fl_stockx_token'
+  ];
+  
+  for (const key of possibleKeys) {
+    const token = localStorage.getItem(key);
+    if (token && token.length > 10) {
+      console.log(`[CrossList:Auth] ✓ Found StockX token in localStorage key: "${key}" (length: ${token.length})`);
+      return token;
+    }
+  }
+  
+  console.log('[CrossList:Auth] ✗ No StockX token found in localStorage');
+  return null;
+}
+
+export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: ebayTokenProp, purchases = [], c }) {
+  // Use prop if provided, otherwise try localStorage
+  const [ebayToken, setEbayToken] = useState(() => {
+    const token = ebayTokenProp || getEbayTokenFromStorage();
+    console.log(`[CrossList:Auth] eBay token initialized: ${token ? 'YES' : 'NO'} (from ${ebayTokenProp ? 'prop' : 'localStorage'})`);
+    return token;
+  });
+  
+  const [stockxToken, setStockxToken] = useState(() => {
+    const token = stockxTokenProp || getStockxTokenFromStorage();
+    console.log(`[CrossList:Auth] StockX token initialized: ${token ? 'YES' : 'NO'} (from ${stockxTokenProp ? 'prop' : 'localStorage'})`);
+    return token;
+  });
+
+  // Re-check tokens when props change or on focus (user might have connected in another tab)
+  useEffect(() => {
+    if (ebayTokenProp) {
+      setEbayToken(ebayTokenProp);
+    }
+    if (stockxTokenProp) {
+      setStockxToken(stockxTokenProp);
+    }
+  }, [ebayTokenProp, stockxTokenProp]);
+
+  // Re-check localStorage when window gains focus
+  useEffect(() => {
+    const handleFocus = () => {
+      const freshEbayToken = ebayTokenProp || getEbayTokenFromStorage();
+      const freshStockxToken = stockxTokenProp || getStockxTokenFromStorage();
+      if (freshEbayToken !== ebayToken) {
+        console.log('[CrossList:Auth] eBay token updated on focus');
+        setEbayToken(freshEbayToken);
+      }
+      if (freshStockxToken !== stockxToken) {
+        console.log('[CrossList:Auth] StockX token updated on focus');
+        setStockxToken(freshStockxToken);
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [ebayToken, stockxToken, ebayTokenProp, stockxTokenProp]);
+
   const [source, setSource] = useState('stockx');
   const [syncing, setSyncing] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -178,61 +266,109 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
   // SYNC FUNCTIONS
   // ============================================
   const syncStockX = async () => {
-    if (!stockxToken) return [];
+    console.log('[CrossList:Sync] syncStockX called, token present:', !!stockxToken);
+    
+    if (!stockxToken) {
+      console.log('[CrossList:Sync] ✗ No StockX token - skipping sync');
+      return [];
+    }
+    
     try {
+      console.log('[CrossList:Sync] Fetching StockX listings...');
       const res = await fetch('/api/stockx-listings?skipMarketData=true', {
         headers: { 'Authorization': `Bearer ${stockxToken}` }
       });
+      
+      console.log('[CrossList:Sync] StockX response status:', res.status);
+      
       if (res.ok) {
         const data = await res.json();
-        console.log('[CrossList] StockX raw response:', data);
+        console.log('[CrossList:Sync] StockX raw response:', data);
+        console.log('[CrossList:Sync] ✓ StockX returned', data.listings?.length || 0, 'listings');
         return data.listings || [];
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('[CrossList:Sync] ✗ StockX error:', res.status, errorData);
+        return [];
       }
     } catch (e) {
-      console.error('[CrossList] StockX sync error:', e);
+      console.error('[CrossList:Sync] ✗ StockX sync exception:', e);
     }
     return [];
   };
 
   const syncEbay = async () => {
-    if (!ebayToken) return [];
+    console.log('[CrossList:Sync] syncEbay called, token present:', !!ebayToken);
+    
+    if (!ebayToken) {
+      console.log('[CrossList:Sync] ✗ No eBay token - skipping sync');
+      return [];
+    }
+    
     try {
+      console.log('[CrossList:Sync] Fetching eBay listings...');
       const res = await fetch('/api/ebay-listings', {
-        headers: { 'Authorization': `Bearer ${ebayToken}` }
+        method: 'GET',
+        headers: { 
+          'Authorization': `Bearer ${ebayToken}`,
+          'Content-Type': 'application/json'
+        }
       });
+      
+      console.log('[CrossList:Sync] eBay response status:', res.status);
+      
       if (res.ok) {
         const data = await res.json();
-        console.log('[CrossList] eBay raw response:', data);
+        console.log('[CrossList:Sync] eBay raw response:', data);
+        
         // FIX: API returns "offers" not "listings"
         const offers = data.offers || data.listings || [];
+        console.log('[CrossList:Sync] ✓ eBay returned', offers.length, 'offers');
         
         // DEBUG: Log sample eBay SKUs for troubleshooting
         if (offers.length > 0) {
-          console.log('[CrossList] eBay SKU samples:', offers.slice(0, 5).map(o => o.sku));
+          console.log('[CrossList:Sync] eBay SKU samples:', offers.slice(0, 5).map(o => o.sku));
         }
         
         return offers;
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('[CrossList:Sync] ✗ eBay error:', res.status, errorData);
+        
+        if (res.status === 401) {
+          console.error('[CrossList:Sync] eBay token expired or invalid - user needs to reconnect');
+          showToast('eBay connection expired. Please reconnect in Settings.', 'error');
+        }
+        return [];
       }
     } catch (e) {
-      console.error('[CrossList] eBay sync error:', e);
+      console.error('[CrossList:Sync] ✗ eBay sync exception:', e);
     }
     return [];
   };
 
   const syncAll = async () => {
     if (syncing) return;
+    
+    console.log('[CrossList:Sync] ═══════════════════════════════════════════════');
+    console.log('[CrossList:Sync] Starting full sync');
+    console.log('[CrossList:Sync] StockX token:', stockxToken ? `present (${stockxToken.length} chars)` : 'MISSING');
+    console.log('[CrossList:Sync] eBay token:', ebayToken ? `present (${ebayToken.length} chars)` : 'MISSING');
+    console.log('[CrossList:Sync] ═══════════════════════════════════════════════');
+    
+    if (!stockxToken && !ebayToken) {
+      showToast('Connect StockX or eBay in Settings first', 'error');
+      return;
+    }
+    
     setSyncing(true);
     
     try {
       const [sx, eb] = await Promise.all([syncStockX(), syncEbay()]);
       
-      console.log('[CrossList] Synced:', sx.length, 'StockX,', eb.length, 'eBay');
-      
-      // DEBUG: Show how many eBay offers we're working with
-      if (eb.length > 0) {
-        console.log('[CrossList] eBay offers received:', eb.length);
-        console.log('[CrossList] Sample eBay offer:', eb[0]);
-      }
+      console.log('[CrossList:Sync] ═══════════════════════════════════════════════');
+      console.log('[CrossList:Sync] Sync complete:', sx.length, 'StockX,', eb.length, 'eBay');
+      console.log('[CrossList:Sync] ═══════════════════════════════════════════════');
       
       // Update state and cache
       setStockxListings(sx);
@@ -760,19 +896,48 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         </div>
       )}
 
+      {/* Connection Status Banner */}
+      {(!stockxToken || !ebayToken) && (
+        <div style={{ ...card, padding: '12px 16px', marginBottom: 16, background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: '#ef4444', fontWeight: 600 }}>⚠️ Missing Connections:</span>
+            {!stockxToken && (
+              <span style={{ fontSize: 12, color: c.textMuted, background: 'rgba(255,255,255,0.1)', padding: '4px 8px', borderRadius: 4 }}>
+                StockX not connected
+              </span>
+            )}
+            {!ebayToken && (
+              <span style={{ fontSize: 12, color: c.textMuted, background: 'rgba(255,255,255,0.1)', padding: '4px 8px', borderRadius: 4 }}>
+                eBay not connected
+              </span>
+            )}
+            <span style={{ fontSize: 12, color: c.textMuted, marginLeft: 'auto' }}>
+              → Go to <strong>Settings</strong> to connect
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <div>
           <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Cross-List</h2>
-          <p style={{ margin: '4px 0 0', color: c.textMuted, fontSize: 13 }}>Manage listings across StockX → eBay</p>
+          <p style={{ margin: '4px 0 0', color: c.textMuted, fontSize: 13 }}>
+            Manage listings across StockX → eBay
+            <span style={{ marginLeft: 12 }}>
+              {stockxToken ? <span style={{ color: c.green }}>● StockX</span> : <span style={{ color: '#ef4444' }}>○ StockX</span>}
+              {' · '}
+              {ebayToken ? <span style={{ color: c.green }}>● eBay</span> : <span style={{ color: '#ef4444' }}>○ eBay</span>}
+            </span>
+          </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={handleOversellSync} disabled={syncing}
-            style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, fontWeight: 600, cursor: 'pointer' }}>
+          <button onClick={handleOversellSync} disabled={syncing || !ebayToken}
+            style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, fontWeight: 600, cursor: 'pointer', opacity: !ebayToken ? 0.5 : 1 }}>
             🔍 Check Oversells
           </button>
-          <button onClick={syncAll} disabled={syncing}
-            style={{ padding: '10px 16px', background: c.gold, border: 'none', borderRadius: 8, color: '#000', fontWeight: 700, cursor: syncing ? 'wait' : 'pointer' }}>
+          <button onClick={syncAll} disabled={syncing || (!stockxToken && !ebayToken)}
+            style={{ padding: '10px 16px', background: c.gold, border: 'none', borderRadius: 8, color: '#000', fontWeight: 700, cursor: syncing ? 'wait' : 'pointer', opacity: (!stockxToken && !ebayToken) ? 0.5 : 1 }}>
             {syncing ? '⏳ Syncing...' : '🔄 Sync'}
           </button>
         </div>
@@ -783,6 +948,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         <button onClick={() => { setSource('stockx'); setSelectedItems(new Set()); }}
           style={{ padding: '10px 16px', background: source === 'stockx' ? c.card : 'transparent', border: `1px solid ${source === 'stockx' ? c.gold : c.border}`, borderRadius: 8, color: source === 'stockx' ? c.gold : c.textMuted, fontWeight: 600, cursor: 'pointer' }}>
           📦 StockX Listings ({stockxListings.length})
+          {!stockxToken && <span style={{ marginLeft: 6, color: '#ef4444', fontSize: 10 }}>⚠️</span>}
         </button>
         <button onClick={() => { setSource('inventory'); setSelectedItems(new Set()); }}
           style={{ padding: '10px 16px', background: source === 'inventory' ? c.card : 'transparent', border: `1px solid ${source === 'inventory' ? c.gold : c.border}`, borderRadius: 8, color: source === 'inventory' ? c.gold : c.textMuted, fontWeight: 600, cursor: 'pointer' }}>
