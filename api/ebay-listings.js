@@ -44,6 +44,67 @@ const PRICE_MARKUP = 1.10; // 10% markup to cover eBay fees
 const LOCATION_KEY = 'flipledger-warehouse';
 
 // ═══════════════════════════════════════════════════════════════════════════════════
+// SKU SANITIZATION - eBay requires alphanumeric only, max 50 chars
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Create an eBay-safe SKU from base SKU + size
+ * eBay error 25707: Only alphanumeric characters allowed, max 50 chars
+ * 
+ * @param {string} baseSku - Original SKU (e.g., "CZ0775-133")
+ * @param {string} size - Size (e.g., "9W", "10.5")
+ * @returns {string} Sanitized SKU (e.g., "CZ0775133S9W")
+ */
+function makeEbaySku(baseSku, size) {
+  // Uppercase and remove all non-alphanumeric
+  const cleanBase = (baseSku || 'ITEM').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const cleanSize = (size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  
+  // Combine with S separator (S is alphanumeric so it's safe)
+  let sku = cleanSize ? `${cleanBase}S${cleanSize}` : cleanBase;
+  
+  // Ensure max 50 chars
+  if (sku.length > 50) {
+    // Keep first 45 chars + simple hash suffix for uniqueness
+    const hash = simpleHash(sku).toString(36).toUpperCase().substring(0, 4);
+    sku = sku.substring(0, 45) + hash;
+  }
+  
+  return sku;
+}
+
+/**
+ * Simple hash function for SKU collision avoidance
+ */
+function simpleHash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash);
+}
+
+/**
+ * Parse an eBay SKU back to base SKU and size
+ * @param {string} ebaySku - Sanitized SKU (e.g., "CZ0775133S9W")
+ * @returns {object} { baseSku: string, size: string }
+ */
+function parseEbaySku(ebaySku) {
+  if (!ebaySku) return { baseSku: '', size: '' };
+  
+  const lastS = ebaySku.lastIndexOf('S');
+  if (lastS > 0 && lastS < ebaySku.length - 1) {
+    return {
+      baseSku: ebaySku.substring(0, lastS),
+      size: ebaySku.substring(lastS + 1)
+    };
+  }
+  return { baseSku: ebaySku, size: '' };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════
 // COLOR EXTRACTION - Comprehensive color inference from product names
 // ═══════════════════════════════════════════════════════════════════════════════════
 
@@ -1646,11 +1707,11 @@ async function createSingleListing(headers, item, config) {
   const { merchantLocationKey, policies, publishImmediately = true } = config;
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Build SKU from base SKU + size (alphanumeric only - eBay requirement)
+  // Build SKU using sanitized eBay-safe format
   // ─────────────────────────────────────────────────────────────────────────
-  const baseSku = (item.sku || item.styleId || 'ITEM').replace(/[^a-zA-Z0-9]/g, '');
-  const sizeClean = String(item.size || '').replace(/[^a-zA-Z0-9]/g, '');
-  const sku = item.size ? `${baseSku}S${sizeClean}`.substring(0, 50) : baseSku.substring(0, 50);
+  const baseSku = item.sku || item.styleId || 'ITEM';
+  const size = item.size || '';
+  const ebaySku = makeEbaySku(baseSku, size);
 
   // Build title with size
   const baseTitle = item.name || item.title || 'Item';
@@ -1660,7 +1721,9 @@ async function createSingleListing(headers, item, config) {
 
   console.log(`\n[eBay:Listing] ════════════════════════════════════════════════════════════`);
   console.log(`[eBay:Listing] STARTING LISTING CREATION`);
-  console.log(`[eBay:Listing] SKU: ${sku}`);
+  console.log(`[eBay:Listing] Original SKU: ${baseSku}`);
+  console.log(`[eBay:Listing] eBay SKU: ${ebaySku}`);
+  console.log(`[eBay:Listing] Size: ${size}`);
   console.log(`[eBay:Listing] Title: ${title}`);
   console.log(`[eBay:Listing] Price: $${item.price}`);
   console.log(`[eBay:Listing] ════════════════════════════════════════════════════════════\n`);
@@ -1709,9 +1772,9 @@ async function createSingleListing(headers, item, config) {
     return {
       success: false,
       step: 'validation',
-      sku,
+      sku: ebaySku,
       baseSku,
-      size: item.size,
+      size,
       error: `Missing required item specifics: ${errorDetails}`,
       missingAspects: missingRequired,
       hint: 'Ensure product data includes: colorway (or color), size, brand. These fields are required by eBay for footwear listings.'
@@ -1723,7 +1786,7 @@ async function createSingleListing(headers, item, config) {
   // ─────────────────────────────────────────────────────────────────────────
   console.log('[eBay:Listing] Step 1: Creating inventory item...');
   
-  const invResult = await createInventoryItem(headers, sku, {
+  const invResult = await createInventoryItem(headers, ebaySku, {
     title,
     description: item.description || generateDescription({ ...item, title }),
     quantity: item.qty || item.quantity || 1,
@@ -1740,9 +1803,9 @@ async function createSingleListing(headers, item, config) {
     return {
       success: false,
       step: 'inventory',
-      sku,
+      sku: ebaySku,
       baseSku,
-      size: item.size,
+      size,
       error: invResult.error,
       status: invResult.status,
       ebayErrors: invResult.ebayErrors
@@ -1756,7 +1819,7 @@ async function createSingleListing(headers, item, config) {
   
   const offerResult = await createOffer(
     headers,
-    sku,
+    ebaySku,
     {
       price: item.price || 100,
       quantity: item.qty || item.quantity || 1,
@@ -1772,9 +1835,9 @@ async function createSingleListing(headers, item, config) {
     return {
       success: false,
       step: 'offer',
-      sku,
+      sku: ebaySku,
       baseSku,
-      size: item.size,
+      size,
       error: offerResult.error,
       status: offerResult.status,
       ebayErrors: offerResult.ebayErrors
@@ -1786,9 +1849,9 @@ async function createSingleListing(headers, item, config) {
     console.log(`[eBay:Listing] ✓ Offer already published: ${offerResult.listingId}`);
     return {
       success: true,
-      sku,
+      sku: ebaySku,
       baseSku,
-      size: item.size,
+      size,
       offerId: offerResult.offerId,
       listingId: offerResult.listingId,
       ebayUrl: offerResult.listingId ? `https://www.ebay.com/itm/${offerResult.listingId}` : null,
@@ -1808,7 +1871,7 @@ async function createSingleListing(headers, item, config) {
   if (!publishImmediately) {
     console.log(`\n[eBay:Listing] ════════════════════════════════════════════════════════════`);
     console.log(`[eBay:Listing] ✓ DRAFT CREATED!`);
-    console.log(`[eBay:Listing] SKU: ${sku}`);
+    console.log(`[eBay:Listing] eBay SKU: ${ebaySku}`);
     console.log(`[eBay:Listing] Offer ID: ${offerResult.offerId}`);
     console.log(`[eBay:Listing] Status: UNPUBLISHED (Draft)`);
     console.log(`[eBay:Listing] → User can review/edit in eBay Seller Hub, then publish`);
@@ -1816,9 +1879,9 @@ async function createSingleListing(headers, item, config) {
 
     return {
       success: true,
-      sku,
+      sku: ebaySku,
       baseSku,
-      size: item.size,
+      size,
       offerId: offerResult.offerId,
       listingId: null, // No listing ID until published
       ebayUrl: null,
@@ -1840,9 +1903,9 @@ async function createSingleListing(headers, item, config) {
     return {
       success: false,
       step: 'publish',
-      sku,
+      sku: ebaySku,
       baseSku,
-      size: item.size,
+      size,
       offerId: offerResult.offerId,
       error: publishResult.error,
       status: publishResult.status,
@@ -1852,16 +1915,16 @@ async function createSingleListing(headers, item, config) {
 
   console.log(`\n[eBay:Listing] ════════════════════════════════════════════════════════════`);
   console.log(`[eBay:Listing] ✓ PUBLISHED!`);
-  console.log(`[eBay:Listing] SKU: ${sku}`);
+  console.log(`[eBay:Listing] eBay SKU: ${ebaySku}`);
   console.log(`[eBay:Listing] Listing ID: ${publishResult.listingId}`);
   console.log(`[eBay:Listing] URL: ${publishResult.ebayUrl}`);
   console.log(`[eBay:Listing] ════════════════════════════════════════════════════════════\n`);
 
   return {
     success: true,
-    sku,
+    sku: ebaySku,
     baseSku,
-    size: item.size,
+    size,
     offerId: offerResult.offerId,
     listingId: publishResult.listingId,
     ebayUrl: publishResult.ebayUrl,
