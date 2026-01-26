@@ -117,6 +117,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       });
       if (res.ok) {
         const data = await res.json();
+        console.log('[CrossList] StockX raw response:', data);
         return data.listings || [];
       }
     } catch (e) {
@@ -133,7 +134,9 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       });
       if (res.ok) {
         const data = await res.json();
-        return data.listings || [];
+        console.log('[CrossList] eBay raw response:', data);
+        // FIX: API returns "offers" not "listings"
+        return data.offers || data.listings || [];
       }
     } catch (e) {
       console.error('[CrossList] eBay sync error:', e);
@@ -202,9 +205,25 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
   const stockxProducts = useMemo(() => {
     const g = {};
     stockxListings.forEach(l => {
-      const sku = l.sku || 'UNKNOWN';
+      const sku = l.sku || l.styleId || 'UNKNOWN';
       if (!g[sku]) {
-        g[sku] = { sku, name: l.name || 'Unknown Product', image: l.image, brand: 'Nike', sizes: [] };
+        // FIX: Capture ALL fields from StockX listing for eBay
+        g[sku] = { 
+          sku, 
+          name: l.name || l.productName || 'Unknown Product', 
+          image: l.image || l.thumbnail || '',
+          // FIX: Use actual brand from StockX, don't hardcode
+          brand: l.brand || extractBrandFromName(l.name || l.productName || ''),
+          // FIX: Capture colorway for eBay item specifics
+          colorway: l.colorway || '',
+          styleId: l.styleId || l.sku || '',
+          sizes: [] 
+        };
+      }
+      
+      // Update colorway if this listing has it and group doesn't
+      if (l.colorway && !g[sku].colorway) {
+        g[sku].colorway = l.colorway;
       }
       
       const mapping = mappings.find(m => m.stockx_listing_id === l.listingId && m.status === 'active');
@@ -235,7 +254,19 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
     unsold.forEach((p, idx) => {
       const sku = p.sku || p.styleId || 'UNKNOWN';
       if (!g[sku]) {
-        g[sku] = { sku, name: p.name || p.productName || 'Unknown Product', image: p.image || '', brand: p.brand || 'Nike', sizes: [] };
+        g[sku] = { 
+          sku, 
+          name: p.name || p.productName || 'Unknown Product', 
+          image: p.image || p.thumbnail || '', 
+          brand: p.brand || extractBrandFromName(p.name || p.productName || ''),
+          colorway: p.colorway || '',
+          styleId: p.styleId || p.sku || '',
+          sizes: [] 
+        };
+      }
+      
+      if (p.colorway && !g[sku].colorway) {
+        g[sku].colorway = p.colorway;
       }
       
       const ebayMatch = ebayListings.find(eb => (eb.sku || '') === `${sku}-${p.size}`);
@@ -286,6 +317,36 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
   }, [currentProducts]);
 
   // ============================================
+  // HELPER: Extract brand from product name
+  // ============================================
+  function extractBrandFromName(name) {
+    const nameLower = (name || '').toLowerCase();
+    const brands = [
+      'Nike', 'Air Jordan', 'Jordan', 'Adidas', 'Yeezy', 'New Balance', 
+      'Converse', 'Vans', 'Puma', 'Reebok', 'ASICS', 'Salomon',
+      'Saucony', 'Brooks', 'Hoka', 'On', 'Under Armour', 'Fila',
+      'Timberland', 'Dr. Martens', 'Birkenstock', 'Crocs', 'UGG',
+      'Balenciaga', 'Gucci', 'Louis Vuitton', 'Dior', 'Prada',
+      'Off-White', 'Fear of God', 'Essentials', 'Supreme', 'Stussy'
+    ];
+    
+    for (const brand of brands) {
+      if (nameLower.includes(brand.toLowerCase())) {
+        // Special handling for Jordan
+        if (brand.toLowerCase() === 'jordan' && nameLower.includes('air jordan')) {
+          return 'Jordan';
+        }
+        return brand;
+      }
+    }
+    
+    // Check for Yeezy (Adidas)
+    if (nameLower.includes('yeezy')) return 'adidas';
+    
+    return '';
+  }
+
+  // ============================================
   // CREATE EBAY LISTINGS
   // ============================================
   const handleCreateEbayListings = async () => {
@@ -301,7 +362,16 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       product.sizes.forEach(sizeItem => {
         if (selectedItems.has(sizeItem.key) && !sizeItem.isOnEbay) {
           if (!productMap[product.sku]) {
-            productMap[product.sku] = { sku: product.sku, name: product.name, brand: product.brand, image: product.image, sizes: [] };
+            // FIX: Include ALL required fields for eBay listing creation
+            productMap[product.sku] = { 
+              sku: product.sku, 
+              styleId: product.styleId || product.sku,
+              name: product.name, 
+              brand: product.brand,
+              colorway: product.colorway,  // CRITICAL: Required for eBay Color aspect
+              image: product.image, 
+              sizes: [] 
+            };
           }
           productMap[product.sku].sizes.push({
             size: sizeItem.size,
@@ -321,7 +391,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       return;
     }
     
-    console.log('[CrossList] Creating eBay listings:', products);
+    console.log('[CrossList] Creating eBay listings with products:', JSON.stringify(products, null, 2));
     
     try {
       const res = await fetch('/api/ebay-listings', {
@@ -331,6 +401,7 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
       });
       
       const data = await res.json();
+      console.log('[CrossList] eBay create response:', data);
       
       if (res.ok && data.created > 0) {
         // Insert mappings to Supabase
@@ -357,8 +428,10 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
         setSelectedItems(new Set());
         await syncAll();
       } else {
+        // Show detailed error
         const errorMsg = data.errors?.[0]?.error || data.error || 'Failed to create listings';
-        showToast(errorMsg, 'error');
+        const hint = data.errors?.[0]?.hint || '';
+        showToast(`${errorMsg}${hint ? ` - ${hint}` : ''}`, 'error');
         console.error('[CrossList] Create errors:', data.errors);
       }
       
@@ -533,7 +606,10 @@ export default function CrossList({ stockxToken, ebayToken, purchases = [], c })
                 </div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</div>
-                  <div style={{ fontSize: 10, color: c.textMuted }}>{p.sku}</div>
+                  <div style={{ fontSize: 10, color: c.textMuted }}>
+                    {p.sku}
+                    {p.colorway && <span style={{ marginLeft: 8, opacity: 0.7 }}>• {p.colorway}</span>}
+                  </div>
                 </div>
                 <div style={{ textAlign: 'right', fontSize: 12 }}>
                   <div>{p.totalQty} items</div>
