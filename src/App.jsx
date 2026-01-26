@@ -33,7 +33,7 @@ import {
 } from './safeDatabase';
 import { AutoMatchButton } from './autoMatch.jsx';
 import { syncStockXSales, syncEbaySales, transformPendingForDisplay } from './syncModule';
-
+import { storeEbayTokens, getValidEbayToken, clearEbayTokens } from './ebayTokenHelper';
 // Auth Component - Login/Signup Page
 function AuthPage({ onLogin }) {
   const [email, setEmail] = useState('');
@@ -977,11 +977,14 @@ function App() {
           setStockxConnected(true);
         }
 
-        const ebayTok = localStorage.getItem('flipledger_ebay_token');
+        const ebayTok = await getValidEbayToken((newToken) => {
+          setEbayToken(newToken);
+        });
         if (ebayTok) {
           setEbayToken(ebayTok);
           setEbayConnected(true);
         }
+        
 
       } catch (error) {
         console.error('Error loading data:', error);
@@ -1228,8 +1231,8 @@ function App() {
     const ebayError = params.get('ebay_error');
     
     if (ebayConnectedParam === 'true' && ebayTokenParam) {
-      localStorage.setItem('flipledger_ebay_token', ebayTokenParam);
-      localStorage.setItem('flipledger_ebay_refresh', ebayRefreshParam || '');
+    const expiresIn = parseInt(params.get('ebay_expires')) || 7200;
+      storeEbayTokens(ebayTokenParam, ebayRefreshParam, expiresIn);
       setEbayToken(ebayTokenParam);
       setEbayConnected(true);
       window.history.replaceState({}, document.title, window.location.pathname);
@@ -4390,12 +4393,11 @@ Let me know if you need anything else.`;
                           {ebaySyncing ? '⏳ Syncing...' : '🔄 Sync eBay Sales'}
                         </button>
                         <button
-                          onClick={() => {
-                            localStorage.removeItem('flipledger_ebay_token');
-                            localStorage.removeItem('flipledger_ebay_refresh');
-                            setEbayToken(null);
-                            setEbayConnected(false);
-                          }}
+                        onClick={() => {
+                      clearEbayTokens();
+                      setEbayToken(null);
+                      setEbayConnected(false);
+                    }}
                           style={{ padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, color: c.red, fontSize: 11, cursor: 'pointer' }}
                         >
                           Disconnect
@@ -4725,9 +4727,8 @@ Let me know if you need anything else.`;
                 </div>
                 {ebayConnected ? (
                   <button
-                    onClick={() => {
-                      localStorage.removeItem('flipledger_ebay_token');
-                      localStorage.removeItem('flipledger_ebay_refresh');
+                   onClick={() => {
+                      clearEbayTokens();
                       setEbayToken(null);
                       setEbayConnected(false);
                     }}
