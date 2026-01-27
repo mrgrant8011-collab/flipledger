@@ -2402,16 +2402,23 @@ async function handleDelete(headers, body, res) {
 
   for (const offerId of offerIds) {
     try {
-      console.log(`[eBay:DELETE] Withdrawing offer: ${offerId}`);
+      console.log(`[eBay:DELETE] Deleting offer: ${offerId}`);
       
-      const r = await fetch(
+      // Step 1: Try to withdraw first (in case it's published)
+      await fetch(
         `${EBAY_API_BASE}/sell/inventory/v1/offer/${offerId}/withdraw`,
         { method: 'POST', headers }
+      );
+      
+      // Step 2: Actually DELETE the offer
+      const r = await fetch(
+        `${EBAY_API_BASE}/sell/inventory/v1/offer/${offerId}`,
+        { method: 'DELETE', headers }
       );
 
       if (r.ok || r.status === 204) {
         results.ended++;
-        console.log(`[eBay:DELETE] ✓ Withdrawn: ${offerId}`);
+        console.log(`[eBay:DELETE] ✓ Deleted: ${offerId}`);
       } else {
         const errText = await r.text();
         const parsed = parseEbayError(errText);
