@@ -2113,11 +2113,13 @@ async function handleGet(headers, query, res) {
     
     if (!offerRes.ok) {
       const errText = await offerRes.text();
+      console.error(`[eBay:GET] eBay API error ${offerRes.status}:`, errText.substring(0, 500));
       const parsed = parseEbayError(errText);
       return res.status(offerRes.status).json({
         success: false,
         error: parsed.summary,
-        ebayErrors: parsed.ebayErrors
+        ebayErrors: parsed.ebayErrors,
+        rawResponse: errText.substring(0, 300)
       });
     }
 
@@ -2502,7 +2504,7 @@ export default async function handler(req, res) {
     });
   }
 
-  const accessToken = authHeader.replace('Bearer ', '');
+  const accessToken = authHeader.replace('Bearer ', '').trim();
   const headers = buildHeaders(accessToken);
 
   // Parse query params
