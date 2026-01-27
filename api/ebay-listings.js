@@ -2105,39 +2105,67 @@ async function handleGet(headers, query, res) {
   }
 
   // Normal list mode - get active offers
+  // WORKAROUND: eBay API bug - GET /offer fails if ANY inventory item has invalid SKU
+  // Solution: Fetch inventory items first, then get offers per-SKU
   try {
-    // Note: marketplace_id is sent via X-EBAY-C-MARKETPLACE-ID header in buildHeaders()
-    const url = `${EBAY_API_BASE}/sell/inventory/v1/offer?limit=100`;
-    console.log('[eBay:GET] Fetching offers:', url);
-
-    const offerRes = await fetch(url, { method: 'GET', headers });
+    console.log('[eBay:GET] Fetching inventory items first (workaround for eBay API bug)...');
     
-    if (!offerRes.ok) {
-      const errText = await offerRes.text();
-      console.error(`[eBay:GET] eBay API error ${offerRes.status}:`, errText.substring(0, 500));
+    // Step 1: Get inventory items
+    const invUrl = `${EBAY_API_BASE}/sell/inventory/v1/inventory_item?limit=100`;
+    const invRes = await fetch(invUrl, { method: 'GET', headers });
+    
+    if (!invRes.ok) {
+      const errText = await invRes.text();
+      console.error(`[eBay:GET] Inventory fetch failed ${invRes.status}:`, errText.substring(0, 300));
       const parsed = parseEbayError(errText);
-      return res.status(offerRes.status).json({
+      return res.status(invRes.status).json({
         success: false,
         error: parsed.summary,
         ebayErrors: parsed.ebayErrors,
         rawResponse: errText.substring(0, 300)
       });
     }
-
-    const data = await offerRes.json();
-    const offers = data.offers || [];
+    
+    const invData = await invRes.json();
+    const inventoryItems = invData.inventoryItems || [];
+    console.log(`[eBay:GET] Found ${inventoryItems.length} inventory items`);
+    
+    // Step 2: Filter to valid SKUs only (alphanumeric)
+    const validSkus = inventoryItems
+      .map(item => item.sku)
+      .filter(sku => sku && /^[A-Za-z0-9]+$/.test(sku));
+    
+    console.log(`[eBay:GET] Valid SKUs: ${validSkus.length} of ${inventoryItems.length}`);
+    
+    // Step 3: Fetch offers for each valid SKU
+    const allOffers = [];
+    for (const sku of validSkus) {
+      try {
+        const offerUrl = `${EBAY_API_BASE}/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}`;
+        const offerRes = await fetch(offerUrl, { method: 'GET', headers });
+        
+        if (offerRes.ok) {
+          const offerData = await offerRes.json();
+          if (offerData.offers && offerData.offers.length > 0) {
+            allOffers.push(...offerData.offers);
+          }
+        }
+      } catch (e) {
+        console.error(`[eBay:GET] Error fetching offers for SKU ${sku}:`, e.message);
+      }
+    }
 
     // DEBUG: Log offer count and sample SKUs for sync troubleshooting
     console.log(`[eBay:GET] ═══════════════════════════════════════════════`);
-    console.log(`[eBay:GET] Found ${offers.length} offers from eBay API`);
-    if (offers.length > 0) {
-      const sampleSkus = offers.slice(0, 5).map(o => o.sku);
+    console.log(`[eBay:GET] Found ${allOffers.length} offers from eBay API`);
+    if (allOffers.length > 0) {
+      const sampleSkus = allOffers.slice(0, 5).map(o => o.sku);
       console.log(`[eBay:GET] Sample SKUs: ${sampleSkus.join(', ')}`);
     }
     console.log(`[eBay:GET] ═══════════════════════════════════════════════`);
 
     // Enrich with listing URLs
-    const enriched = offers.map(o => ({
+    const enriched = allOffers.map(o => ({
       offerId: o.offerId,
       sku: o.sku,
       status: o.status,
