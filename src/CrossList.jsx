@@ -333,10 +333,12 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
         return offers;
       } else {
         const errorData = await res.json().catch(() => ({}));
-        console.error('[CrossList:Sync] ✗ eBay error:', res.status, JSON.stringify(errorData, null, 2));
+        console.error('[CrossList:Sync] ✗ eBay error:', res.status, errorData);
         
-        const errorMsg = errorData.error || errorData.rawResponse?.substring(0, 100) || `HTTP ${res.status}`;
-        showToast(`eBay sync failed: ${errorMsg}`, 'error');
+        if (res.status === 401) {
+          console.error('[CrossList:Sync] eBay token expired or invalid - user needs to reconnect');
+          showToast('eBay connection expired. Please reconnect in Settings.', 'error');
+        }
         return [];
       }
     } catch (e) {
@@ -975,7 +977,7 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
       </div>
 
       {/* View Filter */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
         {[
           { id: 'unlisted', label: '📤 Not on eBay', count: stats.notOnEbay },
           { id: 'listed', label: '✅ On eBay', count: stats.onEbay },
@@ -986,6 +988,21 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
             {tab.label} <span style={{ opacity: 0.7 }}>{tab.count}</span>
           </button>
         ))}
+        
+        {/* Bulk Remove from eBay */}
+        {ebayListings.length > 0 && (
+          <button 
+            onClick={() => {
+              const allOfferIds = ebayListings.map(e => e.offerId).filter(Boolean);
+              if (allOfferIds.length && confirm(`Remove all ${allOfferIds.length} listings from eBay?`)) {
+                handleDelistFromEbay(allOfferIds);
+              }
+            }}
+            disabled={delisting}
+            style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.1)', border: `1px solid ${c.red}`, borderRadius: 6, color: c.red, fontSize: 12, fontWeight: 600, cursor: 'pointer', marginLeft: 'auto' }}>
+            🗑️ Remove All from eBay ({ebayListings.length})
+          </button>
+        )}
       </div>
 
       {/* Action Bar */}
