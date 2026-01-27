@@ -977,7 +977,7 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
       </div>
 
       {/* View Filter */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         {[
           { id: 'unlisted', label: '📤 Not on eBay', count: stats.notOnEbay },
           { id: 'listed', label: '✅ On eBay', count: stats.onEbay },
@@ -988,21 +988,6 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
             {tab.label} <span style={{ opacity: 0.7 }}>{tab.count}</span>
           </button>
         ))}
-        
-        {/* Bulk Remove from eBay */}
-        {ebayListings.length > 0 && (
-          <button 
-            onClick={() => {
-              const allOfferIds = ebayListings.map(e => e.offerId).filter(Boolean);
-              if (allOfferIds.length && confirm(`Remove all ${allOfferIds.length} listings from eBay?`)) {
-                handleDelistFromEbay(allOfferIds);
-              }
-            }}
-            disabled={delisting}
-            style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.1)', border: `1px solid ${c.red}`, borderRadius: 6, color: c.red, fontSize: 12, fontWeight: 600, cursor: 'pointer', marginLeft: 'auto' }}>
-            🗑️ Remove All from eBay ({ebayListings.length})
-          </button>
-        )}
       </div>
 
       {/* Action Bar */}
@@ -1010,11 +995,39 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
         <div style={{ ...card, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13, color: c.textMuted }}>{selectedItems.size} selected</span>
           
-          {/* Main Action - Review Screen */}
-          <button onClick={handlePrepareForReview} disabled={!ebayToken}
-            style={{ padding: '8px 16px', background: c.green, border: 'none', borderRadius: 6, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
-            📋 Review & List {selectedItems.size} on eBay
-          </button>
+          {/* List on eBay - only for items NOT on eBay */}
+          {(() => {
+            const selectedNotOnEbay = [...selectedItems].filter(key => {
+              for (const p of filteredProducts) {
+                const s = p.sizes.find(sz => sz.key === key);
+                if (s && !s.isOnEbay) return true;
+              }
+              return false;
+            });
+            return selectedNotOnEbay.length > 0 && (
+              <button onClick={handlePrepareForReview} disabled={!ebayToken}
+                style={{ padding: '8px 16px', background: c.green, border: 'none', borderRadius: 6, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                📋 Review & List {selectedNotOnEbay.length} on eBay
+              </button>
+            );
+          })()}
+          
+          {/* Remove from eBay - only for items ON eBay */}
+          {(() => {
+            const selectedOnEbay = [...selectedItems].map(key => {
+              for (const p of filteredProducts) {
+                const s = p.sizes.find(sz => sz.key === key);
+                if (s && s.isOnEbay && s.ebayOfferId) return s.ebayOfferId;
+              }
+              return null;
+            }).filter(Boolean);
+            return selectedOnEbay.length > 0 && (
+              <button onClick={() => handleDelistFromEbay(selectedOnEbay)} disabled={delisting || !ebayToken}
+                style={{ padding: '8px 16px', background: 'rgba(239,68,68,0.15)', border: `1px solid ${c.red}`, borderRadius: 6, color: c.red, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>
+                🗑️ Remove {selectedOnEbay.length} from eBay
+              </button>
+            );
+          })()}
           
           <button onClick={() => setSelectedItems(new Set())}
             style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: 'none', borderRadius: 6, color: c.textMuted, cursor: 'pointer' }}>
@@ -1036,6 +1049,15 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
               setSelectedItems(new Set(allUnlisted));
             }} style={{ fontSize: 11, color: c.gold, background: 'none', border: 'none', cursor: 'pointer' }}>
               Select All Unlisted
+            </button>
+          )}
+          {viewFilter === 'listed' && (
+            <button onClick={() => {
+              const allOnEbay = [];
+              filteredProducts.forEach(p => { p.sizes.forEach(s => { if (s.isOnEbay) allOnEbay.push(s.key); }); });
+              setSelectedItems(new Set(allOnEbay));
+            }} style={{ fontSize: 11, color: c.red, background: 'none', border: 'none', cursor: 'pointer' }}>
+              Select All on eBay
             </button>
           )}
         </div>
@@ -1063,19 +1085,13 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
               <div style={{ padding: '8px 16px 12px', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {p.sizes.map(s => (
                   <div key={s.key}
-                    onClick={() => { if (s.isOnEbay) return; const n = new Set(selectedItems); n.has(s.key) ? n.delete(s.key) : n.add(s.key); setSelectedItems(n); }}
-                    style={{ padding: '8px 12px', background: s.isOnEbay ? 'rgba(34,197,94,0.1)' : selectedItems.has(s.key) ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${s.isOnEbay ? c.green : selectedItems.has(s.key) ? c.gold : c.border}`, borderRadius: 8, cursor: s.isOnEbay ? 'default' : 'pointer', display: 'flex', flexDirection: 'column', gap: 4, minWidth: 80 }}>
+                    onClick={() => { const n = new Set(selectedItems); n.has(s.key) ? n.delete(s.key) : n.add(s.key); setSelectedItems(n); }}
+                    style={{ padding: '8px 12px', background: selectedItems.has(s.key) ? 'rgba(201,169,98,0.2)' : s.isOnEbay ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.05)', border: `1px solid ${selectedItems.has(s.key) ? c.gold : s.isOnEbay ? c.green : c.border}`, borderRadius: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 4, minWidth: 80 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <span style={{ fontWeight: 700, fontSize: 13 }}>{s.size}</span>
                       {s.isOnEbay && <span style={{ color: c.green, fontSize: 10 }}>✓ eBay</span>}
                     </div>
                     <div style={{ fontSize: 11, color: c.textMuted }}>${s.yourAsk || '—'}</div>
-                    {s.isOnEbay && s.ebayOfferId && (
-                      <button onClick={(e) => { e.stopPropagation(); handleDelistFromEbay([s.ebayOfferId]); }} disabled={delisting}
-                        style={{ background: 'rgba(239,68,68,0.1)', border: 'none', borderRadius: 4, color: c.red, fontSize: 10, padding: '2px 6px', cursor: 'pointer', marginTop: 2 }}>
-                        Remove
-                      </button>
-                    )}
                   </div>
                 ))}
               </div>
