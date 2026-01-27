@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { supabase } from './supabase';
 import ListingReview from './ListingReview';
+import { getValidEbayToken } from './ebayTokenHelper';
 
 /**
  * CROSS LIST - Multi-platform listing management
@@ -306,11 +307,23 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
     }
     
     try {
+      // Get a valid (auto-refreshed if needed) eBay token
+      const validToken = await getValidEbayToken((newToken) => {
+        console.log('[CrossList:Sync] eBay token was refreshed');
+        setEbayToken(newToken);
+      });
+      
+      if (!validToken) {
+        console.log('[CrossList:Sync] ✗ Could not get valid eBay token - user needs to reconnect');
+        showToast('eBay connection expired. Please reconnect in Settings.', 'error');
+        return [];
+      }
+      
       console.log('[CrossList:Sync] Fetching eBay listings...');
       const res = await fetch('/api/ebay-listings', {
         method: 'GET',
         headers: { 
-          'Authorization': `Bearer ${ebayToken}`,
+          'Authorization': `Bearer ${validToken}`,
           'Content-Type': 'application/json'
         }
       });
