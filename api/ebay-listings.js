@@ -2106,7 +2106,8 @@ async function handleGet(headers, query, res) {
 
   // Normal list mode - get active offers
   try {
-    const url = `${EBAY_API_BASE}/sell/inventory/v1/offer?marketplace_id=${EBAY_MARKETPLACE_ID}&limit=100`;
+    // Note: marketplace_id is sent via X-EBAY-C-MARKETPLACE-ID header in buildHeaders()
+    const url = `${EBAY_API_BASE}/sell/inventory/v1/offer?limit=100`;
     console.log('[eBay:GET] Fetching offers:', url);
 
     const offerRes = await fetch(url, { method: 'GET', headers });
