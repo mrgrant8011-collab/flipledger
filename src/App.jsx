@@ -34,6 +34,40 @@ import {
 import { AutoMatchButton } from './autoMatch.jsx';
 import { syncStockXSales, syncEbaySales, transformPendingForDisplay } from './syncModule';
 import { storeEbayTokens, getValidEbayToken, clearEbayTokens } from './ebayTokenHelper';
+// ═══════════════════════════════════════════════════════════════════════
+// AUTO-DELIST: Store tokens server-side for 24/7 automatic delisting
+// ═══════════════════════════════════════════════════════════════════════
+async function linkTokensToServer(platform, accessToken, refreshToken, expiresIn) {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.log('[Auto-Delist] No session, skipping server token storage');
+      return;
+    }
+    
+    const response = await fetch('/api/link-tokens', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`
+      },
+      body: JSON.stringify({
+        platform: platform,
+        access_token: accessToken,
+        refresh_token: refreshToken || null,
+        expires_in: expiresIn || 7200
+      })
+    });
+    
+    if (response.ok) {
+      console.log(`[Auto-Delist] ✓ ${platform} tokens stored server-side for 24/7 delisting`);
+    } else {
+      console.error(`[Auto-Delist] Failed to store ${platform} tokens:`, await response.text());
+    }
+  } catch (e) {
+    console.error(`[Auto-Delist] Error storing ${platform} tokens:`, e);
+  }
+}
 // Auth Component - Login/Signup Page
 function AuthPage({ onLogin }) {
   const [email, setEmail] = useState('');
@@ -1218,6 +1252,7 @@ function App() {
       localStorage.setItem('flipledger_stockx_token', token);
       setStockxToken(token);
       setStockxConnected(true);
+      linkTokensToServer('stockx', token, null, 86400);
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
@@ -1235,6 +1270,7 @@ function App() {
       storeEbayTokens(ebayTokenParam, ebayRefreshParam, expiresIn);
       setEbayToken(ebayTokenParam);
       setEbayConnected(true);
+      linkTokensToServer('ebay', ebayTokenParam, ebayRefreshParam, expiresIn);
       window.history.replaceState({}, document.title, window.location.pathname);
       setPage('settings');
     } else if (ebayError) {
