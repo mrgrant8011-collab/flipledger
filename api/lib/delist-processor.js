@@ -1,5 +1,5 @@
 import { supabaseAdmin } from './token-manager.js';
-import { delistEbayOffer } from './ebay-delist.js';
+import { delistEbayOffer, reduceEbayQuantity } from './ebay-delist.js';
 import { delistStockXListing } from './stockx-delist.js';
 
 function normalizeSkuForMatch(sku) {
@@ -14,6 +14,25 @@ function normalizeSize(size) {
   normalized = normalized.replace(/\s*(US|UK|EU|CM)$/i, '');
   normalized = normalized.replace(/[^A-Z0-9.]/g, '');
   return normalized;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// QTY SUPPORT: Count active links sharing same eBay listing
+// ═══════════════════════════════════════════════════════════════════════
+async function countActiveLinksForEbayOffer(userId, ebayOfferId) {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('cross_list_links')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('ebay_offer_id', ebayOfferId)
+      .eq('status', 'active');
+    
+    if (error || !data) return 0;
+    return data.length;
+  } catch (err) {
+    return 0;
+  }
 }
 
 export async function processDelistForSale(sale, tokens) {
@@ -36,7 +55,21 @@ export async function processDelistForSale(sale, tokens) {
   if (crossListMatch.found) {
     if (delistFrom === 'ebay' && crossListMatch.link.ebay_offer_id) {
       listingIdDelisted = crossListMatch.link.ebay_offer_id;
-      delistResult = await delistEbayOffer(tokens.ebayToken, listingIdDelisted);
+      
+      // QTY SUPPORT: Check how many active links share this eBay listing
+      const activeCount = await countActiveLinksForEbayOffer(user_id, listingIdDelisted);
+      
+      if (activeCount > 1) {
+        // Reduce quantity instead of deleting
+        const newQty = activeCount - 1;
+        delistResult = await reduceEbayQuantity(tokens.ebayToken, crossListMatch.link.ebay_sku, newQty);
+        if (delistResult.success) {
+          delistResult.quantityReduced = true;
+        }
+      } else {
+        // Only 1 left, delete the listing
+        delistResult = await delistEbayOffer(tokens.ebayToken, listingIdDelisted);
+      }
     } else if (delistFrom === 'stockx' && crossListMatch.link.stockx_listing_id) {
       listingIdDelisted = crossListMatch.link.stockx_listing_id;
       delistResult = await delistStockXListing(tokens.stockxToken, listingIdDelisted);
