@@ -114,3 +114,43 @@ export async function deleteEbayOffer(accessToken, offerId) {
     return { success: false, error: err.message };
   }
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// QTY SUPPORT: Reduce eBay listing quantity instead of deleting
+// ═══════════════════════════════════════════════════════════════════════
+export async function reduceEbayQuantity(accessToken, sku, newQuantity) {
+  const headers = buildHeaders(accessToken);
+  
+  try {
+    // Get current inventory item
+    const getUrl = `${EBAY_API_BASE}/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`;
+    const getRes = await fetch(getUrl, { method: 'GET', headers });
+    
+    if (!getRes.ok) {
+      return { success: false, error: `Failed to get inventory item: ${getRes.status}` };
+    }
+    
+    const inventoryItem = await getRes.json();
+    
+    // Update the quantity
+    inventoryItem.availability = inventoryItem.availability || {};
+    inventoryItem.availability.shipToLocationAvailability = inventoryItem.availability.shipToLocationAvailability || {};
+    inventoryItem.availability.shipToLocationAvailability.quantity = newQuantity;
+    
+    // Put back the updated inventory item
+    const putRes = await fetch(getUrl, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(inventoryItem)
+    });
+    
+    if (putRes.ok || putRes.status === 204) {
+      return { success: true, newQuantity };
+    }
+    
+    const errText = await putRes.text();
+    return { success: false, error: `Failed to update quantity: ${putRes.status} - ${errText}` };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
