@@ -111,8 +111,11 @@ Questions? Message me before purchasing!`
         price: item.price || item.yourAsk || 100,
         condition: 'NEW',
         description: description,
-        // Tracking
-        stockxListingId: item.listingId || item.stockxListingId || null,
+        // QTY SUPPORT: Preserve qty and stockxListingIds from CrossList
+        qty: item.qty || 1,
+        stockxListingIds: item.stockxListingIds || [],
+        // Tracking (legacy single ID for backwards compatibility)
+        stockxListingId: item.stockxListingIds?.[0] || item.listingId || item.stockxListingId || null,
         // Status
         status: catalogData?.epid ? 'ready' : (item.color || catalogData?.color) ? 'ready' : 'needs_color'
       };
@@ -303,9 +306,11 @@ Questions? Message me before purchasing!`
         sizes: [{
           size: item.shoeSize,
           price: item.price,
-          qty: 1,
-          stockxListingId: item.stockxListingId
-        }]
+          qty: item.qty || 1,  // QTY SUPPORT: Use actual qty
+          stockxListingId: item.stockxListingIds?.[0] || item.stockxListingId
+        }],
+        // QTY SUPPORT: Track all stockxListingIds for mapping creation
+        _stockxListingIds: item.stockxListingIds || []
       }));
 
       const res = await fetch('/api/ebay-listings', {
@@ -320,6 +325,20 @@ Questions? Message me before purchasing!`
       const data = await res.json();
 
       if (res.ok && data.created > 0) {
+        // QTY SUPPORT: Merge stockxListingIds back into createdOffers for CrossList
+        if (data.createdOffers) {
+          data.createdOffers = data.createdOffers.map(offer => {
+            // Find matching item to get all stockxListingIds
+            const matchingItem = itemsToPublish.find(item => 
+              item.styleCode === offer.baseSku && item.shoeSize === offer.size
+            );
+            return {
+              ...offer,
+              stockxListingIds: matchingItem?.stockxListingIds || []
+            };
+          });
+        }
+        
         showToast(`✅ Published ${data.created} listing(s) to eBay!`);
         
         // Remove published items from list
