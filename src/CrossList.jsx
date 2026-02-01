@@ -412,7 +412,7 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
       }
       
       // Verify mappings - mark as delisted if not found on eBay
-      const ebOfferIds = new Set(eb.map(e => e.offerId));
+const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
       const activeMappings = mappings.filter(m => m.status === 'active');
       let delistedCount = 0;
       
