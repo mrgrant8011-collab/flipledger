@@ -623,35 +623,47 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
       return;
     }
     
-    // Gather selected items with all their data
-    const items = [];
+    // QTY SUPPORT: Group selected items by SKU+size to combine into single listing with qty
+    const itemGroups = {};
     currentProducts.forEach(product => {
       product.sizes.forEach(sizeItem => {
         if (selectedItems.has(sizeItem.key) && !sizeItem.isOnEbay) {
-          items.push({
-            sku: product.sku,
-            styleId: product.styleId || product.sku,
-            name: product.name,
-            brand: product.brand,
-            colorway: product.colorway,
-            image: product.image,
-            images: product.images || (product.image ? [product.image] : []),
-            size: sizeItem.size,
-            price: sizeItem.yourAsk || 100,
-            yourAsk: sizeItem.yourAsk,
-            listingId: sizeItem.source === 'stockx' ? sizeItem.listingId : null,
-            stockxListingId: sizeItem.source === 'stockx' ? sizeItem.listingId : null
-          });
+          const groupKey = `${product.sku}_${sizeItem.size}`;
+          
+          if (!itemGroups[groupKey]) {
+            itemGroups[groupKey] = {
+              sku: product.sku,
+              styleId: product.styleId || product.sku,
+              name: product.name,
+              brand: product.brand,
+              colorway: product.colorway,
+              image: product.image,
+              images: product.images || (product.image ? [product.image] : []),
+              size: sizeItem.size,
+              price: sizeItem.yourAsk || 100,
+              yourAsk: sizeItem.yourAsk,
+              qty: 0,
+              stockxListingIds: []
+            };
+          }
+          
+          // Increment qty and collect all stockx listing IDs
+          itemGroups[groupKey].qty += 1;
+          if (sizeItem.source === 'stockx' && sizeItem.listingId) {
+            itemGroups[groupKey].stockxListingIds.push(sizeItem.listingId);
+          }
         }
       });
     });
+    
+    const items = Object.values(itemGroups);
     
     if (items.length === 0) {
       showToast('No valid items to list', 'error');
       return;
     }
     
-    console.log('[CrossList] Opening Review Screen with', items.length, 'items');
+    console.log('[CrossList] Opening Review Screen with', items.length, 'items (grouped by SKU+size, total qty:', items.reduce((sum, i) => sum + i.qty, 0), ')');
     setItemsToReview(items);
     setShowReview(true);
   };
@@ -660,20 +672,44 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
     // After publishing from review screen, update mappings and refresh
     if (data?.createdOffers?.length > 0) {
       for (const offer of data.createdOffers) {
-        const exists = mappings.find(m => 
-          m.ebay_offer_id === offer.offerId ||
-          (m.ebay_sku === offer.ebaySku && m.status === 'active')
-        );
+        // QTY SUPPORT: Create mapping for each stockxListingId (all point to same eBay offer)
+        const stockxIds = offer.stockxListingIds || (offer.stockxListingId ? [offer.stockxListingId] : []);
         
-        if (!exists) {
-          await insertMapping({
-            sku: offer.baseSku,
-            size: offer.size,
-            stockx_listing_id: offer.stockxListingId || null,
-            ebay_offer_id: offer.offerId,
-            ebay_listing_id: offer.listingId || null,
-            ebay_sku: offer.ebaySku  // The sanitized eBay SKU
-          });
+        if (stockxIds.length > 0) {
+          // Create one mapping per StockX listing ID
+          for (const stockxId of stockxIds) {
+            const exists = mappings.find(m => 
+              m.stockx_listing_id === stockxId && m.status === 'active'
+            );
+            
+            if (!exists) {
+              await insertMapping({
+                sku: offer.baseSku,
+                size: offer.size,
+                stockx_listing_id: stockxId,
+                ebay_offer_id: offer.offerId,
+                ebay_listing_id: offer.listingId || null,
+                ebay_sku: offer.ebaySku
+              });
+            }
+          }
+        } else {
+          // No StockX IDs (from inventory), create single mapping
+          const exists = mappings.find(m => 
+            m.ebay_offer_id === offer.offerId ||
+            (m.ebay_sku === offer.ebaySku && m.status === 'active')
+          );
+          
+          if (!exists) {
+            await insertMapping({
+              sku: offer.baseSku,
+              size: offer.size,
+              stockx_listing_id: null,
+              ebay_offer_id: offer.offerId,
+              ebay_listing_id: offer.listingId || null,
+              ebay_sku: offer.ebaySku
+            });
+          }
         }
       }
       await loadMappings();
