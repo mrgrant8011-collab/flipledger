@@ -119,8 +119,9 @@ async function findCrossListLink(userId, sku, size, soldOn) {
       return linkSku === normalizedSku && linkSize === normalizedSize;
     });
     
-    if (matches.length > 1) return { found: false, skipped: true, reason: 'multiple_matches' };
-    if (matches.length === 1) return { found: true, link: matches[0] };
+    // QTY SUPPORT: Pick first match (multiple matches expected when qty > 1)
+    // All matches with same SKU+size point to same eBay listing
+    if (matches.length >= 1) return { found: true, link: matches[0] };
     return { found: false };
   } catch (err) {
     return { found: false };
