@@ -408,7 +408,7 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
                       <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: c.textMuted, borderBottom: `1px solid ${c.border}` }}>BID</th>
                       <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: c.textMuted, borderBottom: `1px solid ${c.border}` }}>SELL FAST</th>
                       <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: c.textMuted, borderBottom: `1px solid ${c.border}` }}>COST</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: c.textMuted, borderBottom: `1px solid ${c.border}` }}>PROFIT</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: c.textMuted, borderBottom: `1px solid ${c.border}` }}>EST. PROFIT</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -473,10 +473,11 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
                           <td style={{ padding: '10px 12px', textAlign: 'right', color: c.textMuted }}>{item.cost ? `$${item.cost}` : '—'}</td>
                           {(() => {
                             const priceNum = parseFloat(currentPrice);
-                            const displayProfit = item.cost && !isNaN(priceNum) && priceNum > 0 ? Math.round(priceNum * 0.88 - item.cost) : null;
+                            const feeMultiplier = (item.inventoryType === 'DIRECT' || item.inventoryType === 'FLEX') ? 0.92 : 0.90;
+                            const displayProfit = item.cost && !isNaN(priceNum) && priceNum > 0 ? Math.round(priceNum * feeMultiplier - item.cost) : null;
                             return (
                               <td style={{ padding: '10px 12px', textAlign: 'right', color: displayProfit > 0 ? c.green : displayProfit < 0 ? c.red : c.textMuted }}>
-                                {displayProfit !== null ? `$${displayProfit}` : '—'}
+                                {displayProfit !== null ? `~$${displayProfit}` : '—'}
                               </td>
                             );
                           })()}
