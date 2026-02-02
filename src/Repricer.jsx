@@ -214,7 +214,8 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
   const handleUpdatePrices = async () => {
     const changes = Object.entries(editedPrices).filter(([id, price]) => {
       const listing = stockxListings.find(l => l.listingId === id);
-      return listing && parseFloat(price) !== listing.yourAsk;
+      const newPrice = parseFloat(price);
+      return listing && !isNaN(newPrice) && newPrice > 0 && newPrice !== listing.yourAsk;
     });
     
     if (changes.length === 0) {
@@ -252,7 +253,11 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
   // RENDER
   // ============================================
   const card = { background: c.card, borderRadius: 12, border: `1px solid ${c.border}` };
-  const changesCount = Object.keys(editedPrices).length;
+  const changesCount = Object.entries(editedPrices).filter(([id, price]) => {
+    const listing = stockxListings.find(l => l.listingId === id);
+    const newPrice = parseFloat(price);
+    return listing && !isNaN(newPrice) && newPrice > 0 && newPrice !== listing.yourAsk;
+  }).length;
 
   // Clickable price button style
   const priceButtonStyle = (color = c.green) => ({
@@ -467,7 +472,8 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
                           </td>
                           <td style={{ padding: '10px 12px', textAlign: 'right', color: c.textMuted }}>{item.cost ? `$${item.cost}` : '—'}</td>
                           {(() => {
-                            const displayProfit = item.cost ? Math.round(parseFloat(currentPrice) * 0.88 - item.cost) : null;
+                            const priceNum = parseFloat(currentPrice);
+                            const displayProfit = item.cost && !isNaN(priceNum) && priceNum > 0 ? Math.round(priceNum * 0.88 - item.cost) : null;
                             return (
                               <td style={{ padding: '10px 12px', textAlign: 'right', color: displayProfit > 0 ? c.green : displayProfit < 0 ? c.red : c.textMuted }}>
                                 {displayProfit !== null ? `$${displayProfit}` : '—'}
