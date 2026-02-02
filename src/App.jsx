@@ -1,6 +1,6 @@
 import Listings from './Listings';
 import CopCheck from './CopCheck';
-import { useState, useEffect, Component } from 'react';
+import { useState, useEffect, Component, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import Tesseract from 'tesseract.js';
 import { supabase } from './supabase';
@@ -857,7 +857,7 @@ function App() {
   const [showNikeExample, setShowNikeExample] = useState(false);
 
   const ITEMS_PER_PAGE = 50;
-
+const loadedUserRef = useRef(null);
   // Check for existing session on load
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -877,7 +877,13 @@ function App() {
     if (!user) {
       setDataLoading(false);
       return;
+  }
+
+    if (loadedUserRef.current === user.id) {
+      setDataLoading(false);
+      return;
     }
+    loadedUserRef.current = user.id;
 
     const loadData = async () => {
       setDataLoading(true);
