@@ -30,6 +30,7 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
       const { data, error } = await supabase
         .from('delist_log')
         .select('*')
+        .eq('status', 'success')
         .order('created_at', { ascending: false })
         .limit(50);
       
