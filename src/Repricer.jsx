@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 
 /**
  * REPRICER - StockX Only
@@ -10,6 +10,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 export default function Repricer({ stockxToken, purchases = [], c }) {
   const [syncing, setSyncing] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [loadingMarketData, setLoadingMarketData] = useState(false);
   const [stockxListings, setStockxListings] = useState(() => {
     try { return JSON.parse(localStorage.getItem('fl_repricer_sx') || '[]'); } catch { return []; }
   });
@@ -57,8 +58,8 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
     setSyncing(true);
     
     try {
-      // Fetch WITH market data (no skipMarketData param)
-      const res = await fetch('/api/stockx-listings', {
+      // Fetch listings only (skip market data for fast sync)
+      const res = await fetch('/api/stockx-listings?skipMarketData=true', {
         headers: { 'Authorization': `Bearer ${stockxToken}` }
       });
       
@@ -83,6 +84,71 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
     }
     
     setSyncing(false);
+  };
+
+  // ============================================
+  // FETCH MARKET DATA FOR PRODUCT (lazy load)
+  // ============================================
+  const fetchProductMarketData = async (product) => {
+    if (!product || !stockxToken || loadingMarketData) return;
+    
+    // Get variant IDs for this product
+    const variantIds = product.sizes.map(s => s.variantId).filter(Boolean);
+    if (variantIds.length === 0) return;
+    
+    // Check if already has market data
+    const hasMarketData = product.sizes.some(s => s.lowestAsk || s.sellFaster);
+    if (hasMarketData) return;
+    
+    setLoadingMarketData(true);
+    
+    try {
+      const productId = product.sizes[0]?.productId;
+      if (!productId) return;
+      
+      const res = await fetch(`/api/stockx-listings?productId=${productId}&variantIds=${variantIds.join(',')}`, {
+        headers: { 'Authorization': `Bearer ${stockxToken}` }
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        const marketData = data.marketData || {};
+        
+        // Update listings with market data
+        setStockxListings(prev => {
+          const updated = prev.map(l => {
+            if (marketData[l.variantId]) {
+              const md = marketData[l.variantId];
+              const channel = l.inventoryType || 'STANDARD';
+              
+              let lowestAsk = null, sellFaster = null, highestBid = null;
+              if (channel === 'DIRECT') {
+                lowestAsk = md.directLowest;
+                sellFaster = md.directSellFaster;
+                highestBid = md.directBid || md.highestBid;
+              } else if (channel === 'FLEX') {
+                lowestAsk = md.flexLowest;
+                sellFaster = md.flexSellFaster;
+                highestBid = md.flexBid || md.highestBid;
+              } else {
+                lowestAsk = md.standardLowest;
+                sellFaster = md.standardSellFaster;
+                highestBid = md.standardBid || md.highestBid;
+              }
+              
+              return { ...l, lowestAsk, sellFaster, highestBid };
+            }
+            return l;
+          });
+          localStorage.setItem('fl_repricer_sx', JSON.stringify(updated));
+          return updated;
+        });
+      }
+    } catch (e) {
+      console.error('[Repricer] Market data error:', e);
+    }
+    
+    setLoadingMarketData(false);
   };
 
   // ============================================
@@ -134,6 +200,13 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
   // Clear selected sizes when product changes
   useMemo(() => {
     setSelectedSizes(new Set());
+  }, [currentProduct?.sku]);
+
+  // Auto-fetch market data when product is selected
+  useEffect(() => {
+    if (currentProduct) {
+      fetchProductMarketData(currentProduct);
+    }
   }, [currentProduct?.sku]);
 
   // Stats
@@ -384,10 +457,13 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
                 <div style={{ width: 60, height: 60, background: 'rgba(255,255,255,0.05)', borderRadius: 8, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>
                   {currentProduct.image ? <img src={currentProduct.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; e.target.parentNode.innerHTML = '👟'; }} /> : '👟'}
                 </div>
-                <div>
+                <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 16, fontWeight: 700 }}>{currentProduct.name}</div>
                   <div style={{ fontSize: 12, color: c.textMuted }}>{currentProduct.sku}</div>
                 </div>
+                {loadingMarketData && (
+                  <div style={{ fontSize: 12, color: c.gold }}>⏳ Loading prices...</div>
+                )}
               </div>
               
               <div style={{ flex: 1, overflowY: 'auto' }}>
