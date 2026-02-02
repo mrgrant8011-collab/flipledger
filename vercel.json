@@ -6,7 +6,7 @@
     }
   ],
   "functions": {
-    "api/stockx-listings.js": {
+    "api/*.js": {
       "maxDuration": 60
     }
   }
