@@ -17,6 +17,7 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
   const [editedPrices, setEditedPrices] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const [toast, setToast] = useState(null);
+  const [selectedSizes, setSelectedSizes] = useState(new Set());
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -130,6 +131,11 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
     return filteredProducts.find(p => p.sku === selectedProduct) || filteredProducts[0] || null;
   }, [selectedProduct, filteredProducts]);
 
+  // Clear selected sizes when product changes
+  useMemo(() => {
+    setSelectedSizes(new Set());
+  }, [currentProduct?.sku]);
+
   // Stats
   const stats = useMemo(() => {
     const total = stockxListings.length;
@@ -137,6 +143,70 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
     const needsReprice = groupedProducts.reduce((sum, p) => sum + p.needsReprice, 0);
     return { total, products, needsReprice };
   }, [stockxListings, groupedProducts]);
+
+  // ============================================
+  // SELECTION HANDLERS
+  // ============================================
+  const toggleSizeSelection = (listingId) => {
+    setSelectedSizes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(listingId)) {
+        newSet.delete(listingId);
+      } else {
+        newSet.add(listingId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleAllSizes = () => {
+    if (!currentProduct) return;
+    const allIds = currentProduct.sizes.map(s => s.listingId);
+    const allSelected = allIds.every(id => selectedSizes.has(id));
+    
+    if (allSelected) {
+      setSelectedSizes(new Set());
+    } else {
+      setSelectedSizes(new Set(allIds));
+    }
+  };
+
+  // ============================================
+  // APPLY PRICING STRATEGIES
+  // ============================================
+  const applyStrategy = (strategy, onlySelected = false) => {
+    if (!currentProduct) return;
+    
+    const newPrices = { ...editedPrices };
+    const sizesToUpdate = onlySelected 
+      ? currentProduct.sizes.filter(s => selectedSizes.has(s.listingId))
+      : currentProduct.sizes;
+    
+    sizesToUpdate.forEach(s => {
+      let newPrice = null;
+      
+      switch (strategy) {
+        case 'beat':
+          if (s.lowestAsk) newPrice = s.lowestAsk - 1;
+          break;
+        case 'match':
+          if (s.lowestAsk) newPrice = s.lowestAsk;
+          break;
+        case 'sellfast':
+          if (s.sellFaster) newPrice = s.sellFaster;
+          break;
+        case 'matchbid':
+          if (s.highestBid) newPrice = s.highestBid;
+          break;
+      }
+      
+      if (newPrice !== null) {
+        newPrices[s.listingId] = newPrice;
+      }
+    });
+    
+    setEditedPrices(newPrices);
+  };
 
   // ============================================
   // UPDATE PRICES
@@ -183,6 +253,19 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
   // ============================================
   const card = { background: c.card, borderRadius: 12, border: `1px solid ${c.border}` };
   const changesCount = Object.keys(editedPrices).length;
+
+  // Clickable price button style
+  const priceButtonStyle = (color = c.green) => ({
+    background: 'none',
+    border: 'none',
+    color: color,
+    cursor: 'pointer',
+    fontWeight: 600,
+    fontSize: 12,
+    padding: '4px 8px',
+    borderRadius: 4,
+    transition: 'all 0.15s'
+  });
 
   return (
     <div style={{ width: '100%' }}>
@@ -266,6 +349,32 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
         <div style={{ ...card, overflow: 'hidden', display: 'flex', flexDirection: 'column', flex: 1 }}>
           {currentProduct ? (
             <>
+              {/* Selection Bar - shows when items selected */}
+              {selectedSizes.size > 0 && (
+                <div style={{ padding: '10px 16px', background: 'rgba(201,169,98,0.1)', borderBottom: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ background: c.gold, color: '#000', padding: '4px 10px', borderRadius: 4, fontSize: 12, fontWeight: 700 }}>{selectedSizes.size}</span>
+                  <span style={{ fontSize: 13 }}>selected</span>
+                  
+                  {/* Dropdown */}
+                  <div style={{ position: 'relative', marginLeft: 8 }}>
+                    <select 
+                      onChange={(e) => { if (e.target.value) { applyStrategy(e.target.value, true); e.target.value = ''; } }}
+                      style={{ padding: '8px 12px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 6, color: c.text, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      <option value="">Update Price ▼</option>
+                      <option value="beat">Beat Lowest (-$1)</option>
+                      <option value="match">Match Lowest</option>
+                      <option value="sellfast">Sell Fast</option>
+                      <option value="matchbid">Match Bid</option>
+                    </select>
+                  </div>
+                  
+                  <button onClick={() => setSelectedSizes(new Set())} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>
+                    Clear
+                  </button>
+                </div>
+              )}
+              
               <div style={{ padding: '16px', borderBottom: `1px solid ${c.border}`, display: 'flex', gap: 12, alignItems: 'center' }}>
                 <div style={{ width: 60, height: 60, background: 'rgba(255,255,255,0.05)', borderRadius: 8, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>
                   {currentProduct.image ? <img src={currentProduct.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; e.target.parentNode.innerHTML = '👟'; }} /> : '👟'}
@@ -280,6 +389,14 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
                     <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
+                      <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, color: c.textMuted, borderBottom: `1px solid ${c.border}`, width: 40 }}>
+                        <input 
+                          type="checkbox" 
+                          checked={currentProduct.sizes.length > 0 && currentProduct.sizes.every(s => selectedSizes.has(s.listingId))}
+                          onChange={toggleAllSizes}
+                          style={{ cursor: 'pointer' }}
+                        />
+                      </th>
                       <th style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, color: c.textMuted, borderBottom: `1px solid ${c.border}` }}>SIZE</th>
                       <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: c.textMuted, borderBottom: `1px solid ${c.border}` }}>YOUR ASK</th>
                       <th style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: c.textMuted, borderBottom: `1px solid ${c.border}` }}>LOWEST</th>
@@ -294,28 +411,58 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
                       const isEdited = editedPrices[item.listingId] !== undefined;
                       const currentPrice = isEdited ? editedPrices[item.listingId] : item.yourAsk;
                       const needsReprice = item.lowestAsk && item.yourAsk > item.lowestAsk;
+                      const isSelected = selectedSizes.has(item.listingId);
                       
                       return (
-                        <tr key={item.listingId} style={{ borderBottom: `1px solid ${c.border}` }}>
+                        <tr key={item.listingId} style={{ borderBottom: `1px solid ${c.border}`, background: isSelected ? 'rgba(201,169,98,0.05)' : 'transparent' }}>
+                          <td style={{ padding: '10px 12px' }}>
+                            <input 
+                              type="checkbox" 
+                              checked={isSelected}
+                              onChange={() => toggleSizeSelection(item.listingId)}
+                              style={{ cursor: 'pointer' }}
+                            />
+                          </td>
                           <td style={{ padding: '10px 12px', fontWeight: 600 }}>{item.size}</td>
                           <td style={{ padding: '10px 12px', textAlign: 'right' }}>
                             <input type="number" value={currentPrice || ''} 
                               onChange={e => setEditedPrices({ ...editedPrices, [item.listingId]: e.target.value })}
                               style={{ width: 70, padding: '4px 8px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 4, color: c.text, textAlign: 'right' }} />
                           </td>
-                          <td style={{ padding: '10px 12px', textAlign: 'right', color: needsReprice ? c.gold : c.green }}>
+                          <td style={{ padding: '10px 12px', textAlign: 'right' }}>
                             {item.lowestAsk 
-                              ? <button onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: item.lowestAsk - 1 })} style={{ background: 'none', border: 'none', color: needsReprice ? c.gold : c.green, cursor: 'pointer', fontWeight: 600 }}>${item.lowestAsk}</button>
+                              ? <button 
+                                  onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: item.lowestAsk - 1 })} 
+                                  style={{ ...priceButtonStyle(needsReprice ? c.gold : c.green) }}
+                                  onMouseEnter={e => e.target.style.background = needsReprice ? 'rgba(201,169,98,0.15)' : 'rgba(16,185,129,0.15)'}
+                                  onMouseLeave={e => e.target.style.background = 'none'}
+                                >
+                                  ${item.lowestAsk}
+                                </button>
                               : '—'}
                           </td>
                           <td style={{ padding: '10px 12px', textAlign: 'right' }}>
                             {item.highestBid 
-                              ? <button onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: item.highestBid })} style={{ background: 'none', border: 'none', color: c.text, cursor: 'pointer' }}>${item.highestBid}</button>
+                              ? <button 
+                                  onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: item.highestBid })} 
+                                  style={{ ...priceButtonStyle(c.text) }}
+                                  onMouseEnter={e => e.target.style.background = 'rgba(255,255,255,0.1)'}
+                                  onMouseLeave={e => e.target.style.background = 'none'}
+                                >
+                                  ${item.highestBid}
+                                </button>
                               : '—'}
                           </td>
                           <td style={{ padding: '10px 12px', textAlign: 'right' }}>
                             {item.sellFaster 
-                              ? <button onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: item.sellFaster })} style={{ background: 'none', border: 'none', color: c.green, cursor: 'pointer' }}>${item.sellFaster}</button>
+                              ? <button 
+                                  onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: item.sellFaster })} 
+                                  style={{ ...priceButtonStyle(c.green) }}
+                                  onMouseEnter={e => e.target.style.background = 'rgba(16,185,129,0.15)'}
+                                  onMouseLeave={e => e.target.style.background = 'none'}
+                                >
+                                  ${item.sellFaster}
+                                </button>
                               : '—'}
                           </td>
                           <td style={{ padding: '10px 12px', textAlign: 'right', color: c.textMuted }}>{item.cost ? `$${item.cost}` : '—'}</td>
@@ -329,17 +476,37 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
                 </table>
               </div>
               
-              {currentProduct.sizes.some(s => s.sellFaster) && (
-                <div style={{ padding: 12, borderTop: `1px solid ${c.border}`, display: 'flex', gap: 8 }}>
-                  <button onClick={() => {
-                    const newPrices = { ...editedPrices };
-                    currentProduct.sizes.forEach(s => { if (s.sellFaster) newPrices[s.listingId] = s.sellFaster; });
-                    setEditedPrices(newPrices);
-                  }} style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.1)', border: `1px solid ${c.green}`, borderRadius: 6, color: c.green, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
-                    ⚡ Apply All Sell Fast
+              {/* Bottom buttons - Apply All */}
+              <div style={{ padding: 12, borderTop: `1px solid ${c.border}`, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button 
+                  onClick={() => applyStrategy('beat')} 
+                  style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.1)', border: `1px solid ${c.green}`, borderRadius: 6, color: c.green, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Beat Lowest (-$1)
+                </button>
+                <button 
+                  onClick={() => applyStrategy('match')} 
+                  style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.1)', border: `1px solid ${c.green}`, borderRadius: 6, color: c.green, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Match Lowest
+                </button>
+                {currentProduct.sizes.some(s => s.sellFaster) && (
+                  <button 
+                    onClick={() => applyStrategy('sellfast')} 
+                    style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.1)', border: `1px solid ${c.green}`, borderRadius: 6, color: c.green, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    Sell Fast
                   </button>
-                </div>
-              )}
+                )}
+                {currentProduct.sizes.some(s => s.highestBid) && (
+                  <button 
+                    onClick={() => applyStrategy('matchbid')} 
+                    style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.1)', border: `1px solid ${c.green}`, borderRadius: 6, color: c.green, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                  >
+                    Match Bid
+                  </button>
+                )}
+              </div>
             </>
           ) : (
             <div style={{ padding: 40, textAlign: 'center', color: c.textMuted }}>
