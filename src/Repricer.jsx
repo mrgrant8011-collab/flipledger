@@ -466,9 +466,14 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
                               : '—'}
                           </td>
                           <td style={{ padding: '10px 12px', textAlign: 'right', color: c.textMuted }}>{item.cost ? `$${item.cost}` : '—'}</td>
-                          <td style={{ padding: '10px 12px', textAlign: 'right', color: item.estProfit > 0 ? c.green : item.estProfit < 0 ? c.red : c.textMuted }}>
-                            {item.estProfit !== null ? `$${item.estProfit}` : '—'}
-                          </td>
+                          {(() => {
+                            const displayProfit = item.cost ? Math.round(parseFloat(currentPrice) * 0.88 - item.cost) : null;
+                            return (
+                              <td style={{ padding: '10px 12px', textAlign: 'right', color: displayProfit > 0 ? c.green : displayProfit < 0 ? c.red : c.textMuted }}>
+                                {displayProfit !== null ? `$${displayProfit}` : '—'}
+                              </td>
+                            );
+                          })()}
                         </tr>
                       );
                     })}
