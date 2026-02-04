@@ -224,7 +224,7 @@ export async function getUsersWithTokens() {
     const { data, error } = await supabaseAdmin
       .from('user_tokens')
       .select('user_id, platform')
-      .order('user_id');
+      .order('user_id').range(0, 999999);
 
     if (error) {
       console.error('[TokenManager] Failed to get users with tokens:', error);
