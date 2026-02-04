@@ -75,7 +75,7 @@ export const autoMatchPendingCosts = async (userId) => {
     const { data: pendingCosts, error: fetchError } = await supabase
       .from('pending_costs')
       .select('*')
-      .eq('user_id', userId);
+      .eq('user_id', userId).range(0, 999999);
     
     if (fetchError) throw fetchError;
     if (!pendingCosts || pendingCosts.length === 0) {
@@ -91,7 +91,7 @@ export const autoMatchPendingCosts = async (userId) => {
       .select('*')
       .eq('user_id', userId)
       .eq('sold', false)
-      .order('date', { ascending: true });
+      .order('date', { ascending: true }).range(0, 999999);
     
     if (invError) throw invError;
     if (!inventory || inventory.length === 0) {
