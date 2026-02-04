@@ -893,7 +893,7 @@ const loadedUserRef = useRef(null);
           .from('inventory')
           .select('*')
           .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false }).range(0, 999999);
         if (invError) console.error('Inventory load error:', invError);
         if (inventoryData && inventoryData.length > 0) {
           setPurchases(inventoryData.map(item => ({
@@ -913,7 +913,7 @@ const loadedUserRef = useRef(null);
           .from('sales')
           .select('*')
           .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false }).range(0, 999999);
         if (salesError) console.error('Sales load error:', salesError);
         if (salesData && salesData.length > 0) {
           setSales(salesData.map(item => ({
@@ -935,7 +935,7 @@ const loadedUserRef = useRef(null);
           .from('expenses')
           .select('*')
           .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false }).range(0, 999999);
         if (expError) console.error('Expenses load error:', expError);
         if (expensesData && expensesData.length > 0) {
           setExpenses(expensesData.map(item => ({
@@ -952,7 +952,7 @@ const loadedUserRef = useRef(null);
           .from('pending_costs')
           .select('*')
           .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false }).range(0, 999999);
         if (pendError) console.error('Pending load error:', pendError);
         if (pendingData && pendingData.length > 0) {
           setPendingCosts(pendingData.map(item => ({
@@ -974,7 +974,7 @@ const loadedUserRef = useRef(null);
           .from('storage_fees')
           .select('*')
           .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false }).range(0, 999999);
         if (storageError) console.error('Storage fees load error:', storageError);
         if (storageData && storageData.length > 0) {
           setStorageFees(storageData.map(item => ({
@@ -990,7 +990,7 @@ const loadedUserRef = useRef(null);
           .from('mileage')
           .select('*')
           .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false }).range(0, 999999);
         if (mileageError) console.error('Mileage load error:', mileageError);
         if (mileageData && mileageData.length > 0) {
           setMileage(mileageData.map(item => ({
