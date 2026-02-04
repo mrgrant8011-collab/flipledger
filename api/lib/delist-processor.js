@@ -109,7 +109,7 @@ async function findCrossListLink(userId, sku, size, soldOn) {
       .from('cross_list_links')
       .select('*')
       .eq('user_id', userId)
-      .eq('status', 'active');
+      .eq('status', 'active').range(0, 999999);
     
     if (error || !links || links.length === 0) return { found: false };
     
@@ -160,7 +160,7 @@ export async function getUnprocessedSales(userId) {
       .select('*')
       .eq('user_id', userId)
       .eq('delist_processed', false)
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: true }).range(0, 999999);
     
     if (error) return [];
     return data || [];
