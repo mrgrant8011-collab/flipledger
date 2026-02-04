@@ -208,7 +208,7 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
       const { data, error } = await supabase
         .from('cross_list_links')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false }).range(0, 999999);
       
       if (error) {
         console.error('[CrossList] Load mappings error:', error);
