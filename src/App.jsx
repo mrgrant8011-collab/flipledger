@@ -640,7 +640,7 @@ function MobileDashboard({
 }
 
 // SalesPage as separate component for proper re-rendering
-function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPage, selectedSales, setSelectedSales, sales, setSales, settings, setModal, ITEMS_PER_PAGE, cardStyle, btnPrimary, c, fmt, exportCSV, deleteSaleFromSupabase }) {
+function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPage, selectedSales, setSelectedSales, sales, setSales, settings, setModal, ITEMS_PER_PAGE, cardStyle, btnPrimary, c, fmt, exportCSV, deleteSaleFromSupabase, markSaleRefunded }) {
   // Filter
   const searchTerm = (formData.salesSearch || '').toLowerCase().trim();
   const platformFilter = formData.salesFilter || 'all';
@@ -785,6 +785,8 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
           <span style={{ fontSize: 11, textAlign: 'right' }}>{fmt(s.salePrice)}</span>
           <span style={{ fontSize: 11, textAlign: 'right', color: c.red }}>{fmt(s.fees)}</span>
           <span style={{ fontSize: 12, fontWeight: 700, textAlign: 'right', color: s.profit >= 0 ? c.green : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</span>
+         {s.platform?.toLowerCase().includes('ebay') && !s.refunded && <button onClick={() => markSaleRefunded(s)} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', fontSize: 12, padding: 4 }} title="Mark as Refunded">↩️</button>}
+          {s.refunded && <span style={{ fontSize: 10, background: '#f59e0b', color: '#000', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>REFUNDED</span>}
           <button onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, saleImage: s.image, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14, padding: 4 }}>✏️</button>
           <button onClick={() => { deleteSaleFromSupabase(s.id); setSales(sales.filter(x => x.id !== s.id)); setSelectedSales(prev => { const n = new Set(prev); n.delete(s.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16, padding: 4 }}>×</button>
         </div>
@@ -926,7 +928,9 @@ const loadedUserRef = useRef(null);
             platform: item.platform || '',
             fees: parseFloat(item.fees) || 0,
             profit: parseFloat(item.profit) || 0,
-            saleDate: item.sale_date || ''
+            saleDate: item.sale_date || '',
+            refunded: item.refunded || false,
+            refundAmount: parseFloat(item.refund_amount) || 0
           })));
         }
 
@@ -1108,6 +1112,16 @@ const loadedUserRef = useRef(null);
     }
   };
 
+  const markSaleRefunded = async (sale) => {
+    if (!user) return;
+    if (!confirm(`Mark this eBay sale as refunded for $${sale.salePrice}?`)) return;
+    await supabase.from('sales').update({
+      refunded: true,
+      refund_amount: sale.salePrice,
+      refund_date: new Date().toISOString().split('T')[0]
+    }).eq('id', sale.id).eq('user_id', user.id);
+    setSales(sales.map(s => s.id === sale.id ? { ...s, refunded: true, refundAmount: sale.salePrice } : s));
+  };
   const deleteSaleFromSupabase = async (id) => {
     if (!user) return;
     await safeDeleteSale(user.id, id);
@@ -3420,6 +3434,7 @@ console.log('Found', items.length, 'items');
           fmt={fmt}
           exportCSV={exportCSV}
           deleteSaleFromSupabase={deleteSaleFromSupabase}
+          markSaleRefunded={markSaleRefunded}                     
         />}
 
         {/* EXPENSES */}
