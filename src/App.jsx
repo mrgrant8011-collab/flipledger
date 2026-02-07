@@ -1,3 +1,4 @@
+import LandingPage from './LandingPage';
 import Listings from './Listings';
 import CopCheck from './CopCheck';
 import { useState, useEffect, Component, useRef } from 'react';
@@ -1334,7 +1335,7 @@ const loadedUserRef = useRef(null);
 
   // Show login page if not authenticated
   if (!user) {
-    return <AuthPage onLogin={setUser} />;
+    return <LandingPage onLogin={setUser} />;
   }
 
   // Show loading while fetching data
