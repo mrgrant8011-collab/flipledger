@@ -24,7 +24,7 @@ export default async function handler(req, res) {
         const ids = variantIds ? variantIds.split(',') : [];
         const marketData = {};
         
-        await Promise.all(ids.slice(0, 30).map(async (variantId) => {
+        await Promise.all(ids.slice(0, 499).map(async (variantId) => {
           try {
             const r = await fetch(`https://api.stockx.com/v2/catalog/products/${productId}/variants/${variantId}/market-data?currencyCode=USD`, {
               headers: { 'Authorization': authHeader, 'x-api-key': apiKey }
