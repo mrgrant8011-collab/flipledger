@@ -9,6 +9,7 @@ import { supabase } from './supabase';
 
 export default function LandingPage({ onLogin }) {
   const [showAuth, setShowAuth] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [isSignUp, setIsSignUp] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -101,6 +102,17 @@ export default function LandingPage({ onLogin }) {
           transition: color 0.2s; 
         }
         .fl-nav-links a:hover, .fl-nav-links button:hover { color: #fff; }
+        .fl-hamburger {
+          display: none; background: none; border: none; cursor: pointer;
+          flex-direction: column; gap: 5px; padding: 8px; z-index: 101;
+        }
+        .fl-hamburger span {
+          display: block; width: 24px; height: 2px; background: #fff;
+          border-radius: 2px; transition: transform 0.3s, opacity 0.3s;
+        }
+        .fl-hamburger.open span:nth-child(1) { transform: rotate(45deg) translate(5px, 5px); }
+        .fl-hamburger.open span:nth-child(2) { opacity: 0; }
+        .fl-hamburger.open span:nth-child(3) { transform: rotate(-45deg) translate(5px, -5px); }
         .fl-nav-cta {
           padding: 10px 24px !important;
           background: #C9A962 !important; color: #000 !important;
@@ -369,8 +381,24 @@ export default function LandingPage({ onLogin }) {
           .fl-aud-emoji { width: 100% !important; }
           .fl-footer { flex-direction: column !important; gap: 24px !important; text-align: center !important; }
           .fl-nav { padding: 12px 20px !important; }
-          .fl-nav-links { gap: 16px !important; }
+          .fl-hamburger { display: flex !important; }
+          .fl-nav-links { 
+            display: none !important; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(6,6,6,0.97); backdrop-filter: blur(20px);
+            flex-direction: column !important; align-items: center !important; justify-content: center !important;
+            gap: 32px !important; z-index: 100;
+          }
+          .fl-nav-links.fl-menu-open { display: flex !important; }
+          .fl-nav-links a, .fl-nav-links button { font-size: 24px !important; }
+          .fl-nav-cta { font-size: 18px !important; padding: 16px 40px !important; }
           .fl-price-feats { grid-template-columns: 1fr !important; }
+          .fl-feat-text h3 { font-size: 28px !important; }
+          .fl-section { padding: 60px 20px !important; }
+          .fl-bigcta { padding: 40px 20px !important; }
+          .fl-preview { max-width: 100% !important; }
+          .fl-ptable { font-size: 10px !important; }
+          .fl-pstats { gap: 8px !important; }
+          .fl-pstat-v { font-size: 14px !important; }
         }
       `}</style>
 
@@ -381,11 +409,14 @@ export default function LandingPage({ onLogin }) {
             <div className="fl-nav-icon">FL</div>
             FlipLedger
           </div>
-          <div className="fl-nav-links">
-            <a href="#fl-features">Features</a>
-            <a href="#fl-pricing">Pricing</a>
-            <button onClick={() => openAuth(false)}>Log In</button>
-            <button className="fl-nav-cta" onClick={() => openAuth(true)}>Get Started</button>
+          <button className={`fl-hamburger ${menuOpen ? 'open' : ''}`} onClick={() => setMenuOpen(!menuOpen)}>
+            <span></span><span></span><span></span>
+          </button>
+          <div className={`fl-nav-links ${menuOpen ? 'fl-menu-open' : ''}`}>
+            <a href="#fl-features" onClick={() => setMenuOpen(false)}>Features</a>
+            <a href="#fl-pricing" onClick={() => setMenuOpen(false)}>Pricing</a>
+            <button onClick={() => { setMenuOpen(false); openAuth(false); }}>Log In</button>
+            <button className="fl-nav-cta" onClick={() => { setMenuOpen(false); openAuth(true); }}>Get Started</button>
           </div>
         </nav>
 
