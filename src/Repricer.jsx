@@ -10,7 +10,7 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 export default function Repricer({ stockxToken, purchases = [], c }) {
   const [syncing, setSyncing] = useState(false);
   const [updating, setUpdating] = useState(false);
-  const [loadingMarketData, setLoadingMarketData] = useState(false);
+  const [loadingMarketData, setLoadingMarketData] = useState(null);
   const [stockxListings, setStockxListings] = useState(() => {
     try { return JSON.parse(localStorage.getItem('fl_repricer_sx') || '[]'); } catch { return []; }
   });
@@ -90,22 +90,21 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
   // FETCH MARKET DATA FOR PRODUCT (lazy load)
   // ============================================
   const fetchProductMarketData = async (product) => {
-    if (!product || !stockxToken || loadingMarketData) return;
+    if (!product || !stockxToken) return;
     
     // Get variant IDs for this product
     const variantIds = product.sizes.map(s => s.variantId).filter(Boolean);
     if (variantIds.length === 0) return;
     
-    // Check if already has market data
-    const hasMarketData = product.sizes.some(s => s.lowestAsk || s.sellFaster);
-    if (hasMarketData) return;
+    const productId = product.sizes[0]?.productId;
+    if (!productId) return;
     
-    setLoadingMarketData(true);
+    // Skip if THIS product is already loading
+    if (loadingMarketData === productId) return;
+    
+    setLoadingMarketData(productId);
     
     try {
-      const productId = product.sizes[0]?.productId;
-      if (!productId) return;
-      
       const res = await fetch(`/api/stockx-listings?productId=${productId}&variantIds=${variantIds.join(',')}`, {
         headers: { 'Authorization': `Bearer ${stockxToken}` }
       });
@@ -148,7 +147,7 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
       console.error('[Repricer] Market data error:', e);
     }
     
-    setLoadingMarketData(false);
+    setLoadingMarketData(null);
   };
 
   // ============================================
