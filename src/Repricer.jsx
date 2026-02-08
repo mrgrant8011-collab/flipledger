@@ -22,6 +22,9 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
   const [expandedProducts, setExpandedProducts] = useState(new Set());
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth < 768);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [bulkEditMode, setBulkEditMode] = useState('beat');
+  const [bulkEditAmount, setBulkEditAmount] = useState('');
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -269,10 +272,10 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
       
       switch (strategy) {
         case 'beat':
-          if (s.lowestAsk) newPrice = s.lowestAsk - 1;
+          if (s.lowestAsk && s.yourAsk > s.lowestAsk) newPrice = s.lowestAsk - 1;
           break;
         case 'match':
-          if (s.lowestAsk) newPrice = s.lowestAsk;
+          if (s.lowestAsk && s.yourAsk > s.lowestAsk) newPrice = s.lowestAsk;
           break;
         case 'sellfast':
           if (s.sellFaster) newPrice = s.sellFaster;
@@ -288,6 +291,46 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
     });
     
     setEditedPrices(newPrices);
+  };
+
+  // ============================================
+  // BULK EDIT - Apply to selected or all in current product
+  // ============================================
+  const applyBulkEdit = () => {
+    if (!currentProduct) return;
+    const amount = parseFloat(bulkEditAmount);
+    if (isNaN(amount) || amount <= 0) return;
+
+    const newPrices = { ...editedPrices };
+    const sizesToUpdate = selectedSizes.size > 0
+      ? currentProduct.sizes.filter(s => selectedSizes.has(s.listingId))
+      : currentProduct.sizes;
+
+    sizesToUpdate.forEach(s => {
+      let newPrice = null;
+      switch (bulkEditMode) {
+        case 'changeto':
+          newPrice = amount;
+          break;
+        case 'decrease':
+          if (s.yourAsk) newPrice = s.yourAsk - amount;
+          break;
+        case 'increase':
+          if (s.yourAsk) newPrice = s.yourAsk + amount;
+          break;
+        case 'beat':
+          if (s.lowestAsk && s.yourAsk > s.lowestAsk) newPrice = s.lowestAsk - amount;
+          break;
+      }
+      if (newPrice !== null && newPrice > 0) {
+        newPrices[s.listingId] = Math.round(newPrice);
+      }
+    });
+
+    setEditedPrices(newPrices);
+    setBulkEditOpen(false);
+    setBulkEditAmount('');
+    showToast(`Updated ${sizesToUpdate.length} prices`);
   };
 
   // ============================================
@@ -359,6 +402,49 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
       {toast && (
         <div style={{ position: 'fixed', top: 20, right: 20, padding: '12px 20px', background: toast.type === 'error' ? c.red : c.green, borderRadius: 8, color: '#fff', fontWeight: 600, zIndex: 1000 }}>
           {toast.msg}
+        </div>
+      )}
+
+      {/* Bulk Edit Modal */}
+      {bulkEditOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setBulkEditOpen(false)}>
+          <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, padding: 24, width: '90%', maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Bulk Edit</h3>
+              <button onClick={() => setBulkEditOpen(false)} style={{ background: 'none', border: 'none', color: c.textMuted, fontSize: 20, cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 16 }}>
+              {selectedSizes.size > 0 ? `Applying to ${selectedSizes.size} selected sizes` : `Applying to all ${currentProduct?.sizes?.length || 0} sizes in ${currentProduct?.name || 'product'}`}
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
+              {[
+                { key: 'changeto', label: 'Change Price To' },
+                { key: 'decrease', label: 'Decrease By' },
+                { key: 'increase', label: 'Increase By' },
+                { key: 'beat', label: 'Beat Lowest By' }
+              ].map(m => (
+                <button key={m.key} onClick={() => setBulkEditMode(m.key)}
+                  style={{ padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: bulkEditMode === m.key ? `2px solid ${c.gold}` : `1px solid ${c.border}`, background: bulkEditMode === m.key ? 'rgba(201,169,98,0.15)' : 'rgba(255,255,255,0.05)', color: bulkEditMode === m.key ? c.gold : c.text }}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 24 }}>
+              <span style={{ fontSize: 20, fontWeight: 700, color: c.textMuted }}>$</span>
+              <input type="number" value={bulkEditAmount} onChange={e => setBulkEditAmount(e.target.value)} placeholder="0"
+                style={{ flex: 1, padding: '12px 16px', fontSize: 20, fontWeight: 700, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text }} autoFocus />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <button onClick={() => setBulkEditOpen(false)}
+                style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={applyBulkEdit}
+                style={{ padding: '10px 24px', background: c.gold, border: 'none', borderRadius: 8, color: '#000', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: bulkEditAmount ? 1 : 0.5 }}>
+                Apply
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -482,6 +568,7 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
                     <button onClick={() => applyStrategy('matchbid')} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 6, color: c.green, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>Match Bid</button>
                   )}
                   <span style={{ marginLeft: 'auto', fontSize: 10, color: c.textMuted }}>{selectedSizes.size > 0 && isActive ? `${selectedSizes.size} selected` : ''}</span>
+                  <button onClick={() => { setSelectedProduct(product.sku); setBulkEditOpen(true); }} style={{ padding: '6px 12px', background: 'rgba(201,169,98,0.1)', border: '1px solid rgba(201,169,98,0.3)', borderRadius: 6, color: c.gold, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>✏️ Bulk Edit</button>
                 </div>
 
                 {/* Table header */}
