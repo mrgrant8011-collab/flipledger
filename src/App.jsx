@@ -3148,7 +3148,7 @@ console.log('Found', items.length, 'items');
             </div>
             <div style={{ ...cardStyle, padding: 16 }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>INVESTED</span>
-              <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: c.gold }}>{fmt(purchases.filter(p => !p.sold).reduce((s, x) => s + (x.cost || 0), 0))}</p>
+              <p style={{ margin: '6px 0 0', fontSize: 18, fontWeight: 800, color: c.gold }}>{fmt(purchases.filter(p => !p.sold).reduce((s, x) => s + (x.cost || 0), 0))}</p>
             </div>
           </div>
 
