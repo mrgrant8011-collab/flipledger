@@ -19,6 +19,7 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [toast, setToast] = useState(null);
   const [selectedSizes, setSelectedSizes] = useState(new Set());
+  const [expandedProducts, setExpandedProducts] = useState(new Set());
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -385,7 +386,7 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
         </div>
       </div>
 
-      {/* Save Bar - Sticky when changes exist */}
+      {/* Save bar */}
       {changesCount > 0 && (
         <div style={{ position: 'sticky', top: 0, zIndex: 10, marginBottom: 12, padding: '12px 16px', background: 'rgba(6,6,6,0.95)', backdropFilter: 'blur(10px)', border: `1px solid ${c.gold}`, borderRadius: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 13, color: c.textMuted }}><span style={{ color: c.gold, fontWeight: 700 }}>{changesCount}</span> price change{changesCount !== 1 ? 's' : ''} pending</span>
@@ -396,235 +397,140 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
         </div>
       )}
 
-      {/* Products header */}
-      <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 8, padding: '0 4px' }}>
-        PRODUCTS ({filteredProducts.length}) — tap to expand sizes & market data
-      </div>
+      {/* Products label */}
+      <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 8 }}>PRODUCTS ({filteredProducts.length}) — click to expand</div>
 
-      {/* Product Cards */}
-      {filteredProducts.length === 0 ? (
+      {/* No listings */}
+      {filteredProducts.length === 0 && (
         <div style={{ ...card, padding: 50, textAlign: 'center', color: c.textMuted }}>
           {stats.total === 0 ? 'Click Sync to load StockX listings' : 'No matches'}
         </div>
-      ) : (
-        filteredProducts.map(product => {
-          const isExpanded = expandedProducts.has(product.sku);
-          const isActive = currentProduct?.sku === product.sku;
-          const sizes = [...new Set(product.sizes.map(s => s.size).filter(Boolean))].sort((a, b) => parseFloat(a) - parseFloat(b));
-          
-          return (
-            <div key={product.sku} style={{ 
-              ...card, 
-              marginBottom: 10, 
-              overflow: 'hidden',
-              borderColor: isExpanded ? 'rgba(201,169,98,0.3)' : c.border
-            }}>
-              {/* Product Header - Click to expand */}
-              <div 
-                onClick={() => {
-                  setExpandedProducts(prev => {
-                    const next = new Set(prev);
-                    if (next.has(product.sku)) {
-                      next.delete(product.sku);
-                    } else {
-                      next.add(product.sku);
-                      // Set as selected product to trigger market data fetch
-                      setSelectedProduct(product.sku);
-                    }
-                    return next;
-                  });
-                }}
-                style={{ padding: '12px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
-              >
-                {/* Expand arrow */}
-                <span style={{ fontSize: 11, color: c.textMuted, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}>▶</span>
-                
-                {/* Product image */}
-                <div style={{ width: 36, height: 36, background: 'rgba(255,255,255,0.05)', borderRadius: 6, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
-                  {product.image ? <img src={product.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; e.target.parentNode.innerHTML = '👟'; }} /> : '👟'}
-                </div>
-                
-                {/* Product info */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{product.name}</div>
-                  <div style={{ fontSize: 11, color: c.green, marginTop: 2 }}>{product.sku}</div>
-                </div>
-                
-                {/* Meta */}
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: 11, color: c.textMuted }}><span style={{ fontWeight: 700, color: '#fff' }}>{product.totalQty}</span> listings</div>
-                  {product.needsReprice > 0 
-                    ? <div style={{ fontSize: 10, color: c.gold, fontWeight: 600 }}>{product.needsReprice} need reprice</div>
-                    : product.sizes.some(s => s.lowestAsk) && <div style={{ fontSize: 10, color: c.green, fontWeight: 600 }}>✓ Competitive</div>
-                  }
-                </div>
-              </div>
-              
-              {/* Size chips when collapsed */}
-              {!isExpanded && sizes.length > 0 && (
-                <div style={{ padding: '0 14px 10px 52px', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {sizes.slice(0, 14).map(s => {
-                    const sizeData = product.sizes.find(sz => sz.size === s);
-                    const needsReprice = sizeData && sizeData.lowestAsk && sizeData.yourAsk > sizeData.lowestAsk;
-                    return (
-                      <span key={s} style={{ 
-                        padding: '2px 8px', 
-                        background: needsReprice ? 'rgba(201,169,98,0.12)' : 'rgba(255,255,255,0.06)', 
-                        border: `1px solid ${needsReprice ? 'rgba(201,169,98,0.3)' : c.border}`, 
-                        borderRadius: 20, 
-                        fontSize: 10, 
-                        color: needsReprice ? c.gold : c.textMuted 
-                      }}>{s}</span>
-                    );
-                  })}
-                  {sizes.length > 14 && <span style={{ padding: '2px 8px', fontSize: 10, color: c.textMuted }}>+{sizes.length - 14} more</span>}
-                </div>
-              )}
-              
-              {/* Expanded - Sizes with market data */}
-              {isExpanded && (
-                <div style={{ borderTop: `1px solid ${c.border}` }}>
-                  {/* Loading indicator */}
-                  {loadingMarketData && isActive && (
-                    <div style={{ padding: '8px 14px', background: 'rgba(201,169,98,0.05)', fontSize: 12, color: c.gold, textAlign: 'center' }}>
-                      ⏳ Loading market data...
-                    </div>
-                  )}
-                  
-                  {/* Strategy buttons */}
-                  <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.02)', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', borderBottom: `1px solid ${c.border}` }}>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); const np = { ...editedPrices }; product.sizes.forEach(s => { if (s.lowestAsk) np[s.listingId] = s.lowestAsk - 1; }); setEditedPrices(np); }} 
-                      style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.1)', border: `1px solid rgba(16,185,129,0.3)`, borderRadius: 6, color: c.green, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
-                    >Beat Lowest (-$1)</button>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); const np = { ...editedPrices }; product.sizes.forEach(s => { if (s.lowestAsk) np[s.listingId] = s.lowestAsk; }); setEditedPrices(np); }} 
-                      style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.1)', border: `1px solid rgba(16,185,129,0.3)`, borderRadius: 6, color: c.green, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
-                    >Match Lowest</button>
-                    {product.sizes.some(s => s.sellFaster) && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); const np = { ...editedPrices }; product.sizes.forEach(s => { if (s.sellFaster) np[s.listingId] = s.sellFaster; }); setEditedPrices(np); }} 
-                        style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.1)', border: `1px solid rgba(16,185,129,0.3)`, borderRadius: 6, color: c.green, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
-                      >Sell Fast</button>
-                    )}
-                    {product.sizes.some(s => s.highestBid) && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); const np = { ...editedPrices }; product.sizes.forEach(s => { if (s.highestBid) np[s.listingId] = s.highestBid; }); setEditedPrices(np); }} 
-                        style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.1)', border: `1px solid rgba(16,185,129,0.3)`, borderRadius: 6, color: c.green, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
-                      >Match Bid</button>
-                    )}
-                    
-                    <span style={{ marginLeft: 'auto', fontSize: 10, color: c.textMuted }}>
-                      {selectedSizes.size > 0 && isActive ? `${selectedSizes.size} selected` : ''}
-                    </span>
-                  </div>
-
-                  {/* Table header */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '36px 50px 1fr 1fr 1fr 1fr 1fr 1fr', padding: '8px 14px', background: 'rgba(255,255,255,0.02)', borderBottom: `1px solid ${c.border}`, gap: 8 }}>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted }}></span>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted }}>SIZE</span>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>YOUR ASK</span>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>LOWEST</span>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>BID</span>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>SELL FAST</span>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>COST</span>
-                    <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>PROFIT</span>
-                  </div>
-                  
-                  {/* Individual size rows */}
-                  {product.sizes.map(item => {
-                    const isEdited = editedPrices[item.listingId] !== undefined;
-                    const currentPrice = isEdited ? editedPrices[item.listingId] : item.yourAsk;
-                    const needsReprice = item.lowestAsk && item.yourAsk > item.lowestAsk;
-                    const isSelected = selectedSizes.has(item.listingId);
-                    const feeMultiplier = (item.inventoryType === 'DIRECT' || item.inventoryType === 'FLEX') ? 0.92 : 0.90;
-                    const priceNum = parseFloat(currentPrice);
-                    const displayProfit = item.cost && !isNaN(priceNum) && priceNum > 0 ? Math.round(priceNum * feeMultiplier - item.cost) : null;
-                    
-                    return (
-                      <div key={item.listingId} style={{ 
-                        display: 'grid', 
-                        gridTemplateColumns: '36px 50px 1fr 1fr 1fr 1fr 1fr 1fr',
-                        padding: '10px 14px', 
-                        borderTop: `1px solid ${c.border}`,
-                        background: isSelected ? 'rgba(201,169,98,0.05)' : needsReprice ? 'rgba(201,169,98,0.03)' : 'transparent',
-                        alignItems: 'center',
-                        gap: 8
-                      }}>
-                        {/* Checkbox */}
-                        <input 
-                          type="checkbox" 
-                          checked={isSelected}
-                          onChange={() => { setSelectedProduct(product.sku); toggleSizeSelection(item.listingId); }}
-                          style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.gold }}
-                        />
-                        
-                        {/* Size */}
-                        <div style={{ 
-                          padding: '4px 0',
-                          fontSize: 13, fontWeight: 700,
-                          color: needsReprice ? c.gold : item.lowestAsk && item.yourAsk <= item.lowestAsk ? c.green : '#fff'
-                        }}>{item.size}</div>
-                        
-                        {/* Your Ask - editable */}
-                        <div style={{ textAlign: 'right' }}>
-                          <input type="number" value={currentPrice || ''} 
-                            onChange={e => setEditedPrices({ ...editedPrices, [item.listingId]: e.target.value })}
-                            style={{ width: 75, padding: '5px 8px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 4, color: c.text, textAlign: 'right', fontSize: 13, fontWeight: 700 }} />
-                        </div>
-                        
-                        {/* Lowest Ask - clickable */}
-                        <div style={{ textAlign: 'right' }}>
-                          {item.lowestAsk 
-                            ? <button 
-                                onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: item.lowestAsk - 1 })} 
-                                style={{ background: 'none', border: 'none', color: needsReprice ? c.gold : c.green, cursor: 'pointer', fontWeight: 700, fontSize: 13, padding: '4px 8px', borderRadius: 4 }}
-                                onMouseEnter={e => e.target.style.background = needsReprice ? 'rgba(201,169,98,0.15)' : 'rgba(16,185,129,0.15)'}
-                                onMouseLeave={e => e.target.style.background = 'none'}
-                              >
-                                ${item.lowestAsk}
-                              </button>
-                            : <span style={{ fontSize: 13, color: c.textMuted }}>—</span>}
-                        </div>
-                        
-                        {/* Bid - clickable */}
-                        <div style={{ textAlign: 'right' }}>
-                          {item.highestBid 
-                            ? <button onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: item.highestBid })} style={{ background: 'none', border: 'none', color: c.text, cursor: 'pointer', fontWeight: 600, fontSize: 12, padding: '4px 8px', borderRadius: 4 }}
-                                onMouseEnter={e => e.target.style.background = 'rgba(255,255,255,0.1)'}
-                                onMouseLeave={e => e.target.style.background = 'none'}
-                              >${item.highestBid}</button>
-                            : <span style={{ fontSize: 12, color: c.textMuted }}>—</span>}
-                        </div>
-                        
-                        {/* Sell Fast - clickable */}
-                        <div style={{ textAlign: 'right' }}>
-                          {item.sellFaster 
-                            ? <button onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: item.sellFaster })} style={{ background: 'none', border: 'none', color: c.green, cursor: 'pointer', fontWeight: 600, fontSize: 12, padding: '4px 8px', borderRadius: 4 }}
-                                onMouseEnter={e => e.target.style.background = 'rgba(16,185,129,0.15)'}
-                                onMouseLeave={e => e.target.style.background = 'none'}
-                              >${item.sellFaster}</button>
-                            : <span style={{ fontSize: 12, color: c.textMuted }}>—</span>}
-                        </div>
-                        
-                        {/* Cost */}
-                        <div style={{ textAlign: 'right', fontSize: 12, color: c.textMuted, fontWeight: 600 }}>
-                          {item.cost ? `$${item.cost}` : '—'}
-                        </div>
-                        
-                        {/* Profit */}
-                        <div style={{ textAlign: 'right', fontSize: 12, fontWeight: 700, color: displayProfit > 0 ? c.green : displayProfit < 0 ? c.red : c.textMuted }}>
-                          {displayProfit !== null ? `~$${displayProfit}` : '—'}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })
       )}
+
+      {/* Product Cards */}
+      {filteredProducts.map(product => {
+        const isExpanded = expandedProducts.has(product.sku);
+        const isActive = currentProduct?.sku === product.sku;
+        const sizeChips = [...new Set(product.sizes.map(s => s.size).filter(Boolean))].sort((a, b) => parseFloat(a) - parseFloat(b));
+
+        return (
+          <div key={product.sku} style={{ ...card, marginBottom: 10, overflow: 'hidden', borderColor: isExpanded ? 'rgba(201,169,98,0.3)' : c.border }}>
+            {/* Product Header */}
+            <div
+              onClick={() => {
+                setExpandedProducts(prev => {
+                  const next = new Set(prev);
+                  if (next.has(product.sku)) next.delete(product.sku); else next.add(product.sku);
+                  return next;
+                });
+                setSelectedProduct(product.sku);
+              }}
+              style={{ padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}
+            >
+              <span style={{ fontSize: 11, color: c.textMuted, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}>▶</span>
+              <div style={{ width: 36, height: 36, background: 'rgba(255,255,255,0.05)', borderRadius: 6, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
+                {product.image ? <img src={product.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; e.target.parentNode.innerHTML = '👟'; }} /> : '👟'}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{product.name}</div>
+                <div style={{ fontSize: 11, color: c.green, marginTop: 2 }}>{product.sku}</div>
+              </div>
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div style={{ fontSize: 12, color: c.textMuted }}><span style={{ fontWeight: 700, color: '#fff' }}>{product.totalQty}</span> listings</div>
+                {product.needsReprice > 0
+                  ? <div style={{ fontSize: 10, color: c.gold, fontWeight: 600 }}>{product.needsReprice} need reprice</div>
+                  : product.sizes.some(s => s.lowestAsk) && <div style={{ fontSize: 10, color: c.green, fontWeight: 600 }}>✓ Competitive</div>
+                }
+              </div>
+            </div>
+
+            {/* Size chips when collapsed */}
+            {!isExpanded && sizeChips.length > 0 && (
+              <div style={{ padding: '0 16px 10px 62px', display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {sizeChips.slice(0, 14).map(s => {
+                  const sizeData = product.sizes.find(sz => sz.size === s);
+                  const nr = sizeData && sizeData.lowestAsk && sizeData.yourAsk > sizeData.lowestAsk;
+                  return <span key={s} style={{ padding: '2px 8px', background: nr ? 'rgba(201,169,98,0.12)' : 'rgba(255,255,255,0.06)', border: `1px solid ${nr ? 'rgba(201,169,98,0.3)' : c.border}`, borderRadius: 20, fontSize: 10, color: nr ? c.gold : c.textMuted }}>{s}</span>;
+                })}
+                {sizeChips.length > 14 && <span style={{ padding: '2px 8px', fontSize: 10, color: c.textMuted }}>+{sizeChips.length - 14} more</span>}
+              </div>
+            )}
+
+            {/* Expanded */}
+            {isExpanded && (
+              <div style={{ borderTop: `1px solid ${c.border}` }}>
+                {loadingMarketData && isActive && (
+                  <div style={{ padding: '8px 14px', background: 'rgba(201,169,98,0.05)', fontSize: 12, color: c.gold, textAlign: 'center' }}>⏳ Loading market data...</div>
+                )}
+
+                {/* Strategy buttons — same onClick handlers as original */}
+                <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.02)', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', borderBottom: `1px solid ${c.border}` }}>
+                  <button onClick={() => applyStrategy('beat')} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 6, color: c.green, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>Beat Lowest (-$1)</button>
+                  <button onClick={() => applyStrategy('match')} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 6, color: c.green, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>Match Lowest</button>
+                  {product.sizes.some(s => s.sellFaster) && (
+                    <button onClick={() => applyStrategy('sellfast')} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 6, color: c.green, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>Sell Fast</button>
+                  )}
+                  {product.sizes.some(s => s.highestBid) && (
+                    <button onClick={() => applyStrategy('matchbid')} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 6, color: c.green, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>Match Bid</button>
+                  )}
+                  <span style={{ marginLeft: 'auto', fontSize: 10, color: c.textMuted }}>{selectedSizes.size > 0 && isActive ? `${selectedSizes.size} selected` : ''}</span>
+                </div>
+
+                {/* Table header */}
+                <div style={{ display: 'grid', gridTemplateColumns: '36px 50px 1fr 1fr 1fr 1fr 1fr 1fr', padding: '8px 14px', background: 'rgba(255,255,255,0.03)', borderBottom: `1px solid ${c.border}`, gap: 8 }}>
+                  <span></span>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted }}>SIZE</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>YOUR ASK</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>LOWEST</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>BID</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>SELL FAST</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>COST</span>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>PROFIT</span>
+                </div>
+
+                {/* Size rows — same onChange/onClick as original table */}
+                {product.sizes.map(item => {
+                  const isEdited = editedPrices[item.listingId] !== undefined;
+                  const currentPrice = isEdited ? editedPrices[item.listingId] : item.yourAsk;
+                  const needsReprice = item.lowestAsk && item.yourAsk > item.lowestAsk;
+                  const isSelected = selectedSizes.has(item.listingId);
+                  const priceNum = parseFloat(currentPrice);
+                  const feeMultiplier = (item.inventoryType === 'DIRECT' || item.inventoryType === 'FLEX') ? 0.92 : 0.90;
+                  const displayProfit = item.cost && !isNaN(priceNum) && priceNum > 0 ? Math.round(priceNum * feeMultiplier - item.cost) : null;
+
+                  return (
+                    <div key={item.listingId} style={{ display: 'grid', gridTemplateColumns: '36px 50px 1fr 1fr 1fr 1fr 1fr 1fr', padding: '10px 14px', borderTop: `1px solid ${c.border}`, alignItems: 'center', gap: 8, background: isSelected ? 'rgba(201,169,98,0.05)' : needsReprice ? 'rgba(201,169,98,0.03)' : 'transparent' }}>
+                      <input type="checkbox" checked={isSelected} onChange={() => toggleSizeSelection(item.listingId)} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.gold }} />
+                      <div style={{ fontSize: 13, fontWeight: 700, color: needsReprice ? c.gold : item.lowestAsk && item.yourAsk <= item.lowestAsk ? c.green : '#fff' }}>{item.size}</div>
+                      <div style={{ textAlign: 'right' }}>
+                        <input type="number" value={currentPrice || ''} onChange={e => setEditedPrices({ ...editedPrices, [item.listingId]: e.target.value })}
+                          style={{ width: 75, padding: '5px 8px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 4, color: c.text, textAlign: 'right', fontSize: 13, fontWeight: 700 }} />
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        {item.lowestAsk
+                          ? <button onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: item.lowestAsk - 1 })} style={{ ...priceButtonStyle(needsReprice ? c.gold : c.green) }}>${item.lowestAsk}</button>
+                          : <span style={{ color: c.textMuted }}>—</span>}
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        {item.highestBid
+                          ? <button onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: item.highestBid })} style={{ ...priceButtonStyle(c.text) }}>${item.highestBid}</button>
+                          : <span style={{ color: c.textMuted }}>—</span>}
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        {item.sellFaster
+                          ? <button onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: item.sellFaster })} style={{ ...priceButtonStyle(c.green) }}>${item.sellFaster}</button>
+                          : <span style={{ color: c.textMuted }}>—</span>}
+                      </div>
+                      <div style={{ textAlign: 'right', fontSize: 12, color: c.textMuted }}>{item.cost ? `$${item.cost}` : '—'}</div>
+                      <div style={{ textAlign: 'right', fontSize: 12, fontWeight: 700, color: displayProfit > 0 ? c.green : displayProfit < 0 ? c.red : c.textMuted }}>{displayProfit !== null ? `~$${displayProfit}` : '—'}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
