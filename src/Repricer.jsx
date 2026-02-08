@@ -20,6 +20,14 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
   const [toast, setToast] = useState(null);
   const [selectedSizes, setSelectedSizes] = useState(new Set());
   const [expandedProducts, setExpandedProducts] = useState(new Set());
+  const [expandedRows, setExpandedRows] = useState(new Set());
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -477,16 +485,26 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
                 </div>
 
                 {/* Table header */}
-                <div style={{ display: 'grid', gridTemplateColumns: '36px 50px 1fr 1fr 1fr 1fr 1fr 1fr', padding: '8px 14px', background: 'rgba(255,255,255,0.03)', borderBottom: `1px solid ${c.border}`, gap: 8 }}>
-                  <span></span>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted }}>SIZE</span>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>YOUR ASK</span>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>LOWEST</span>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>BID</span>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>SELL FAST</span>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>COST</span>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>PROFIT</span>
-                </div>
+                {isMobile ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: '28px 40px 1fr 1fr 1fr', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderBottom: `1px solid ${c.border}`, gap: 4 }}>
+                    <span></span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted }}>SIZE</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>ASK</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>LOWEST</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>PROFIT</span>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: '36px 50px 1fr 1fr 1fr 1fr 1fr 1fr', padding: '8px 14px', background: 'rgba(255,255,255,0.03)', borderBottom: `1px solid ${c.border}`, gap: 8 }}>
+                    <span></span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted }}>SIZE</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>YOUR ASK</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>LOWEST</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>BID</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>SELL FAST</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>COST</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>PROFIT</span>
+                  </div>
+                )}
 
                 {/* Size rows — same onChange/onClick as original table */}
                 {product.sizes.map(item => {
@@ -497,8 +515,55 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
                   const priceNum = parseFloat(currentPrice);
                   const feeMultiplier = (item.inventoryType === 'DIRECT' || item.inventoryType === 'FLEX') ? 0.92 : 0.90;
                   const displayProfit = item.cost && !isNaN(priceNum) && priceNum > 0 ? Math.round(priceNum * feeMultiplier - item.cost) : null;
+                  const isRowExpanded = expandedRows.has(item.listingId);
 
-                  return (
+                  return isMobile ? (
+                    <div key={item.listingId} style={{ borderTop: `1px solid ${c.border}`, background: isSelected ? 'rgba(201,169,98,0.05)' : needsReprice ? 'rgba(201,169,98,0.03)' : 'transparent' }}>
+                      {/* Mobile: 4 columns */}
+                      <div
+                        onClick={() => setExpandedRows(prev => { const next = new Set(prev); if (next.has(item.listingId)) next.delete(item.listingId); else next.add(item.listingId); return next; })}
+                        style={{ display: 'grid', gridTemplateColumns: '28px 40px 1fr 1fr 1fr', padding: '10px 10px', alignItems: 'center', gap: 4, cursor: 'pointer' }}
+                      >
+                        <input type="checkbox" checked={isSelected} onChange={(e) => { e.stopPropagation(); toggleSizeSelection(item.listingId); }} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.gold }} />
+                        <div style={{ fontSize: 13, fontWeight: 700, color: needsReprice ? c.gold : item.lowestAsk && item.yourAsk <= item.lowestAsk ? c.green : '#fff' }}>{item.size}</div>
+                        <div style={{ textAlign: 'right' }}>
+                          <input type="number" value={currentPrice || ''} onChange={e => setEditedPrices({ ...editedPrices, [item.listingId]: e.target.value })} onClick={e => e.stopPropagation()}
+                            style={{ width: 60, padding: '4px 6px', background: isEdited ? 'rgba(201,169,98,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEdited ? c.gold : c.border}`, borderRadius: 4, color: c.text, textAlign: 'right', fontSize: 13, fontWeight: 700 }} />
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          {item.lowestAsk
+                            ? <button onClick={(e) => { e.stopPropagation(); setEditedPrices({ ...editedPrices, [item.listingId]: item.lowestAsk - 1 }); }} style={{ ...priceButtonStyle(needsReprice ? c.gold : c.green), fontSize: 13 }}>${item.lowestAsk}</button>
+                            : <span style={{ color: c.textMuted, fontSize: 12 }}>—</span>}
+                        </div>
+                        <div style={{ textAlign: 'right', fontSize: 12, fontWeight: 700, color: displayProfit > 0 ? c.green : displayProfit < 0 ? c.red : c.textMuted }}>{displayProfit !== null ? `~$${displayProfit}` : '—'}</div>
+                      </div>
+                      {/* Mobile expanded: BID, SELL FAST, COST */}
+                      {isRowExpanded && (
+                        <div style={{ display: 'flex', gap: 16, padding: '6px 10px 10px 78px', background: 'rgba(255,255,255,0.02)' }}>
+                          <div>
+                            <div style={{ fontSize: 8, color: c.textMuted, fontWeight: 600 }}>BID</div>
+                            <div style={{ fontSize: 12, fontWeight: 700, marginTop: 2 }}>
+                              {item.highestBid
+                                ? <button onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: item.highestBid })} style={{ ...priceButtonStyle(c.text), fontSize: 12, padding: '2px 4px' }}>${item.highestBid}</button>
+                                : <span style={{ color: c.textMuted }}>—</span>}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 8, color: c.textMuted, fontWeight: 600 }}>SELL FAST</div>
+                            <div style={{ fontSize: 12, fontWeight: 700, marginTop: 2 }}>
+                              {item.sellFaster
+                                ? <button onClick={() => setEditedPrices({ ...editedPrices, [item.listingId]: item.sellFaster })} style={{ ...priceButtonStyle(c.green), fontSize: 12, padding: '2px 4px' }}>${item.sellFaster}</button>
+                                : <span style={{ color: c.textMuted }}>—</span>}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 8, color: c.textMuted, fontWeight: 600 }}>COST</div>
+                            <div style={{ fontSize: 12, fontWeight: 700, marginTop: 2, color: c.textMuted }}>{item.cost ? `$${item.cost}` : '—'}</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
                     <div key={item.listingId} style={{ display: 'grid', gridTemplateColumns: '36px 50px 1fr 1fr 1fr 1fr 1fr 1fr', padding: '10px 14px', borderTop: `1px solid ${c.border}`, alignItems: 'center', gap: 8, background: isSelected ? 'rgba(201,169,98,0.05)' : needsReprice ? 'rgba(201,169,98,0.03)' : 'transparent' }}>
                       <input type="checkbox" checked={isSelected} onChange={() => toggleSizeSelection(item.listingId)} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.gold }} />
                       <div style={{ fontSize: 13, fontWeight: 700, color: needsReprice ? c.gold : item.lowestAsk && item.yourAsk <= item.lowestAsk ? c.green : '#fff' }}>{item.size}</div>
