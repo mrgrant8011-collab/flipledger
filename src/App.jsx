@@ -858,6 +858,7 @@ function App() {
   const [selectedInvLookup, setSelectedInvLookup] = useState(new Set());
   const [nikeReceipt, setNikeReceipt] = useState({ scanning: false, items: [], image: null, date: '', orderNum: '' });
   const [showNikeExample, setShowNikeExample] = useState(false);
+  const [expandedInvProducts, setExpandedInvProducts] = useState(new Set());
 
   const ITEMS_PER_PAGE = 50;
 const loadedUserRef = useRef(null);
@@ -3269,69 +3270,103 @@ console.log('Found', items.length, 'items');
               <button onClick={() => exportCSV(sortedInventory, 'inventory.csv', ['date','name','sku','size','cost','sold'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
             </div>
             
-            {/* MOBILE CARD VIEW */}
+                     {/* MOBILE CARD VIEW - Grouped by product */}
             {isMobile ? (
               <div style={{ padding: 12 }}>
-                {paginatedInventory.length ? paginatedInventory.map(p => {
-                  const daysInStock = Math.floor((new Date() - new Date(p.date)) / (1000 * 60 * 60 * 24));
-                  return (
-                    <div key={p.id} style={{ 
-                      background: selectedInventory.has(p.id) ? 'rgba(239,68,68,0.1)' : p.sold ? 'rgba(251,191,36,0.05)' : 'rgba(255,255,255,0.02)', 
-                      border: `1px solid ${c.border}`, 
-                      borderRadius: 12, 
-                      padding: 14, 
-                      marginBottom: 10 
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 10 }}>
-                        <input 
-                          type="checkbox" 
-                          checked={selectedInventory.has(p.id)} 
-                          onChange={(e) => handleSelectOne(p.id, e.target.checked)} 
-                          style={{ width: 18, height: 18, marginRight: 12, marginTop: 2, accentColor: c.green }} 
-                        />
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 600, fontSize: 14, color: p.sold ? c.textMuted : '#fff', marginBottom: 4 }}>{p.name}</div>
-                          <div style={{ fontSize: 12, color: c.green }}>{p.sku || '-'}</div>
+                {paginatedInventory.length ? (() => {
+                  // Group paginated items by SKU or name
+                  const groups = {};
+                  paginatedInventory.forEach(p => {
+                    const key = p.sku || p.name || 'Unknown';
+                    if (!groups[key]) groups[key] = { name: p.name, sku: p.sku, items: [] };
+                    groups[key].items.push(p);
+                  });
+                  return Object.entries(groups).map(([key, group]) => {
+                    const isExpanded = expandedInvProducts.has(key);
+                    const inStock = group.items.filter(i => !i.sold).length;
+                    const soldCount = group.items.filter(i => i.sold).length;
+                    const costs = group.items.filter(i => i.cost).map(i => parseFloat(i.cost));
+                    const minCost = costs.length ? Math.min(...costs) : 0;
+                    const maxCost = costs.length ? Math.max(...costs) : 0;
+                    const totalInvested = costs.reduce((a, b) => a + b, 0);
+                    const sizes = group.items.map(i => i.size).filter(Boolean).sort((a, b) => parseFloat(a) - parseFloat(b));
+                    
+                    return (
+                      <div key={key} style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${isExpanded ? 'rgba(201,169,98,0.3)' : c.border}`, borderRadius: 14, marginBottom: 10, overflow: 'hidden' }}>
+                        {/* Product header - tap to expand */}
+                        <div
+                          onClick={() => setExpandedInvProducts(prev => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next; })}
+                          style={{ padding: '12px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                        >
+                          <span style={{ fontSize: 10, color: c.textMuted, transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}>▶</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.name}</div>
+                            <div style={{ fontSize: 10, color: c.green, marginTop: 1 }}>{group.sku || '-'}</div>
+                          </div>
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                            <div style={{ fontSize: 16, fontWeight: 800 }}>{group.items.length}</div>
+                            <div style={{ fontSize: 10, color: c.textMuted }}>{minCost === maxCost ? fmt(minCost) : `${fmt(minCost)} – ${fmt(maxCost)}`}</div>
+                          </div>
                         </div>
-                        <div style={{ fontSize: 11, color: c.textMuted }}>{p.date}</div>
+
+                        {/* Size chips when collapsed */}
+                        {!isExpanded && sizes.length > 0 && (
+                          <div style={{ padding: '0 14px 10px 32px', display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                            {sizes.slice(0, 14).map((s, i) => (
+                              <span key={i} style={{ padding: '2px 8px', background: 'rgba(255,255,255,0.06)', border: `1px solid ${c.border}`, borderRadius: 20, fontSize: 9, color: c.textMuted }}>{s}</span>
+                            ))}
+                            {sizes.length > 14 && <span style={{ padding: '2px 8px', fontSize: 9, color: c.textMuted }}>+{sizes.length - 14} more</span>}
+                          </div>
+                        )}
+
+                        {/* Expanded - individual items */}
+                        {isExpanded && (
+                          <div style={{ borderTop: `1px solid ${c.border}` }}>
+                            {/* Summary bar */}
+                            <div style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.02)', display: 'flex', gap: 16, borderBottom: `1px solid ${c.border}` }}>
+                              <div><div style={{ fontSize: 7, color: c.textMuted, fontWeight: 600, letterSpacing: 0.3 }}>IN STOCK</div><div style={{ fontSize: 13, fontWeight: 700, color: c.green, marginTop: 2 }}>{inStock}</div></div>
+                              {soldCount > 0 && <div><div style={{ fontSize: 7, color: c.textMuted, fontWeight: 600, letterSpacing: 0.3 }}>SOLD</div><div style={{ fontSize: 13, fontWeight: 700, color: c.gold, marginTop: 2 }}>{soldCount}</div></div>}
+                              <div><div style={{ fontSize: 7, color: c.textMuted, fontWeight: 600, letterSpacing: 0.3 }}>INVESTED</div><div style={{ fontSize: 13, fontWeight: 700, marginTop: 2 }}>{fmt(totalInvested)}</div></div>
+                            </div>
+
+                            {/* Individual item rows */}
+                            {group.items.map(p => {
+                              const daysInStock = Math.floor((new Date() - new Date(p.date)) / (1000 * 60 * 60 * 24));
+                              return (
+                                <div key={p.id} style={{ padding: '10px 14px', borderTop: `1px solid ${c.border}`, opacity: p.sold ? 0.5 : 1 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                                    <div style={{ width: 36, height: 36, background: p.sold ? 'rgba(201,169,98,0.08)' : 'rgba(255,255,255,0.06)', border: `1px solid ${p.sold ? 'rgba(201,169,98,0.3)' : c.border}`, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>{p.size || '-'}</div>
+                                    <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+                                      <div><div style={{ fontSize: 7, color: c.textMuted, fontWeight: 600 }}>COST</div><div style={{ fontSize: 12, fontWeight: 700, color: c.gold, marginTop: 1 }}>{fmt(p.cost)}</div></div>
+                                      <div><div style={{ fontSize: 7, color: c.textMuted, fontWeight: 600 }}>DAYS</div><div style={{ fontSize: 12, fontWeight: 700, marginTop: 1, color: !p.sold && daysInStock > 60 ? c.red : !p.sold && daysInStock > 30 ? c.gold : c.textMuted }}>{p.sold ? '-' : daysInStock}</div></div>
+                                      <div><div style={{ fontSize: 7, color: c.textMuted, fontWeight: 600 }}>STATUS</div><div style={{ fontSize: 10, fontWeight: 700, marginTop: 2, color: p.sold ? c.gold : c.green }}>{p.sold ? 'SOLD' : 'IN STOCK'}</div></div>
+                                    </div>
+                                  </div>
+                                  {!p.sold && (
+                                    <div style={{ display: 'flex', gap: 6, marginLeft: 44 }}>
+                                      <button 
+                                        onClick={() => { setFormData({ editId: p.id, name: p.name, sku: p.sku, size: p.size, cost: p.cost, date: p.date }); setModal('editInventory'); }} 
+                                        style={{ flex: 1, padding: 8, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
+                                      >✏️ Edit</button>
+                                      <button 
+                                        onClick={() => { const updated = { ...p, sold: !p.sold }; updateInventoryInSupabase(updated); setPurchases(purchases.map(x => x.id === p.id ? updated : x)); }} 
+                                        style={{ flex: 1, padding: 8, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 6, color: c.green, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
+                                      >💰 Sold</button>
+                                      <button 
+                                        onClick={() => { deleteInventoryFromSupabase(p.id); setPurchases(purchases.filter(x => x.id !== p.id)); setSelectedInventory(prev => { const n = new Set(prev); n.delete(p.id); return n; }); }} 
+                                        style={{ padding: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, color: c.red, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}
+                                      >🗑️</button>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                      
-                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: `1px solid ${c.border}`, borderBottom: `1px solid ${c.border}`, marginBottom: 10 }}>
-                        <div style={{ textAlign: 'center' }}>
-                          <div style={{ fontSize: 9, color: c.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>Size</div>
-                          <div style={{ fontSize: 14, fontWeight: 600 }}>{p.size || '-'}</div>
-                        </div>
-                        <div style={{ textAlign: 'center' }}>
-                          <div style={{ fontSize: 9, color: c.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>Cost</div>
-                          <div style={{ fontSize: 14, fontWeight: 600, color: c.gold }}>{fmt(p.cost)}</div>
-                        </div>
-                        <div style={{ textAlign: 'center' }}>
-                          <div style={{ fontSize: 9, color: c.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>Days</div>
-                          <div style={{ fontSize: 14, fontWeight: 600, color: !p.sold && daysInStock > 60 ? c.red : !p.sold && daysInStock > 30 ? c.gold : c.textMuted }}>{p.sold ? '-' : daysInStock}</div>
-                        </div>
-                        <div style={{ textAlign: 'center' }}>
-                          <div style={{ fontSize: 9, color: c.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>Status</div>
-                          <div style={{ fontSize: 12, fontWeight: 600, color: p.sold ? c.gold : c.green }}>{p.sold ? 'SOLD' : 'IN STOCK'}</div>
-                        </div>
-                      </div>
-                      
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button 
-                          onClick={() => { setFormData({ editId: p.id, name: p.name, sku: p.sku, size: p.size, cost: p.cost, date: p.date }); setModal('editInventory'); }} 
-                          style={{ flex: 1, padding: 10, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-                        >✏️ Edit</button>
-                        <button 
-                          onClick={() => { const updated = { ...p, sold: !p.sold }; updateInventoryInSupabase(updated); setPurchases(purchases.map(x => x.id === p.id ? updated : x)); }} 
-                          style={{ flex: 1, padding: 10, background: p.sold ? 'rgba(251,191,36,0.1)' : 'rgba(16,185,129,0.1)', border: `1px solid ${p.sold ? 'rgba(251,191,36,0.3)' : 'rgba(16,185,129,0.3)'}`, borderRadius: 8, color: p.sold ? c.gold : c.green, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-                        >{p.sold ? '↩️ Unmark' : '💰 Sold'}</button>
-                        <button 
-                          onClick={() => { deleteInventoryFromSupabase(p.id); setPurchases(purchases.filter(x => x.id !== p.id)); setSelectedInventory(prev => { const n = new Set(prev); n.delete(p.id); return n; }); }} 
-                          style={{ padding: 10, background: 'rgba(239,68,68,0.1)', border: `1px solid rgba(239,68,68,0.3)`, borderRadius: 8, color: c.red, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-                        >🗑️</button>
-                      </div>
-                    </div>
-                  );
-                }) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>📦</div><p style={{ color: c.textMuted }}>No inventory matches your filters</p><button onClick={() => { setFormData(prev => ({ ...prev, bulkRows: [{ qty: 1, size: '', cost: '' }] })); setModal('bulkAdd'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Add Items</button></div>}
+                    );
+                  });
+                })() : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>📦</div><p style={{ color: c.textMuted }}>No inventory matches your filters</p><button onClick={() => { setFormData(prev => ({ ...prev, bulkRows: [{ qty: 1, size: '', cost: '' }] })); setModal('bulkAdd'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Add Items</button></div>}
               </div>
             ) : (
               <>
