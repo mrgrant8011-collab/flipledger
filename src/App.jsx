@@ -4319,9 +4319,9 @@ Let me know if you need anything else.`;
                           type="number" 
                           placeholder="$"
                           id={`cost-${s.id}`}
-                          onKeyDown={(e) => {
+                          onKeyDown={async (e) => {
                             if (e.key === 'Enter' && e.target.value) {
-                              confirmSaleWithCost(s.id, e.target.value, s.platform || 'StockX');
+                              await confirmSaleWithCost(s.id, e.target.value, s.platform || 'StockX');
                               e.target.value = '';
                               const nextIdx = idx + 1;
                               if (nextIdx < arr.length) {
@@ -4339,10 +4339,10 @@ Let me know if you need anything else.`;
                         />
                         <button
                           id={`confirm-${s.id}`}
-                          onClick={() => {
+                          onClick={async () => {
                             const input = document.getElementById(`cost-${s.id}`);
                             if (input && input.value) {
-                              confirmSaleWithCost(s.id, input.value, s.platform || 'StockX');
+                              await confirmSaleWithCost(s.id, input.value, s.platform || 'StockX');
                               input.value = '';
                               document.getElementById(`confirm-${s.id}`).style.display = 'none';
                             }
