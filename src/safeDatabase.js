@@ -505,24 +505,93 @@ export const safeBulkSavePendingCosts = async (userId, items) => {
   const existingOrderIds = await batchCheckDuplicates(userId, orderIds);
   console.log(`[SafeDB] Pre-flight found ${existingOrderIds.size} existing orders`);
   
-  // Process items
+  // Build records array, filtering duplicates and invalid items
+  const recordsToInsert = [];
+  
   for (const item of items) {
-    // Quick duplicate check using pre-fetched set
+    // Duplicate check using pre-fetched set
     if (item.order_id && existingOrderIds.has(item.order_id)) {
       results.duplicates.push({ item, reason: `Order ${item.order_id} already exists` });
       continue;
     }
     
-    const result = await safeSavePendingCost(userId, item);
+    // Validate
+    if (!item.name || !item.sale_price || item.sale_price <= 0 || !item.platform) {
+      results.errors.push({ item, error: 'Missing required fields' });
+      continue;
+    }
     
-    if (result.success) {
-      results.saved.push(result.data);
-      // Add to set to catch duplicates within the same batch
-      if (item.order_id) existingOrderIds.add(item.order_id);
-    } else if (result.duplicate) {
-      results.duplicates.push({ item, reason: result.error });
-    } else {
-      results.errors.push({ item, error: result.error });
+    // Track within batch to prevent in-batch duplicates
+    if (item.order_id) existingOrderIds.add(item.order_id);
+    
+    recordsToInsert.push({
+      user_id: userId,
+      name: item.name.trim(),
+      sku: item.sku || '',
+      size: item.size || '',
+      sale_price: item.sale_price,
+      platform: item.platform,
+      fees: item.fees || 0,
+      payout: item.payout || null,
+      sale_date: item.sale_date || null,
+      order_id: item.order_id || null,
+      order_number: item.order_number || item.order_id || null,
+      image: item.image || null,
+      buyer: item.buyer || null,
+      ad_fee: item.ad_fee || null,
+      note: item.note || null
+    });
+  }
+  
+  console.log(`[SafeDB] ${recordsToInsert.length} new records to insert, ${results.duplicates.length} duplicates skipped`);
+  
+  // Insert in chunks of 50
+  const CHUNK_SIZE = 50;
+  for (let i = 0; i < recordsToInsert.length; i += CHUNK_SIZE) {
+    const chunk = recordsToInsert.slice(i, i + CHUNK_SIZE);
+    
+    try {
+      const { data: inserted, error } = await supabase
+        .from('pending_costs')
+        .insert(chunk)
+        .select();
+      
+      if (error) {
+        // If batch fails due to duplicate, fall back to one-by-one for this chunk
+        if (error.code === '23505') {
+          console.log(`[SafeDB] Chunk ${i / CHUNK_SIZE + 1} had duplicate, falling back to one-by-one`);
+          for (const record of chunk) {
+            try {
+              const { data: single, error: singleError } = await supabase
+                .from('pending_costs')
+                .insert(record)
+                .select()
+                .single();
+              
+              if (singleError) {
+                if (singleError.code === '23505') {
+                  results.duplicates.push({ item: record, reason: 'Duplicate (DB constraint)' });
+                } else {
+                  results.errors.push({ item: record, error: singleError.message });
+                }
+              } else {
+                results.saved.push(single);
+              }
+            } catch (err) {
+              results.errors.push({ item: record, error: err.message });
+            }
+          }
+        } else {
+          throw error;
+        }
+      } else if (inserted) {
+        results.saved.push(...inserted);
+      }
+    } catch (err) {
+      console.error(`[SafeDB] Chunk error:`, err.message);
+      for (const record of chunk) {
+        results.errors.push({ item: record, error: err.message });
+      }
     }
   }
   
