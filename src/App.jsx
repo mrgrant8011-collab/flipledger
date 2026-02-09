@@ -4649,7 +4649,7 @@ Let me know if you need anything else.`;
             </div>
 
             {!isMobile && (
-          {/* RIGHT SIDE - Inventory Lookup */}
+        
             <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 20 }}>
               <div style={{ padding: '12px', borderBottom: `1px solid ${c.border}`, background: selectedPendingItem ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.02)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontWeight: 700, fontSize: 13 }}>{selectedPendingItem ? '👆 Select Item' : '📦 Inventory'}</span>
