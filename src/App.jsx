@@ -870,7 +870,7 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
     </div>
   </div>;
 }
-}
+
 
 function App() {
   // Auth state
