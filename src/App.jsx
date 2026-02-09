@@ -694,6 +694,7 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
   const itemIds = items.map(s => s.id);
   const allSelected = items.length > 0 && itemIds.every(id => selectedSales.has(id));
   const profit = sorted.reduce((sum, s) => sum + (s.profit || 0), 0);
+   const groupedBySku = items.reduce((acc, s) => { const key = s.sku || s.name || 'Unknown'; if (!acc[key]) acc[key] = { name: s.name, sku: s.sku, image: s.image, items: [] }; acc[key].items.push(s); return acc; }, {});
 
   return <div>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 20 }}>
@@ -747,67 +748,29 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
 
       {isMobile ? (
         <div style={{ padding: 12 }}>
-          {items.length > 0 ? items.map(s => (
-            <div key={s.id} style={{ 
-              background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : s.refunded ? 'rgba(251,191,36,0.05)' : 'rgba(255,255,255,0.02)', 
-              border: `1px solid ${c.border}`, 
-              borderRadius: 12, 
-              padding: 14, 
-              marginBottom: 10 
-            }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 10 }}>
-                <input 
-                  type="checkbox" 
-                  checked={selectedSales.has(s.id)} 
-                  onChange={e => { const n = new Set(selectedSales); e.target.checked ? n.add(s.id) : n.delete(s.id); setSelectedSales(n); }} 
-                  style={{ width: 18, height: 18, marginRight: 12, marginTop: 2, accentColor: c.green }} 
-                />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: '#fff', marginBottom: 4 }}>{s.name}</div>
-                  <div style={{ fontSize: 12, color: c.green }}>{s.sku || '-'}</div>
+      {Object.keys(groupedBySku).length > 0 ? Object.entries(groupedBySku).map(([key, group]) => (
+            <div key={key} style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${c.border}`, borderRadius: 12, marginBottom: 12, overflow: 'hidden' }}>
+              <div style={{ padding: '12px 14px', borderBottom: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.name}</div>
+                  <div style={{ fontSize: 11, color: c.green }}>{group.sku || '-'}</div>
                 </div>
-                <div style={{ fontSize: 11, color: c.textMuted }}>{s.saleDate}</div>
-              </div>
-              
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: `1px solid ${c.border}`, borderBottom: `1px solid ${c.border}`, marginBottom: 10 }}>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 9, color: c.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>Size</div>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{s.size || '-'}</div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 9, color: c.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>Cost</div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: c.gold }}>{fmt(s.cost)}</div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 9, color: c.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>Price</div>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{fmt(s.salePrice)}</div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 9, color: c.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>Profit</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: s.profit >= 0 ? c.green : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <div style={{ fontSize: 10, color: c.textMuted }}>{group.items.length} sale{group.items.length > 1 ? 's' : ''}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: group.items.reduce((s, i) => s + (i.profit || 0), 0) >= 0 ? c.green : c.red }}>{fmt(group.items.reduce((s, i) => s + (i.profit || 0), 0))}</div>
                 </div>
               </div>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <span style={{ fontSize: 11, color: c.textMuted }}>{s.platform}</span>
-                <span style={{ fontSize: 11, color: c.red }}>Fees: {fmt(s.fees)}</span>
-                {s.refunded && <span style={{ fontSize: 10, background: '#f59e0b', color: '#000', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>REFUNDED</span>}
-              </div>
-              
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button 
-                  onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, saleImage: s.image, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} 
-                  style={{ flex: 1, padding: 10, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-                >✏️ Edit</button>
-                {s.platform?.toLowerCase().includes('ebay') && !s.refunded && <button 
-                  onClick={() => markSaleRefunded(s)} 
-                  style={{ flex: 1, padding: 10, background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 8, color: '#f59e0b', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-                >↩️ Refund</button>}
-                <button 
-                  onClick={() => { deleteSaleFromSupabase(s.id); setSales(sales.filter(x => x.id !== s.id)); setSelectedSales(prev => { const n = new Set(prev); n.delete(s.id); return n; }); }} 
-                  style={{ padding: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, color: c.red, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-                >🗑️</button>
-              </div>
+              {group.items.map(s => (
+                <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '28px 40px 55px 55px 55px 55px 28px', padding: '8px 10px', borderBottom: `1px solid rgba(255,255,255,0.03)`, gap: 4, alignItems: 'center', background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : 'transparent' }}>
+                  <input type="checkbox" checked={selectedSales.has(s.id)} onChange={e => { const n = new Set(selectedSales); e.target.checked ? n.add(s.id) : n.delete(s.id); setSelectedSales(n); }} style={{ width: 16, height: 16, accentColor: c.green }} />
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>{s.size || '-'}</span>
+                  <span style={{ fontSize: 9, color: c.textMuted }}>{s.saleDate ? s.saleDate.substring(5) : '-'}</span>
+                  <span style={{ fontSize: 11, textAlign: 'right', color: c.gold }}>{fmt(s.cost)}</span>
+                  <span style={{ fontSize: 11, textAlign: 'right' }}>{fmt(s.salePrice)}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, textAlign: 'right', color: s.profit >= 0 ? c.green : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</span>
+                  <button onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, saleImage: s.image, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 12, padding: 2 }}>✏️</button>
+                </div>
+              ))}
             </div>
           )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💵</div><p style={{ color: c.textMuted }}>No sales</p></div>}
         </div>
