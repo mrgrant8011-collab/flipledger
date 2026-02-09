@@ -4198,7 +4198,6 @@ Let me know if you need anything else.`;
               </div>
               ) : (
 
-              {/* Pending Sales Table */}
               <div style={{ border: `1px solid ${c.border}`, borderTop: selectedPending.size > 0 ? 'none' : `1px solid ${c.border}`, borderRadius: '0 0 12px 12px', overflow: 'hidden', background: c.card }}>
                 <div style={{ maxHeight: 520, overflowY: 'auto' }}>
                   {/* Table Header */}
