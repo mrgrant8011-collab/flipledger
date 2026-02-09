@@ -750,7 +750,7 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
         <div style={{ padding: 12 }}>
       {Object.keys(groupedBySku).length > 0 ? Object.entries(groupedBySku).map(([key, group]) => (
             <div key={key} style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${c.border}`, borderRadius: 12, marginBottom: 12, overflow: 'hidden' }}>
-              <div style={{ padding: '12px 14px', borderBottom: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div onClick={() => { const el = document.getElementById('sales-group-' + key.replace(/[^a-zA-Z0-9]/g, '')); if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'; }} style={{ padding: '12px 14px', borderBottom: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 13, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{group.name}</div>
                   <div style={{ fontSize: 11, color: c.green }}>{group.sku || '-'}</div>
@@ -760,17 +760,19 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
                   <div style={{ fontSize: 12, fontWeight: 700, color: group.items.reduce((s, i) => s + (i.profit || 0), 0) >= 0 ? c.green : c.red }}>{fmt(group.items.reduce((s, i) => s + (i.profit || 0), 0))}</div>
                 </div>
               </div>
-              {group.items.map(s => (
-                <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '28px 40px 55px 55px 55px 55px 28px', padding: '8px 10px', borderBottom: `1px solid rgba(255,255,255,0.03)`, gap: 4, alignItems: 'center', background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : 'transparent' }}>
-                  <input type="checkbox" checked={selectedSales.has(s.id)} onChange={e => { const n = new Set(selectedSales); e.target.checked ? n.add(s.id) : n.delete(s.id); setSelectedSales(n); }} style={{ width: 16, height: 16, accentColor: c.green }} />
-                  <span style={{ fontSize: 12, fontWeight: 600 }}>{s.size || '-'}</span>
-                  <span style={{ fontSize: 9, color: c.textMuted }}>{s.saleDate ? s.saleDate.substring(5) : '-'}</span>
-                  <span style={{ fontSize: 11, textAlign: 'right', color: c.gold }}>{fmt(s.cost)}</span>
-                  <span style={{ fontSize: 11, textAlign: 'right' }}>{fmt(s.salePrice)}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, textAlign: 'right', color: s.profit >= 0 ? c.green : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</span>
-                  <button onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, saleImage: s.image, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 12, padding: 2 }}>✏️</button>
-                </div>
-              ))}
+              <div id={'sales-group-' + key.replace(/[^a-zA-Z0-9]/g, '')} style={{ display: 'none' }}>
+                {group.items.map(s => (
+                  <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '28px 40px 55px 55px 55px 55px 28px', padding: '8px 10px', borderBottom: `1px solid rgba(255,255,255,0.03)`, gap: 4, alignItems: 'center', background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : 'transparent' }}>
+                    <input type="checkbox" checked={selectedSales.has(s.id)} onChange={e => { const n = new Set(selectedSales); e.target.checked ? n.add(s.id) : n.delete(s.id); setSelectedSales(n); }} style={{ width: 16, height: 16, accentColor: c.green }} />
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>{s.size || '-'}</span>
+                    <span style={{ fontSize: 9, color: c.textMuted }}>{s.saleDate ? s.saleDate.substring(5) : '-'}</span>
+                    <span style={{ fontSize: 11, textAlign: 'right', color: c.gold }}>{fmt(s.cost)}</span>
+                    <span style={{ fontSize: 11, textAlign: 'right' }}>{fmt(s.salePrice)}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, textAlign: 'right', color: s.profit >= 0 ? c.green : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</span>
+                    <button onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, saleImage: s.image, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 12, padding: 2 }}>✏️</button>
+                  </div>
+                ))}
+              </div>
             </div>
           )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💵</div><p style={{ color: c.textMuted }}>No sales</p></div>}
         </div>
