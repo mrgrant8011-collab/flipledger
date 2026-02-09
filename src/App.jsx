@@ -4214,7 +4214,7 @@ Let me know if you need anything else.`;
                       <div style={{ background: 'rgba(201,169,98,0.04)', border: '1px solid rgba(201,169,98,0.2)', borderTop: 'none', borderRadius: '0 0 12px 12px', padding: 12 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                           <span style={{ fontSize: 11, fontWeight: 700, color: c.gold }}>📦 Matching Inventory</span>
-                          <span onClick={async () => { => setMobileInvDrawer(null)} style={{ fontSize: 11, color: c.textMuted, cursor: 'pointer' }}>✕ Close</span>
+                          <span onClick={() => setMobileInvDrawer(null)} style={{ fontSize: 11, color: c.textMuted, cursor: 'pointer' }}>✕ Close</span>
                         </div>
                         <div style={{ maxHeight: 200, overflowY: 'auto' }}>
                           {(() => {
