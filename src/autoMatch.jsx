@@ -115,10 +115,12 @@ export const AutoMatchButton = ({ userId, onComplete }) => {
 
         usedInventoryIds.add(invItem.id);
 
-        // Fill the cost input on the card
+        // Fill the cost input on the card using React-compatible method
         const input = document.getElementById(`cost-${pending.id}`);
         if (input) {
-          input.value = invItem.cost || '';
+          const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+          setter.call(input, invItem.cost || '');
+          input.dispatchEvent(new Event('input', { bubbles: true }));
           input.style.background = 'rgba(201,169,98,0.15)';
           input.style.borderColor = 'rgba(201,169,98,0.4)';
           filled++;
