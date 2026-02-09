@@ -859,6 +859,7 @@ function App() {
   const [nikeReceipt, setNikeReceipt] = useState({ scanning: false, items: [], image: null, date: '', orderNum: '' });
   const [showNikeExample, setShowNikeExample] = useState(false);
   const [expandedInvProducts, setExpandedInvProducts] = useState(new Set());
+  const [mobileInvDrawer, setMobileInvDrawer] = useState(null);
 
   const ITEMS_PER_PAGE = 50;
 const loadedUserRef = useRef(null);
@@ -4065,7 +4066,7 @@ Let me know if you need anything else.`;
         {/* IMPORT */}
         {page === 'import' && <div style={{ maxWidth: 1100 }}>
           {/* SPLIT SCREEN LAYOUT - Always visible */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20 }}>
+         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 340px', gap: 20 }}>
             {/* LEFT SIDE - Main Content */}
             <div>
           {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length > 0 && (
@@ -4141,6 +4142,61 @@ Let me know if you need anything else.`;
                   </button>
                 </div>
               )}
+
+                           {isMobile ? (
+              <div style={{ padding: 12 }}>
+                {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).map((s, idx, arr) => (
+                  <div key={s.id} style={{ marginBottom: 10 }}>
+                    <div style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${mobileInvDrawer === s.id ? 'rgba(201,169,98,0.3)' : c.border}`, borderRadius: mobileInvDrawer === s.id ? '12px 12px 0 0' : 12, padding: 12 }}>
+                      <div style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
+                        <div style={{ width: 40, height: 40, borderRadius: 8, overflow: 'hidden', position: 'relative', flexShrink: 0 }}>
+                          <ProductIcon name={s.name} size={40} />
+                          {s.image && <img src={s.image} alt="" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'contain', borderRadius: 8 }} onError={e => { e.target.style.display = 'none'; }} />}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
+                          <div style={{ fontSize: 10, color: c.textMuted }}>{s.sku && <span style={{ color: '#666' }}>{s.sku} · </span>}{s.saleDate} <span style={{ color: s.platform === 'eBay' ? '#3b82f6' : '#00c165', fontWeight: 600 }}>· {s.platform || 'eBay'}</span></div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', marginBottom: 8, borderTop: '1px solid rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                        <div style={{ textAlign: 'center', flex: 1 }}><div style={{ fontSize: 7, color: c.textMuted, fontWeight: 600, letterSpacing: 0.3 }}>SIZE</div><div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{s.size || '-'}</div></div>
+                        <div style={{ textAlign: 'center', flex: 1 }}><div style={{ fontSize: 7, color: c.textMuted, fontWeight: 600, letterSpacing: 0.3 }}>PAYOUT</div><div style={{ fontSize: 15, fontWeight: 700, color: c.green, marginTop: 2 }}>{fmt(s.payout)}</div></div>
+                        <div style={{ textAlign: 'center', flex: 1 }}><div style={{ fontSize: 7, color: c.textMuted, fontWeight: 600, letterSpacing: 0.3 }}>DATE</div><div style={{ fontSize: 12, fontWeight: 600, color: '#888', marginTop: 3 }}>{s.saleDate || '-'}</div></div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <input type="number" placeholder="Enter cost..." id={`cost-${s.id}`} onKeyDown={(e) => { if (e.key === 'Enter' && e.target.value) { confirmSaleWithCost(s.id, e.target.value, s.platform || 'StockX'); e.target.value = ''; }}} style={{ flex: 1, padding: '10px 12px', background: 'rgba(255,255,255,0.04)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#fff', fontSize: 14, fontWeight: 600 }} />
+                        <button onClick={() => setMobileInvDrawer(mobileInvDrawer === s.id ? null : s.id)} style={{ padding: 10, background: 'rgba(201,169,98,0.1)', border: '1px solid rgba(201,169,98,0.3)', borderRadius: 8, color: c.gold, fontSize: 11, cursor: 'pointer' }}>📦</button>
+                        <button onClick={() => { const input = document.getElementById(`cost-${s.id}`); if (input && input.value) { confirmSaleWithCost(s.id, input.value, s.platform || 'StockX'); input.value = ''; }}} style={{ padding: '10px 14px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, color: c.green, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>✓</button>
+                        <button onClick={() => { deletePendingFromSupabase(s.id); setPendingCosts(prev => prev.filter(x => x.id !== s.id)); setSelectedPending(prev => { const n = new Set(prev); n.delete(s.id); return n; }); }} style={{ padding: 10, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, color: c.red, fontSize: 11, cursor: 'pointer' }}>✕</button>
+                      </div>
+                    </div>
+                    {mobileInvDrawer === s.id && (
+                      <div style={{ background: 'rgba(201,169,98,0.04)', border: '1px solid rgba(201,169,98,0.2)', borderTop: 'none', borderRadius: '0 0 12px 12px', padding: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: c.gold }}>📦 Matching Inventory</span>
+                          <span onClick={() => setMobileInvDrawer(null)} style={{ fontSize: 11, color: c.textMuted, cursor: 'pointer' }}>✕ Close</span>
+                        </div>
+                        <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                          {(() => {
+                            const matches = purchases.filter(p => !p.sold && s.sku && p.sku && p.sku.toLowerCase() === s.sku.toLowerCase());
+                            return matches.length > 0 ? matches.map(p => (
+                              <div key={p.id} onClick={() => { const input = document.getElementById(`cost-${s.id}`); if (input) input.value = p.cost || ''; setMobileInvDrawer(null); }} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${c.border}`, borderRadius: 8, marginBottom: 4, cursor: 'pointer' }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+                                  <div style={{ fontSize: 9, color: c.textMuted }}>{p.sku} · Size {p.size} · {p.date}</div>
+                                </div>
+                                <div style={{ fontSize: 12, fontWeight: 700, color: c.gold, flexShrink: 0 }}>{fmt(p.cost)}</div>
+                              </div>
+                            )) : <div style={{ padding: 12, textAlign: 'center', fontSize: 11, color: c.textMuted }}>No matching inventory found for this SKU</div>;
+                          })()}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <div style={{ padding: '10px 0', textAlign: 'center', fontSize: 12, color: c.textMuted }}>{pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} pending items</div>
+              </div>
+              ) : (
 
               {/* Pending Sales Table */}
               <div style={{ border: `1px solid ${c.border}`, borderTop: selectedPending.size > 0 ? 'none' : `1px solid ${c.border}`, borderRadius: '0 0 12px 12px', overflow: 'hidden', background: c.card }}>
@@ -4273,9 +4329,10 @@ Let me know if you need anything else.`;
                   <span style={{ fontWeight: 600 }}>{pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length} items</span>
                 </div>
               </div>
+                    )}
             </div>
           )}
-
+          
           {/* StockX Import Section - Unified */}
           <div style={{ ...cardStyle, marginBottom: 16 }}>
             <div style={{ padding: 20 }}>
@@ -4592,7 +4649,8 @@ Let me know if you need anything else.`;
           ))}
             </div>
 
-            {/* RIGHT SIDE - Inventory Lookup */}
+            {!isMobile && (
+          {/* RIGHT SIDE - Inventory Lookup */}
             <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 12, overflow: 'hidden', height: 'fit-content', position: 'sticky', top: 20 }}>
               <div style={{ padding: '12px', borderBottom: `1px solid ${c.border}`, background: selectedPendingItem ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.02)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontWeight: 700, fontSize: 13 }}>{selectedPendingItem ? '👆 Select Item' : '📦 Inventory'}</span>
@@ -4773,6 +4831,7 @@ Let me know if you need anything else.`;
                 );
               })()}
             </div>
+          )}
           </div>
         </div>}
         {page === 'settings' && <div style={{ maxWidth: 550 }}>
