@@ -1,7 +1,7 @@
 /**
  * AUTO-MATCH STANDALONE MODULE
  * ============================
- * Location: src/autoMatch.js
+ * Location: src/autoMatch.jsx
  * 
  * This is completely separate from your existing code.
  * If anything goes wrong, just delete this file.
@@ -18,7 +18,6 @@ import { supabase } from './supabase';
 
 /**
  * Extract SKU/Style Code from a product name/title
- * Looks for patterns like: FZ3929-114, 305381-100, DV3853-001
  */
 const extractSkuFromName = (name) => {
   if (!name) return null;
@@ -50,59 +49,34 @@ const normalizeSize = (size) => {
 };
 
 /**
- * Auto-match all pending costs to inventory and confirm them
- * 
- * @param {string} userId - User's UUID
- * @returns {Object} { success, matched, unmatched, errors, details }
+ * STEP 1: Scan pending costs and find matches WITHOUT executing
  */
-export const autoMatchPendingCosts = async (userId) => {
-  const results = {
-    success: true,
-    matched: 0,
-    unmatched: 0,
-    errors: [],
-    details: { matchedItems: [], unmatchedItems: [] }
-  };
-  
-  if (!userId) {
-    return { success: false, error: 'User ID is required', ...results };
-  }
-  
+export const scanAutoMatch = async (userId) => {
+  if (!userId) return { success: false, error: 'User ID is required' };
+
   try {
-    console.log('[AutoMatch] Starting...');
-    
-    // 1. Get all pending costs
     const { data: pendingCosts, error: fetchError } = await supabase
       .from('pending_costs')
       .select('*')
       .eq('user_id', userId).range(0, 999999);
-    
+
     if (fetchError) throw fetchError;
     if (!pendingCosts || pendingCosts.length === 0) {
-      console.log('[AutoMatch] No pending costs found');
-      return results;
+      return { success: true, totalPending: 0, matchCount: 0, unmatchCount: 0, matches: [] };
     }
-    
-    console.log(`[AutoMatch] Found ${pendingCosts.length} pending costs`);
-    
-    // 2. Get unsold inventory (FIFO order)
+
     const { data: inventory, error: invError } = await supabase
       .from('inventory')
       .select('*')
       .eq('user_id', userId)
       .eq('sold', false)
       .order('date', { ascending: true }).range(0, 999999);
-    
+
     if (invError) throw invError;
     if (!inventory || inventory.length === 0) {
-      console.log('[AutoMatch] No unsold inventory');
-      results.unmatched = pendingCosts.length;
-      return results;
+      return { success: true, totalPending: pendingCosts.length, matchCount: 0, unmatchCount: pendingCosts.length, matches: [] };
     }
-    
-    console.log(`[AutoMatch] Found ${inventory.length} unsold inventory`);
-    
-    // 3. Build lookup map (SKU|SIZE -> items[])
+
     const inventoryMap = new Map();
     for (const item of inventory) {
       const sku = (item.sku || '').toUpperCase().trim();
@@ -113,54 +87,84 @@ export const autoMatchPendingCosts = async (userId) => {
         inventoryMap.get(key).push(item);
       }
     }
-    
-    // Track used inventory
+
     const usedInventoryIds = new Set();
-    
-    // 4. Match each pending cost
+    const matches = [];
+    let unmatchCount = 0;
+    let totalProfit = 0;
+
     for (const pending of pendingCosts) {
-      // Get SKU - from field or extract from name
       let sku = (pending.sku || '').toUpperCase().trim();
       let size = normalizeSize(pending.size);
-      
-      if (!sku) {
-        sku = extractSkuFromName(pending.name) || '';
-      }
-      if (!size) {
-        size = normalizeSize(extractSizeFromName(pending.name));
-      }
-      
-      // Find match
+      if (!sku) sku = extractSkuFromName(pending.name) || '';
+      if (!size) size = normalizeSize(extractSizeFromName(pending.name));
+
       let invItem = null;
       if (sku) {
         const key = `${sku}|${size}`;
-        const matches = inventoryMap.get(key) || [];
-        invItem = matches.find(i => !usedInventoryIds.has(i.id));
+        const candidates = inventoryMap.get(key) || [];
+        invItem = candidates.find(i => !usedInventoryIds.has(i.id));
       }
-      
+
       if (!invItem) {
-        results.unmatched++;
-        results.details.unmatchedItems.push({
-          id: pending.id,
-          name: pending.name,
-          sku: pending.sku || sku || '(none)',
-          size: pending.size || size || '(none)'
-        });
+        unmatchCount++;
         continue;
       }
-      
-      // Mark as used
+
       usedInventoryIds.add(invItem.id);
-      
-      // 5. Confirm sale
+      const cost = invItem.cost || 0;
+      const payout = pending.payout || (pending.sale_price - (pending.fees || 0));
+      const profit = payout - cost;
+      totalProfit += profit;
+
+      matches.push({
+        pendingId: pending.id,
+        inventoryId: invItem.id,
+        pending: pending,
+        invItem: invItem,
+        name: pending.name,
+        sku: sku,
+        size: pending.size || invItem.size,
+        cost: cost,
+        payout: payout,
+        profit: profit
+      });
+    }
+
+    return {
+      success: true,
+      totalPending: pendingCosts.length,
+      matchCount: matches.length,
+      unmatchCount: unmatchCount,
+      totalProfit: totalProfit,
+      matches: matches
+    };
+
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
+
+/**
+ * STEP 2: Execute the matches (only called after user confirms)
+ * Uses the data already fetched during scan — no re-fetching
+ */
+export const executeAutoMatch = async (userId, matches) => {
+  const results = { success: true, matched: 0, errors: [] };
+
+  try {
+    for (const m of matches) {
       try {
+        const pending = m.pending;
+        const invItem = m.invItem;
         const cost = invItem.cost || 0;
         const fees = pending.fees || 0;
         const payout = pending.payout || (pending.sale_price - fees);
         const profit = payout - cost;
-        
+
         // Create sale
-        const { data: sale, error: saleError } = await supabase
+        const { error: saleError } = await supabase
           .from('sales')
           .insert({
             user_id: userId,
@@ -180,49 +184,31 @@ export const autoMatchPendingCosts = async (userId) => {
             ad_fee: pending.ad_fee,
             note: pending.note,
             inventory_id: invItem.id
-          })
-          .select()
-          .single();
-        
+          });
+
         if (saleError) {
           if (saleError.code === '23505') {
-            // Duplicate - just delete from pending
             await supabase.from('pending_costs').delete().eq('id', pending.id).eq('user_id', userId);
-            usedInventoryIds.delete(invItem.id);
             continue;
           }
           throw saleError;
         }
-        
+
         // Mark inventory sold
         await supabase.from('inventory').update({ sold: true }).eq('id', invItem.id).eq('user_id', userId);
-        
+
         // Delete from pending
         await supabase.from('pending_costs').delete().eq('id', pending.id).eq('user_id', userId);
-        
+
         results.matched++;
-        results.details.matchedItems.push({
-          name: pending.name,
-          sku: invItem.sku,
-          size: invItem.size,
-          cost: cost,
-          profit: profit
-        });
-        
-        console.log(`[AutoMatch] ✓ ${pending.name} -> $${cost} cost, $${profit.toFixed(2)} profit`);
-        
       } catch (err) {
-        console.error('[AutoMatch] Error:', err.message);
-        results.errors.push({ name: pending.name, error: err.message });
-        usedInventoryIds.delete(invItem.id);
+        results.errors.push({ name: m.name, error: err.message });
       }
     }
-    
-    console.log(`[AutoMatch] Done: ${results.matched} matched, ${results.unmatched} unmatched`);
+
     return results;
-    
+
   } catch (error) {
-    console.error('[AutoMatch] Fatal:', error);
     return { success: false, error: error.message, ...results };
   }
 };
@@ -231,42 +217,98 @@ export const autoMatchPendingCosts = async (userId) => {
 /**
  * AUTO-MATCH BUTTON COMPONENT
  * ===========================
- * Drop this anywhere in your app.
- * 
- * Props:
- * - userId: User's UUID (required)
- * - onComplete: Callback after matching is done (optional) - use to refresh your data
+ * Two-step flow:
+ * 1. Click Auto-Match → Scans and shows preview
+ * 2. Click Confirm All → Executes matches
+ * 3. Click Cancel → Nothing happens
  */
 export const AutoMatchButton = ({ userId, onComplete }) => {
   const [loading, setLoading] = useState(false);
+  const [preview, setPreview] = useState(null);
 
   const handleClick = async () => {
-    if (!userId) {
-      alert('No user ID');
+    if (!userId) { alert('No user ID'); return; }
+
+    // If preview is showing, user is confirming
+    if (preview) {
+      setLoading(true);
+      try {
+        const res = await executeAutoMatch(userId, preview.matches);
+        setPreview(null);
+        alert(`✓ ${res.matched} sales confirmed${res.errors.length > 0 ? `\n⚠ ${res.errors.length} errors` : ''}`);
+        if (onComplete) onComplete(res);
+      } catch (err) {
+        alert('Error: ' + err.message);
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
+    // First click — scan only
     setLoading(true);
-
     try {
-      const res = await autoMatchPendingCosts(userId);
-
-      if (res.success) {
-        alert(`✓ Matched: ${res.matched}\n⏳ Need manual cost: ${res.unmatched}${res.errors.length > 0 ? `\n⚠ Errors: ${res.errors.length}` : ''}`);
-      } else {
-        alert('Error: ' + res.error);
+      const scan = await scanAutoMatch(userId);
+      if (!scan.success) { alert('Error: ' + scan.error); return; }
+      if (scan.matchCount === 0) {
+        alert(`No matches found. ${scan.totalPending} pending costs have no matching inventory (SKU + size).`);
+        return;
       }
-
-      // Callback to refresh data
-      if (onComplete) {
-        onComplete(res);
-      }
+      setPreview(scan);
     } catch (err) {
       alert('Error: ' + err.message);
     } finally {
       setLoading(false);
     }
   };
+
+  const handleCancel = () => {
+    setPreview(null);
+  };
+
+  if (preview) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ fontSize: 12, color: '#C9A962', fontWeight: 600 }}>
+          {preview.matchCount} matches · ${preview.totalProfit.toFixed(0)} profit
+        </div>
+        <button
+          onClick={handleClick}
+          disabled={loading}
+          style={{
+            backgroundColor: loading ? '#666' : '#10B981',
+            color: '#fff',
+            padding: '10px 16px',
+            borderRadius: 8,
+            border: 'none',
+            fontWeight: 700,
+            cursor: loading ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            fontSize: 13
+          }}
+        >
+          {loading ? '⏳ Confirming...' : '✓ Confirm All'}
+        </button>
+        <button
+          onClick={handleCancel}
+          style={{
+            backgroundColor: 'transparent',
+            color: '#ef4444',
+            padding: '10px 12px',
+            borderRadius: 8,
+            border: '1px solid rgba(239,68,68,0.3)',
+            fontWeight: 600,
+            cursor: 'pointer',
+            fontSize: 12
+          }}
+        >
+          Cancel
+        </button>
+      </div>
+    );
+  }
 
   return (
     <button
@@ -285,7 +327,7 @@ export const AutoMatchButton = ({ userId, onComplete }) => {
         gap: '8px'
       }}
     >
-      {loading ? '⏳ Matching...' : '⚡ Auto-Match'}
+      {loading ? '⏳ Scanning...' : '⚡ Auto-Match'}
     </button>
   );
 };
