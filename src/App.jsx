@@ -1576,6 +1576,12 @@ const loadedUserRef = useRef(null);
         orderId: result.sale.order_id
       }]);
       setPendingCosts(prev => prev.filter(s => s.id !== saleId));
+      // Mark matching inventory item as sold
+      const matchedItem = purchases.find(p => !p.sold && sale.sku && p.sku && p.sku.toLowerCase() === sale.sku.toLowerCase() && (!sale.size || !p.size || p.size.toString() === sale.size.toString()));
+      if (matchedItem) {
+        await updateInventoryInSupabase({ ...matchedItem, sold: true });
+        setPurchases(prev => prev.map(p => p.id === matchedItem.id ? { ...p, sold: true } : p));
+      }
     } else if (result.duplicate) {
       // Already confirmed - just remove from pending view
       setPendingCosts(prev => prev.filter(s => s.id !== saleId));
@@ -4162,7 +4168,7 @@ Let me know if you need anything else.`;
                     <button 
                       onClick={() => {
                         if (!bulkCost) { alert('Enter a cost first'); return; }
-                        selectedPending.forEach(id => confirmSaleWithCost(id, bulkCost, 'StockX Standard'));
+                        for (const id of selectedPending) { await confirmSaleWithCost(id, bulkCost, 'StockX Standard'); }
                         setSelectedPending(new Set());
                         setBulkCost('');
                       }}
@@ -4197,10 +4203,10 @@ Let me know if you need anything else.`;
                         <div style={{ textAlign: 'center', flex: 1 }}><div style={{ fontSize: 9, color: c.textMuted, fontWeight: 600, letterSpacing: 0.5 }}>PAYOUT</div><div style={{ fontSize: 15, fontWeight: 700, color: c.green, marginTop: 2 }}>{fmt(s.payout)}</div></div>
                         <div style={{ textAlign: 'center', flex: 1 }}><div style={{ fontSize: 9, color: c.textMuted, fontWeight: 600, letterSpacing: 0.5 }}>DATE</div><div style={{ fontSize: 12, fontWeight: 600, color: '#888', marginTop: 3 }}>{s.saleDate ? s.saleDate.slice(5) : '-'}</div></div>
                       </div>
-                      <input type="number" placeholder="Enter cost..." id={`cost-${s.id}`} onKeyDown={(e) => { if (e.key === 'Enter' && e.target.value) { confirmSaleWithCost(s.id, e.target.value, s.platform || 'StockX'); e.target.value = ''; }}} style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.04)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#fff', fontSize: 14, fontWeight: 600, marginBottom: 8 }} />
+                      <input type="number" placeholder="Enter cost..." id={`cost-${s.id}`} onKeyDown={async (e) => {if (e.key === 'Enter' && e.target.value) { await confirmSaleWithCost(s.id, e.target.value, s.platform || 'StockX'); e.target.value = ''; }}} style={{ width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.04)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#fff', fontSize: 14, fontWeight: 600, marginBottom: 8 }} />
                       <div style={{ display: 'flex', gap: 6 }}>
                         <button onClick={() => setMobileInvDrawer(mobileInvDrawer === s.id ? null : s.id)} style={{ flex: 1, padding: 10, background: 'rgba(201,169,98,0.1)', border: '1px solid rgba(201,169,98,0.3)', borderRadius: 8, color: c.gold, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>📦</button>
-                        <button onClick={() => { const input = document.getElementById(`cost-${s.id}`); if (input && input.value) { confirmSaleWithCost(s.id, input.value, s.platform || 'StockX'); input.value = ''; }}} style={{ flex: 1, padding: 10, background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, color: c.green, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>✓ ✓</button>
+                        <button onClick={async () => { const input = document.getElementById(`cost-${s.id}`); if (input && input.value) { await confirmSaleWithCost(s.id, input.value, s.platform || 'StockX'); input.value = ''; }}} style={{ flex: 1, padding: 10, background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, color: c.green, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>✓ ✓</button>
                         <button onClick={() => { deletePendingFromSupabase(s.id); setPendingCosts(prev => prev.filter(x => x.id !== s.id)); setSelectedPending(prev => { const n = new Set(prev); n.delete(s.id); return n; }); }} style={{ padding: '10px 14px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 8, color: c.red, fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>✕</button>
                       </div>
                     </div>
@@ -4208,7 +4214,7 @@ Let me know if you need anything else.`;
                       <div style={{ background: 'rgba(201,169,98,0.04)', border: '1px solid rgba(201,169,98,0.2)', borderTop: 'none', borderRadius: '0 0 12px 12px', padding: 12 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                           <span style={{ fontSize: 11, fontWeight: 700, color: c.gold }}>📦 Matching Inventory</span>
-                          <span onClick={() => setMobileInvDrawer(null)} style={{ fontSize: 11, color: c.textMuted, cursor: 'pointer' }}>✕ Close</span>
+                          <span onClick={async () => { => setMobileInvDrawer(null)} style={{ fontSize: 11, color: c.textMuted, cursor: 'pointer' }}>✕ Close</span>
                         </div>
                         <div style={{ maxHeight: 200, overflowY: 'auto' }}>
                           {(() => {
