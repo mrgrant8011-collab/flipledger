@@ -641,7 +641,7 @@ function MobileDashboard({
 }
 
 // SalesPage as separate component for proper re-rendering
-function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPage, selectedSales, setSelectedSales, sales, setSales, settings, setModal, ITEMS_PER_PAGE, cardStyle, btnPrimary, c, fmt, exportCSV, deleteSaleFromSupabase, markSaleRefunded }) {
+function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPage, selectedSales, setSelectedSales, sales, setSales, settings, setModal, ITEMS_PER_PAGE, cardStyle, btnPrimary, c, fmt, exportCSV, deleteSaleFromSupabase, markSaleRefunded, isMobile }) {
   // Filter
   const searchTerm = (formData.salesSearch || '').toLowerCase().trim();
   const platformFilter = formData.salesFilter || 'all';
@@ -715,7 +715,6 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
     <div style={{ marginBottom: 16, padding: '12px 20px', background: 'rgba(255,255,255,0.02)', border: `1px solid ${c.border}`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
       <div style={{ display: 'flex', gap: 12 }}>
         <button onClick={() => {
-          // Get fresh IDs directly from the items currently showing
           const freshIds = [];
           for (let i = 0; i < items.length; i++) {
             if (items[i] && items[i].id !== undefined && items[i].id !== null) {
@@ -723,10 +722,8 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
             }
           }
           console.log('Selecting', freshIds.length, 'items with IDs:', freshIds);
-          // Use array instead of Set initially
           const selected = {};
           freshIds.forEach(id => { selected[id] = true; });
-          // Convert to Set
           setSelectedSales(new Set(Object.keys(selected).map(k => isNaN(Number(k)) ? k : Number(k))));
         }} style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 8, color: c.green, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>✓ Select Page ({items.length})</button>
         {selectedSales.size > 0 && <button onClick={() => setSelectedSales(new Set())} style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, cursor: 'pointer', fontSize: 12 }}>✗ Clear</button>}
@@ -747,51 +744,121 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
         <span style={{ fontSize: 13, color: c.textMuted }}>{total > 0 ? `Showing ${start + 1}-${end} of ${total}` : 'No sales'}</span>
         <button onClick={() => exportCSV(sorted, 'sales.csv', ['saleDate','name','sku','size','platform','salePrice','cost','fees','profit'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
       </div>
-      
-      <div style={{ display: 'grid', gridTemplateColumns: '36px 52px 80px 1fr 100px 45px 90px 65px 65px 60px 70px 28px 28px', padding: '12px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', gap: 8, alignItems: 'center' }}>
-        <div><input type="checkbox" checked={allSelected} onChange={e => setSelectedSales(e.target.checked ? new Set(itemIds) : new Set())} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }} /></div>
-        <span></span>
-        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'oldest' ? 'newest' : 'oldest' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'oldest' || sortBy === 'newest') ? c.green : c.textMuted, cursor: 'pointer' }}>DATE {sortBy === 'oldest' ? '▲' : sortBy === 'newest' ? '▼' : ''}</span>
-        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'nameAZ' ? 'nameZA' : 'nameAZ' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'nameAZ' || sortBy === 'nameZA') ? c.green : c.textMuted, cursor: 'pointer' }}>ITEM {sortBy === 'nameAZ' ? '▲' : sortBy === 'nameZA' ? '▼' : ''}</span>
-        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'skuAZ' ? 'skuZA' : 'skuAZ' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'skuAZ' || sortBy === 'skuZA') ? c.green : c.textMuted, cursor: 'pointer' }}>SKU {sortBy === 'skuAZ' ? '▲' : sortBy === 'skuZA' ? '▼' : ''}</span>
-        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'sizeAsc' ? 'sizeDesc' : 'sizeAsc' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'sizeAsc' || sortBy === 'sizeDesc') ? c.green : c.textMuted, cursor: 'pointer' }}>SIZE {sortBy === 'sizeAsc' ? '▲' : sortBy === 'sizeDesc' ? '▼' : ''}</span>
-        <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>PLATFORM</span>
-        <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>COST</span>
-        <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>PRICE</span>
-        <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>FEES</span>
-        <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'profitLow' ? 'profitHigh' : 'profitLow' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'profitLow' || sortBy === 'profitHigh') ? c.green : c.textMuted, cursor: 'pointer', textAlign: 'right' }}>PROFIT {sortBy === 'profitLow' ? '▲' : sortBy === 'profitHigh' ? '▼' : ''}</span>
-        <span></span><span></span>
-      </div>
 
-      {items.length > 0 ? items.map(s => (
-        <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '36px 52px 80px 1fr 100px 45px 90px 65px 65px 60px 70px 28px 28px', padding: '12px 16px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', gap: 8, background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : 'transparent' }}>
-          <div><input type="checkbox" checked={selectedSales.has(s.id)} onChange={e => { const n = new Set(selectedSales); e.target.checked ? n.add(s.id) : n.delete(s.id); setSelectedSales(n); }} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }} /></div>
-          <div style={{ width: 44, height: 44, borderRadius: 10, overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
-            <ProductIcon name={s.name} size={44} />
-            {s.image && (
-              <img 
-                src={s.image} 
-                alt="" 
-                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', borderRadius: 10 }} 
-                onError={(e) => { e.target.style.display = 'none'; }} 
-              />
-            )}
-          </div>
-          <span style={{ fontSize: 11, color: c.textMuted }}>{s.saleDate}</span>
-          <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
-          <span style={{ fontSize: 10, color: c.green }}>{s.sku || '-'}</span>
-          <span style={{ fontSize: 12, textAlign: 'center' }}>{s.size || '-'}</span>
-          <span style={{ fontSize: 10, color: c.textMuted }}>{s.platform}</span>
-          <span style={{ fontSize: 11, textAlign: 'right', color: c.textMuted }}>{fmt(s.cost)}</span>
-          <span style={{ fontSize: 11, textAlign: 'right' }}>{fmt(s.salePrice)}</span>
-          <span style={{ fontSize: 11, textAlign: 'right', color: c.red }}>{fmt(s.fees)}</span>
-          <span style={{ fontSize: 12, fontWeight: 700, textAlign: 'right', color: s.profit >= 0 ? c.green : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</span>
-         {s.platform?.toLowerCase().includes('ebay') && !s.refunded && <button onClick={() => markSaleRefunded(s)} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', fontSize: 12, padding: 4 }} title="Mark as Refunded">↩️</button>}
-          {s.refunded && <span style={{ fontSize: 10, background: '#f59e0b', color: '#000', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>REFUNDED</span>}
-          <button onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, saleImage: s.image, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14, padding: 4 }}>✏️</button>
-          <button onClick={() => { deleteSaleFromSupabase(s.id); setSales(sales.filter(x => x.id !== s.id)); setSelectedSales(prev => { const n = new Set(prev); n.delete(s.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16, padding: 4 }}>×</button>
+      {isMobile ? (
+        <div style={{ padding: 12 }}>
+          {items.length > 0 ? items.map(s => (
+            <div key={s.id} style={{ 
+              background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : s.refunded ? 'rgba(251,191,36,0.05)' : 'rgba(255,255,255,0.02)', 
+              border: `1px solid ${c.border}`, 
+              borderRadius: 12, 
+              padding: 14, 
+              marginBottom: 10 
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 10 }}>
+                <input 
+                  type="checkbox" 
+                  checked={selectedSales.has(s.id)} 
+                  onChange={e => { const n = new Set(selectedSales); e.target.checked ? n.add(s.id) : n.delete(s.id); setSelectedSales(n); }} 
+                  style={{ width: 18, height: 18, marginRight: 12, marginTop: 2, accentColor: c.green }} 
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: '#fff', marginBottom: 4 }}>{s.name}</div>
+                  <div style={{ fontSize: 12, color: c.green }}>{s.sku || '-'}</div>
+                </div>
+                <div style={{ fontSize: 11, color: c.textMuted }}>{s.saleDate}</div>
+              </div>
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: `1px solid ${c.border}`, borderBottom: `1px solid ${c.border}`, marginBottom: 10 }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 9, color: c.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>Size</div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{s.size || '-'}</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 9, color: c.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>Cost</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: c.gold }}>{fmt(s.cost)}</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 9, color: c.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>Price</div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{fmt(s.salePrice)}</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 9, color: c.textMuted, textTransform: 'uppercase', marginBottom: 2 }}>Profit</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: s.profit >= 0 ? c.green : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ fontSize: 11, color: c.textMuted }}>{s.platform}</span>
+                <span style={{ fontSize: 11, color: c.red }}>Fees: {fmt(s.fees)}</span>
+                {s.refunded && <span style={{ fontSize: 10, background: '#f59e0b', color: '#000', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>REFUNDED</span>}
+              </div>
+              
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button 
+                  onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, saleImage: s.image, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} 
+                  style={{ flex: 1, padding: 10, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                >✏️ Edit</button>
+                {s.platform?.toLowerCase().includes('ebay') && !s.refunded && <button 
+                  onClick={() => markSaleRefunded(s)} 
+                  style={{ flex: 1, padding: 10, background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.3)', borderRadius: 8, color: '#f59e0b', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                >↩️ Refund</button>}
+                <button 
+                  onClick={() => { deleteSaleFromSupabase(s.id); setSales(sales.filter(x => x.id !== s.id)); setSelectedSales(prev => { const n = new Set(prev); n.delete(s.id); return n; }); }} 
+                  style={{ padding: 10, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, color: c.red, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                >🗑️</button>
+              </div>
+            </div>
+          )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💵</div><p style={{ color: c.textMuted }}>No sales</p></div>}
         </div>
-      )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💵</div><p style={{ color: c.textMuted }}>No sales</p></div>}
+      ) : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '36px 52px 80px 1fr 100px 45px 90px 65px 65px 60px 70px 28px 28px', padding: '12px 16px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', gap: 8, alignItems: 'center' }}>
+            <div><input type="checkbox" checked={allSelected} onChange={e => setSelectedSales(e.target.checked ? new Set(itemIds) : new Set())} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }} /></div>
+            <span></span>
+            <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'oldest' ? 'newest' : 'oldest' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'oldest' || sortBy === 'newest') ? c.green : c.textMuted, cursor: 'pointer' }}>DATE {sortBy === 'oldest' ? '▲' : sortBy === 'newest' ? '▼' : ''}</span>
+            <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'nameAZ' ? 'nameZA' : 'nameAZ' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'nameAZ' || sortBy === 'nameZA') ? c.green : c.textMuted, cursor: 'pointer' }}>ITEM {sortBy === 'nameAZ' ? '▲' : sortBy === 'nameZA' ? '▼' : ''}</span>
+            <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'skuAZ' ? 'skuZA' : 'skuAZ' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'skuAZ' || sortBy === 'skuZA') ? c.green : c.textMuted, cursor: 'pointer' }}>SKU {sortBy === 'skuAZ' ? '▲' : sortBy === 'skuZA' ? '▼' : ''}</span>
+            <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'sizeAsc' ? 'sizeDesc' : 'sizeAsc' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'sizeAsc' || sortBy === 'sizeDesc') ? c.green : c.textMuted, cursor: 'pointer' }}>SIZE {sortBy === 'sizeAsc' ? '▲' : sortBy === 'sizeDesc' ? '▼' : ''}</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>PLATFORM</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>COST</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>PRICE</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>FEES</span>
+            <span onClick={() => { setFormData({ ...formData, salesSort: sortBy === 'profitLow' ? 'profitHigh' : 'profitLow' }); setSalesPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: (sortBy === 'profitLow' || sortBy === 'profitHigh') ? c.green : c.textMuted, cursor: 'pointer', textAlign: 'right' }}>PROFIT {sortBy === 'profitLow' ? '▲' : sortBy === 'profitHigh' ? '▼' : ''}</span>
+            <span></span><span></span>
+          </div>
+
+          {items.length > 0 ? items.map(s => (
+            <div key={s.id} style={{ display: 'grid', gridTemplateColumns: '36px 52px 80px 1fr 100px 45px 90px 65px 65px 60px 70px 28px 28px', padding: '12px 16px', borderBottom: `1px solid ${c.border}`, alignItems: 'center', gap: 8, background: selectedSales.has(s.id) ? 'rgba(239,68,68,0.1)' : 'transparent' }}>
+              <div><input type="checkbox" checked={selectedSales.has(s.id)} onChange={e => { const n = new Set(selectedSales); e.target.checked ? n.add(s.id) : n.delete(s.id); setSelectedSales(n); }} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.green }} /></div>
+              <div style={{ width: 44, height: 44, borderRadius: 10, overflow: 'hidden', flexShrink: 0, position: 'relative' }}>
+                <ProductIcon name={s.name} size={44} />
+                {s.image && (
+                  <img 
+                    src={s.image} 
+                    alt="" 
+                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover', borderRadius: 10 }} 
+                    onError={(e) => { e.target.style.display = 'none'; }} 
+                  />
+                )}
+              </div>
+              <span style={{ fontSize: 11, color: c.textMuted }}>{s.saleDate}</span>
+              <span style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
+              <span style={{ fontSize: 10, color: c.green }}>{s.sku || '-'}</span>
+              <span style={{ fontSize: 12, textAlign: 'center' }}>{s.size || '-'}</span>
+              <span style={{ fontSize: 10, color: c.textMuted }}>{s.platform}</span>
+              <span style={{ fontSize: 11, textAlign: 'right', color: c.textMuted }}>{fmt(s.cost)}</span>
+              <span style={{ fontSize: 11, textAlign: 'right' }}>{fmt(s.salePrice)}</span>
+              <span style={{ fontSize: 11, textAlign: 'right', color: c.red }}>{fmt(s.fees)}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, textAlign: 'right', color: s.profit >= 0 ? c.green : c.red }}>{s.profit >= 0 ? '+' : ''}{fmt(s.profit)}</span>
+             {s.platform?.toLowerCase().includes('ebay') && !s.refunded && <button onClick={() => markSaleRefunded(s)} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', fontSize: 12, padding: 4 }} title="Mark as Refunded">↩️</button>}
+              {s.refunded && <span style={{ fontSize: 10, background: '#f59e0b', color: '#000', padding: '2px 6px', borderRadius: 4, fontWeight: 600 }}>REFUNDED</span>}
+              <button onClick={() => { setFormData({ editSaleId: s.id, saleName: s.name, saleSku: s.sku, saleSize: s.size, saleCost: s.cost, salePrice: s.salePrice, saleDate: s.saleDate, platform: s.platform, saleImage: s.image, sellerLevel: s.sellerLevel || settings.stockxLevel }); setModal('editSale'); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 14, padding: 4 }}>✏️</button>
+              <button onClick={() => { deleteSaleFromSupabase(s.id); setSales(sales.filter(x => x.id !== s.id)); setSelectedSales(prev => { const n = new Set(prev); n.delete(s.id); return n; }); }} style={{ background: 'none', border: 'none', color: c.textMuted, cursor: 'pointer', fontSize: 16, padding: 4 }}>×</button>
+            </div>
+          )) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>💵</div><p style={{ color: c.textMuted }}>No sales</p></div>}
+        </>
+      )}
       
       {pages > 1 && <div style={{ padding: '16px 20px', borderTop: `1px solid ${c.border}`, display: 'flex', justifyContent: 'center', gap: 8 }}>
         <button onClick={() => setSalesPage(1)} disabled={page === 1} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: page === 1 ? c.textMuted : '#fff', cursor: page === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}>«</button>
@@ -802,6 +869,7 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
       </div>}
     </div>
   </div>;
+}
 }
 
 function App() {
@@ -3471,7 +3539,8 @@ console.log('Found', items.length, 'items');
           fmt={fmt}
           exportCSV={exportCSV}
           deleteSaleFromSupabase={deleteSaleFromSupabase}
-          markSaleRefunded={markSaleRefunded}                     
+          markSaleRefunded={markSaleRefunded} 
+          isMobile={isMobile}                     
         />}
 
         {/* EXPENSES */}
