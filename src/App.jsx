@@ -4761,7 +4761,7 @@ Let me know if you need anything else.`;
                         }}
                         onClick={async () => {
                           if (selectedPendingItem) {
-                            confirmSaleWithCost(selectedPendingItem, p.cost, 'StockX Standard');
+                            await confirmSaleWithCost(selectedPendingItem, p.cost, pendingCosts.find(s => s.id === selectedPendingItem)?.platform || 'StockX');
                             // Update in Supabase
                             await updateInventoryInSupabase({ ...p, sold: true });
                             setPurchases(prev => prev.map(x => x.id === p.id ? { ...x, sold: true } : x));
