@@ -4228,7 +4228,7 @@ Let me know if you need anything else.`;
                   {pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).map((s, idx, arr) => (
                     <div 
                       key={s.id}
-                      onClick={() => setSelectedPendingItem(selectedPendingItem === s.id ? null : s.id)}
+                      onClick={() => { setSelectedPendingItem(selectedPendingItem === s.id ? null : s.id); setInvLookupSearch(selectedPendingItem === s.id ? '' : (s.sku || '')); }}
                       style={{ 
                         display: 'grid', 
                         gridTemplateColumns: '36px 56px 1fr 50px 85px 100px 36px', 
