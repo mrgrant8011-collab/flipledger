@@ -4166,7 +4166,7 @@ Let me know if you need anything else.`;
                       style={{ width: 100, padding: '10px 12px', background: 'rgba(255,255,255,0.1)', border: `2px solid ${c.green}`, borderRadius: 6, color: c.text, fontSize: 16, fontWeight: 700, textAlign: 'center' }} 
                     />
                     <button 
-                      onClick={() => {
+                      onClick={async () => {
                         if (!bulkCost) { alert('Enter a cost first'); return; }
                         for (const id of selectedPending) { await confirmSaleWithCost(id, bulkCost, 'StockX Standard'); }
                         setSelectedPending(new Set());
