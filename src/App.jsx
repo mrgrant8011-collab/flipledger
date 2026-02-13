@@ -3798,7 +3798,7 @@ console.log('Found', items.length, 'items');
           
         {/* ALL GROSS REPORTING METHOD */}
           <div style={{ ...cardStyle, padding: 20, marginBottom: 20, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)' }}>
-            <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700, color: '#34d399' }}>✅ All Gross Method — Same as 2024</h3>
+            <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700, color: '#34d399' }}>✅ All Gross Method — </h3>
             <div style={{ fontSize: 12, color: c.textMuted, lineHeight: 1.8 }}>
               <div>• <strong>All platforms</strong> report full selling price (what buyer paid)</div>
               <div>• <strong>All fees</strong> deducted separately on Line 10</div>
