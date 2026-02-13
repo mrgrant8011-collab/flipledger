@@ -3652,30 +3652,26 @@ console.log('Found', items.length, 'items');
         {/* MILEAGE */}
         {/* CPA REPORTS */}
         {page === 'reports' && <div style={{ maxWidth: 1000 }}>
-          {/* PLATFORM-SPECIFIC CALCULATIONS FOR 1099-K MATCHING */}
+                   {/* ALL GROSS METHOD — Report full selling price, deduct ALL fees */}
           {(() => {
-            // Calculate 1099-K matching amounts per platform
-            // eBay: 1099-K reports GROSS (salePrice), fees are deductible
-            // StockX: 1099-K reports PAYOUT (what you received), fees already deducted
+            // ALL GROSS: Every platform reports salePrice as income, fees deducted separately
+            // This is HIGHER than 1099-Ks for StockX (which reports payout) = safe with IRS
             
-            let line1_gross = 0;      // What to report on Line 1 (must match 1099-Ks)
-            let line10_fees = 0;       // Deductible fees (only eBay)
+            let line1_gross = 0;      // Full selling price, all platforms
+            let line10_fees = 0;       // ALL platform fees
             let totalCostOfGoods = 0;  // COGS
             
             const platformData = {};
             
             filteredSales.forEach(s => {
               const platform = s.platform || 'Other';
-              const isStockX = platform.toLowerCase().includes('stockx');
-              const isGoat = platform.toLowerCase().includes('goat');
-              const isEbay = platform.toLowerCase().includes('ebay');
               
               // Initialize platform data
               if (!platformData[platform]) {
                 platformData[platform] = { 
                   sales: 0, 
-                  gross1099K: 0,  // What matches their 1099-K
-                  fees: 0,        // Deductible fees
+                  gross1099K: 0,   // Full selling price
+                  fees: 0,         // All fees
                   cogs: 0,
                   payout: 0
                 };
@@ -3683,31 +3679,16 @@ console.log('Found', items.length, 'items');
               
               platformData[platform].sales++;
               platformData[platform].cogs += s.cost || 0;
+              platformData[platform].gross1099K += s.salePrice || 0;
+              platformData[platform].fees += s.fees || 0;
+              platformData[platform].payout += (s.payout || (s.salePrice - (s.fees || 0)));
               totalCostOfGoods += s.cost || 0;
               
-              if (isStockX || isGoat) {
-                // StockX & GOAT 1099-K = payout (after fees)
-                const payout = s.payout || (s.salePrice - (s.fees || 0));
-                platformData[platform].gross1099K += payout;
-                platformData[platform].payout += payout;
-                line1_gross += payout;
-                // NO fee deduction - already taken out
-              } else if (isEbay) {
-                // eBay 1099-K = gross (before fees)
-                platformData[platform].gross1099K += s.salePrice || 0;
-                platformData[platform].fees += s.fees || 0;
-                platformData[platform].payout += (s.payout || (s.salePrice - (s.fees || 0)));
-                line1_gross += s.salePrice || 0;
-                line10_fees += s.fees || 0;
-              } else {
-                // Other platforms - assume gross like eBay (safer)
-                platformData[platform].gross1099K += s.salePrice || 0;
-                platformData[platform].fees += s.fees || 0;
-                platformData[platform].payout += (s.payout || (s.salePrice - (s.fees || 0)));
-                line1_gross += s.salePrice || 0;
-                line10_fees += s.fees || 0;
-              }
+              // Same rule for ALL platforms
+              line1_gross += s.salePrice || 0;
+              line10_fees += s.fees || 0;
             });
+
             
             const line5_grossProfit = line1_gross - totalCostOfGoods;
             const line31_netProfit = line1_gross - totalCostOfGoods - line10_fees - totalExp;
@@ -3726,15 +3707,15 @@ console.log('Found', items.length, 'items');
                 ['Tax Year:', year],
                 ['Generated:', new Date().toLocaleDateString()],
                 ['', ''],
-                ['*** 1099-K COMPLIANT REPORTING ***', ''],
-                ['eBay: Reports GROSS sales - fees are deductible', ''],
-                ['StockX: Reports PAYOUT (after fees) - no fee deduction', ''],
+                ['*** ALL GROSS METHOD ***', ''],
+                ['All platforms: Report full selling price as gross income', ''],
+                ['All platforms: Deduct ALL fees on Line 10', ''],
                 ['', ''],
                 ['LINE', 'DESCRIPTION', 'AMOUNT'],
-                ['Line 1', 'Gross receipts (matches 1099-Ks)', line1_gross],
+                ['Line 1', 'Gross receipts (full selling price, all platforms)', line1_gross],
                 ['Line 4', 'Cost of goods sold', totalCostOfGoods],
                 ['Line 5', 'Gross profit (Line 1 - Line 4)', line5_grossProfit],
-                ['Line 10', 'Commissions/fees (eBay only)', line10_fees],
+                ['Line 10', 'Commissions/fees (all platforms)', line10_fees],
                 ['Line 27a', 'Other expenses', totalExp],
                 ['Line 31', 'NET PROFIT', line31_netProfit],
               ];
@@ -3758,7 +3739,7 @@ console.log('Found', items.length, 'items');
                   d.fees,
                   d.cogs, 
                   netProfit,
-                  (isStockX || isGoat) ? 'Payout (fees pre-deducted)' : 'Gross (fees deductible)'
+                  'Gross (all fees deducted on Line 10)'
                 ]);
               });
               platformRows.push(['TOTAL', filteredSales.length, line1_gross, line10_fees, totalCostOfGoods, line31_netProfit + totalExp, '']);
@@ -3774,15 +3755,10 @@ console.log('Found', items.length, 'items');
                 if (monthSales.length > 0) {
                   let mGross = 0, mFees = 0, mCogs = 0;
                   monthSales.forEach(s => {
-                    const isStockX = (s.platform || '').toLowerCase().includes('stockx');
-                    const isGoat = (s.platform || '').toLowerCase().includes('goat');
-                    mCogs += s.cost || 0;
-                    if (isStockX || isGoat) {
-                      mGross += s.payout || (s.salePrice - (s.fees || 0));
-                    } else {
-                      mGross += s.salePrice || 0;
-                      mFees += s.fees || 0;
-                    }
+                   mCogs += s.cost || 0;
+              mGross += s.salePrice || 0;
+              mFees += s.fees || 0;
+                    
                   });
                   monthlyRows.push([month, monthSales.length, mGross, mCogs, mFees, mGross - mCogs - mFees]);
                 }
@@ -3794,24 +3770,21 @@ console.log('Found', items.length, 'items');
               // Sheet 4: All Transactions
               const txRows = [['DATE', 'PLATFORM', 'ITEM', 'SKU', 'SIZE', 'SALE PRICE', 'PAYOUT', 'COGS', 'FEES', '1099-K AMOUNT', 'NET PROFIT']];
               filteredSales.forEach(s => {
-                const isStockX = (s.platform || '').toLowerCase().includes('stockx');
-                const isGoat = (s.platform || '').toLowerCase().includes('goat');
                 const payout = s.payout || (s.salePrice - (s.fees || 0));
-                const gross1099K = (isStockX || isGoat) ? payout : (s.salePrice || 0);
-                const deductibleFees = (isStockX || isGoat) ? 0 : (s.fees || 0);
-                txRows.push([
-                  s.saleDate, 
-                  s.platform, 
-                  s.name, 
-                  s.sku, 
-                  s.size, 
-                  s.salePrice || 0, 
-                  payout,
-                  s.cost || 0, 
-                  s.fees || 0,
-                  gross1099K,
-                  gross1099K - (s.cost || 0) - deductibleFees
-                ]);
+              txRows.push([
+                s.saleDate,
+                s.platform,
+                s.name,
+                s.sku,
+                s.size,
+                s.salePrice || 0,
+                payout,
+                s.cost || 0,
+                s.fees || 0,
+                s.salePrice || 0,
+                (s.salePrice || 0) - (s.cost || 0) - (s.fees || 0)
+              ]);
+
               });
               const ws4 = XLSX.utils.aoa_to_sheet(txRows);
               XLSX.utils.book_append_sheet(wb, ws4, 'All Transactions');
@@ -3823,30 +3796,23 @@ console.log('Found', items.length, 'items');
             <button className="btn-hover" onClick={printTaxPackage} style={{ padding: '12px 24px', ...btnPrimary, fontSize: 13 }}>🖨️ Print Tax Summary</button>
           </div>
           
-          {/* IMPORTANT: 1099-K REPORTING EXPLANATION */}
-          <div style={{ ...cardStyle, padding: 20, marginBottom: 20, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)' }}>
-            <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700, color: '#93c5fd' }}>⚠️ 1099-K Reporting Differences</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <div style={{ padding: 12, background: 'rgba(229,50,56,0.1)', borderRadius: 8, border: '1px solid rgba(229,50,56,0.2)' }}>
-                <div style={{ fontWeight: 700, marginBottom: 4, color: '#e53238' }}>eBay</div>
-                <div style={{ fontSize: 12, color: c.textMuted }}>1099-K = <strong>GROSS</strong> (what buyer paid)</div>
-                <div style={{ fontSize: 12, color: c.textMuted }}>→ Report gross on Line 1</div>
-                <div style={{ fontSize: 12, color: c.textMuted }}>→ Deduct fees on Line 10</div>
-              </div>
-              <div style={{ padding: 12, background: 'rgba(34,197,94,0.1)', borderRadius: 8, border: '1px solid rgba(34,197,94,0.2)' }}>
-                <div style={{ fontWeight: 700, marginBottom: 4, color: '#22c55e' }}>StockX & GOAT</div>
-                <div style={{ fontSize: 12, color: c.textMuted }}>1099-K = <strong>PAYOUT</strong> (after fees)</div>
-                <div style={{ fontSize: 12, color: c.textMuted }}>→ Report payout on Line 1</div>
-                <div style={{ fontSize: 12, color: c.textMuted }}>→ NO fee deduction (already taken out)</div>
-              </div>
+        {/* ALL GROSS REPORTING METHOD */}
+          <div style={{ ...cardStyle, padding: 20, marginBottom: 20, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)' }}>
+            <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700, color: '#34d399' }}>✅ All Gross Method — Same as 2024</h3>
+            <div style={{ fontSize: 12, color: c.textMuted, lineHeight: 1.8 }}>
+              <div>• <strong>All platforms</strong> report full selling price (what buyer paid)</div>
+              <div>• <strong>All fees</strong> deducted separately on Line 10</div>
+              <div>• Reported gross will be <strong>HIGHER</strong> than 1099-K totals — this is correct and safe</div>
+              <div>• StockX 1099-K shows payout (lower), eBay/GOAT 1099-K shows gross (should match)</div>
             </div>
           </div>
+
           
           {/* SCHEDULE C MAPPING */}
           <div className="print-report" style={{ ...cardStyle, padding: 32, marginBottom: 20 }}>
             <div style={{ textAlign: 'center', marginBottom: 24, paddingBottom: 16, borderBottom: '2px solid #333' }}>
               <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>📋 SCHEDULE C SUMMARY</h1>
-              <p style={{ margin: '8px 0 0', fontSize: 13, color: c.textMuted }}>Tax Year {year} • 1099-K Compliant</p>
+              <p style={{ margin: '8px 0 0', fontSize: 13, color: c.textMuted }}>Tax Year {year} • All Gross Method</p>
             </div>
             
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -3862,7 +3828,7 @@ console.log('Found', items.length, 'items');
                   <td style={{ padding: '14px 16px', fontWeight: 600, color: '#60a5fa' }}>Line 1</td>
                   <td style={{ padding: '14px 16px' }}>
                     Gross receipts or sales
-                    <div style={{ fontSize: 11, color: c.textMuted }}>eBay gross + StockX/GOAT payouts (matches 1099-Ks)</div>
+                    <div style={{ fontSize: 11, color: c.textMuted }}>Full selling price, all platforms</div>
                   </td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 15 }}>{fmt(line1_gross)}</td>
                 </tr>
@@ -3880,7 +3846,7 @@ console.log('Found', items.length, 'items');
                   <td style={{ padding: '14px 16px', fontWeight: 600, color: '#60a5fa' }}>Line 10</td>
                   <td style={{ padding: '14px 16px' }}>
                     Commissions and fees
-                    <div style={{ fontSize: 11, color: c.textMuted }}>eBay fees only (StockX/GOAT fees pre-deducted)</div>
+                    <div style={{ fontSize: 11, color: c.textMuted }}>All platform fees (StockX, eBay, GOAT, etc.)</div>
                   </td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 15, color: c.red }}>{fmt(line10_fees)}</td>
                 </tr>
@@ -3939,7 +3905,7 @@ console.log('Found', items.length, 'items');
                       <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>{fmt(data.gross1099K)}</td>
                       <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', color: data.fees > 0 ? c.red : c.textMuted }}>{data.fees > 0 ? fmt(data.fees) : '$0.00'}</td>
                       <td style={{ padding: '14px 16px', fontSize: 11, color: c.textMuted }}>
-                        {(isStockX || isGoat) ? `← Should match ${platform} 1099-K Box 1a` : '← Should match eBay 1099-K Box 1a'}
+                       {platform.toLowerCase().includes('stockx') ? '← 1099-K shows payout (lower) — difference is fees' : `← Should be close to ${platform} 1099-K`}
                       </td>
                     </tr>
                   );
@@ -3982,15 +3948,9 @@ console.log('Found', items.length, 'items');
                     
                     let mGross = 0, mFees = 0, mCogs = 0;
                     monthSales.forEach(s => {
-                      const isStockX = (s.platform || '').toLowerCase().includes('stockx');
-                      const isGoat = (s.platform || '').toLowerCase().includes('goat');
                       mCogs += s.cost || 0;
-                      if (isStockX || isGoat) {
-                        mGross += s.payout || (s.salePrice - (s.fees || 0));
-                      } else {
-                        mGross += s.salePrice || 0;
-                        mFees += s.fees || 0;
-                      }
+              mGross += s.salePrice || 0;
+              mFees += s.fees || 0;
                     });
                     const mProfit = mGross - mCogs - mFees;
                     
@@ -4027,20 +3987,18 @@ console.log('Found', items.length, 'items');
             <div 
               onClick={() => {
                 const platformLines = Object.entries(platformData).map(([p, d]) => {
-                  const isStockX = p.toLowerCase().includes('stockx');
-                  const isGoat = p.toLowerCase().includes('goat');
-                  return `• ${p}: ${fmt(d.gross1099K)} (${d.sales} sales)${(isStockX || isGoat) ? ' - payout, no fee deduction' : ' - gross, fees deductible'}`;
+                 return `• ${p}: ${fmt(d.gross1099K)} (${d.sales} sales) - gross, all fees on Line 10`;
                 }).join('\n');
                 
                 const text = `Hi,
 
 Here are my reselling business numbers for ${year}:
 
-SCHEDULE C SUMMARY (1099-K COMPLIANT):
+SCHEDULE C SUMMARY (ALL GROSS METHOD):
 • Line 1 - Gross Receipts: ${fmt(line1_gross)}
 • Line 4 - Cost of Goods Sold: ${fmt(totalCostOfGoods)}
 • Line 5 - Gross Profit: ${fmt(line5_grossProfit)}
-• Line 10 - Fees (eBay only): ${fmt(line10_fees)}
+• Line 10 - Fees (all platforms): ${fmt(line10_fees)}
 • Line 27a - Other Expenses: ${fmt(totalExp)}
 • Line 31 - Net Profit: ${fmt(line31_netProfit)}
 
@@ -4048,8 +4006,8 @@ SCHEDULE C SUMMARY (1099-K COMPLIANT):
 ${platformLines}
 
 IMPORTANT NOTES:
-- eBay 1099-K reports GROSS (before fees) - I deduct fees on Line 10
-- StockX 1099-K reports PAYOUT (after fees) - NO separate fee deduction
+- All platforms: I report FULL GROSS selling price and deduct ALL fees on Line 10
+- StockX 1099-K shows payout (lower than reported gross) - difference is their fees
 
 I've attached the detailed Excel with all ${filteredSales.length} transactions.
 
