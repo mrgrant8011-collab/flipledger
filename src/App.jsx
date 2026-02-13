@@ -3913,7 +3913,7 @@ console.log('Found', items.length, 'items');
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700 }}>{filteredSales.length}</td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace' }}>{fmt(line1_gross)}</td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: c.red }}>{fmt(line10_fees)}</td>
-                  <td style={{ padding: '14px 16px', fontSize: 11, color: c.textMuted }}>← Sum of all 1099-Ks</td>
+                  <td style={{ padding: '14px 16px', fontSize: 11, color: c.textMuted }}>← Total reported gross (all platforms)</td>
                 </tr>
               </tfoot>
             </table>
