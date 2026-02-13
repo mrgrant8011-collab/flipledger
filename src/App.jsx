@@ -3796,17 +3796,13 @@ console.log('Found', items.length, 'items');
             <button className="btn-hover" onClick={printTaxPackage} style={{ padding: '12px 24px', ...btnPrimary, fontSize: 13 }}>🖨️ Print Tax Summary</button>
           </div>
           
-        {/* ALL GROSS REPORTING METHOD */}
+      {/* ALL GROSS REPORTING METHOD */}
           <div style={{ ...cardStyle, padding: 20, marginBottom: 20, background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)' }}>
-            <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700, color: '#34d399' }}>✅ All Gross Method — </h3>
+            <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 700, color: '#34d399' }}>✅ All Gross Method</h3>
             <div style={{ fontSize: 12, color: c.textMuted, lineHeight: 1.8 }}>
-              <div>• <strong>All platforms</strong> report full selling price (what buyer paid)</div>
-              <div>• <strong>All fees</strong> deducted separately on Line 10</div>
-              <div>• Reported gross will be <strong>HIGHER</strong> than 1099-K totals — this is correct and safe</div>
-              <div>• StockX 1099-K shows payout (lower), eBay/GOAT 1099-K shows gross (should match)</div>
+              <div>Your reported gross income may be higher than your 1099-K totals. This is normal — we report the full selling price and deduct fees separately, which is the safest method for IRS reporting.</div>
             </div>
           </div>
-
           
           {/* SCHEDULE C MAPPING */}
           <div className="print-report" style={{ ...cardStyle, padding: 32, marginBottom: 20 }}>
