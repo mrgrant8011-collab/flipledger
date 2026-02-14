@@ -892,6 +892,7 @@ function App() {
   const [nikeReceipt, setNikeReceipt] = useState({ scanning: false, items: [], image: null, date: '', orderNum: '' });
   const [showNikeExample, setShowNikeExample] = useState(false);
   const [expandedInvProducts, setExpandedInvProducts] = useState(new Set());
+  const [expandPages, setExpandPages] = useState({});
   const [mobileInvDrawer, setMobileInvDrawer] = useState(null);
 
   const ITEMS_PER_PAGE = 50;
@@ -2991,6 +2992,19 @@ console.log('Found', items.length, 'items');
           const totalPages = Math.ceil(sortedInventory.length / ITEMS_PER_PAGE);
           const startIdx = (inventoryPage - 1) * ITEMS_PER_PAGE;
           const paginatedInventory = sortedInventory.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+      // MOBILE: Group ALL items by SKU, paginate groups instead of individual items
+          const allGroups = {};
+          sortedInventory.forEach(p => {
+            const key = p.sku || p.name || 'Unknown';
+            if (!allGroups[key]) allGroups[key] = { name: p.name, sku: p.sku, items: [] };
+            allGroups[key].items.push(p);
+          });
+          const allGroupEntries = Object.entries(allGroups);
+          const mobileGroupPages = Math.max(1, Math.ceil(allGroupEntries.length / ITEMS_PER_PAGE));
+          const mobileStartIdx = (inventoryPage - 1) * ITEMS_PER_PAGE;
+          const paginatedGroups = allGroupEntries.slice(mobileStartIdx, mobileStartIdx + ITEMS_PER_PAGE);
+          const ITEMS_PER_EXPAND = 20;
+          const effectiveTotalPages = isMobile ? mobileGroupPages : totalPages;
           const allPageIds = paginatedInventory.map(p => p.id);
           const allSelected = paginatedInventory.length > 0 && allPageIds.every(id => selectedInventory.has(id));
           
@@ -3306,22 +3320,14 @@ console.log('Found', items.length, 'items');
           {/* INVENTORY TABLE/CARDS */}
           <div style={cardStyle}>
             <div style={{ padding: '14px 20px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, color: c.textMuted }}>Showing {startIdx + 1}-{Math.min(startIdx + ITEMS_PER_PAGE, sortedInventory.length)} of {sortedInventory.length} items</span>
+             <span style={{ fontSize: 13, color: c.textMuted }}>{isMobile ? `Showing ${mobileStartIdx + 1}-${Math.min(mobileStartIdx + ITEMS_PER_PAGE, allGroupEntries.length)} of ${allGroupEntries.length} SKUs · ${sortedInventory.length} items` : `Showing ${startIdx + 1}-${Math.min(startIdx + ITEMS_PER_PAGE, sortedInventory.length)} of ${sortedInventory.length} items`}</span>
               <button onClick={() => exportCSV(sortedInventory, 'inventory.csv', ['date','name','sku','size','cost','sold'])} style={{ padding: '6px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: '#fff', fontSize: 11, cursor: 'pointer' }}>📥 Export</button>
             </div>
             
                      {/* MOBILE CARD VIEW - Grouped by product */}
-            {isMobile ? (
+           {isMobile ? (
               <div style={{ padding: 12 }}>
-                {paginatedInventory.length ? (() => {
-                  // Group paginated items by SKU or name
-                  const groups = {};
-                  paginatedInventory.forEach(p => {
-                    const key = p.sku || p.name || 'Unknown';
-                    if (!groups[key]) groups[key] = { name: p.name, sku: p.sku, items: [] };
-                    groups[key].items.push(p);
-                  });
-                  return Object.entries(groups).map(([key, group]) => {
+                {paginatedGroups.length ? paginatedGroups.map(([key, group]) => {
                     const isExpanded = expandedInvProducts.has(key);
                     const inStock = group.items.filter(i => !i.sold).length;
                     const soldCount = group.items.filter(i => i.sold).length;
@@ -3330,10 +3336,22 @@ console.log('Found', items.length, 'items');
                     const maxCost = costs.length ? Math.max(...costs) : 0;
                     const totalInvested = costs.reduce((a, b) => a + b, 0);
                     const sizes = group.items.map(i => i.size).filter(Boolean).sort((a, b) => parseFloat(a) - parseFloat(b));
+                    const uniqueSizes = [...new Set(sizes)];
+                    
+                    const subPage = expandPages[key] || 1;
+                    const totalSubPages = Math.ceil(group.items.length / ITEMS_PER_EXPAND);
+                    const subStart = (subPage - 1) * ITEMS_PER_EXPAND;
+                    const visibleItems = group.items.slice(subStart, subStart + ITEMS_PER_EXPAND);
+                    
+                    const getVisibleSubPages = () => {
+                      if (totalSubPages <= 5) return Array.from({ length: totalSubPages }, (_, i) => i + 1);
+                      if (subPage <= 3) return [1, 2, 3, 4, '...', totalSubPages];
+                      if (subPage >= totalSubPages - 2) return [1, '...', totalSubPages - 3, totalSubPages - 2, totalSubPages - 1, totalSubPages];
+                      return [1, '...', subPage - 1, subPage, subPage + 1, '...', totalSubPages];
+                    };
                     
                     return (
                       <div key={key} style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${isExpanded ? 'rgba(201,169,98,0.3)' : c.border}`, borderRadius: 14, marginBottom: 10, overflow: 'hidden' }}>
-                        {/* Product header - tap to expand */}
                         <div
                           onClick={() => setExpandedInvProducts(prev => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next; })}
                           style={{ padding: '12px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
@@ -3349,28 +3367,25 @@ console.log('Found', items.length, 'items');
                           </div>
                         </div>
 
-                        {/* Size chips when collapsed */}
-                        {!isExpanded && sizes.length > 0 && (
+                        {!isExpanded && uniqueSizes.length > 0 && (
                           <div style={{ padding: '0 14px 10px 32px', display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                            {sizes.slice(0, 14).map((s, i) => (
+                            {uniqueSizes.slice(0, 14).map((s, i) => (
                               <span key={i} style={{ padding: '2px 8px', background: 'rgba(255,255,255,0.06)', border: `1px solid ${c.border}`, borderRadius: 20, fontSize: 9, color: c.textMuted }}>{s}</span>
                             ))}
-                            {sizes.length > 14 && <span style={{ padding: '2px 8px', fontSize: 9, color: c.textMuted }}>+{sizes.length - 14} more</span>}
+                            {uniqueSizes.length > 14 && <span style={{ padding: '2px 8px', fontSize: 9, color: c.textMuted }}>+{uniqueSizes.length - 14} more</span>}
                           </div>
                         )}
 
-                        {/* Expanded - individual items */}
                         {isExpanded && (
                           <div style={{ borderTop: `1px solid ${c.border}` }}>
-                            {/* Summary bar */}
                             <div style={{ padding: '8px 14px', background: 'rgba(255,255,255,0.02)', display: 'flex', gap: 16, borderBottom: `1px solid ${c.border}` }}>
                               <div><div style={{ fontSize: 7, color: c.textMuted, fontWeight: 600, letterSpacing: 0.3 }}>IN STOCK</div><div style={{ fontSize: 13, fontWeight: 700, color: c.green, marginTop: 2 }}>{inStock}</div></div>
                               {soldCount > 0 && <div><div style={{ fontSize: 7, color: c.textMuted, fontWeight: 600, letterSpacing: 0.3 }}>SOLD</div><div style={{ fontSize: 13, fontWeight: 700, color: c.gold, marginTop: 2 }}>{soldCount}</div></div>}
                               <div><div style={{ fontSize: 7, color: c.textMuted, fontWeight: 600, letterSpacing: 0.3 }}>INVESTED</div><div style={{ fontSize: 13, fontWeight: 700, marginTop: 2 }}>{fmt(totalInvested)}</div></div>
+                              <div><div style={{ fontSize: 7, color: c.textMuted, fontWeight: 600, letterSpacing: 0.3 }}>SIZES</div><div style={{ fontSize: 13, fontWeight: 700, marginTop: 2, color: c.textMuted }}>{uniqueSizes.length}</div></div>
                             </div>
 
-                            {/* Individual item rows */}
-                            {group.items.map(p => {
+                            {visibleItems.map(p => {
                               const daysInStock = Math.floor((new Date() - new Date(p.date)) / (1000 * 60 * 60 * 24));
                               return (
                                 <div key={p.id} style={{ padding: '10px 14px', borderTop: `1px solid ${c.border}`, opacity: p.sold ? 0.5 : 1 }}>
@@ -3401,12 +3416,26 @@ console.log('Found', items.length, 'items');
                                 </div>
                               );
                             })}
+
+                            {totalSubPages > 1 && (
+                              <div style={{ padding: '10px 14px', borderTop: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.02)' }}>
+                                <span style={{ fontSize: 10, color: c.textMuted }}>{subStart + 1}–{Math.min(subStart + ITEMS_PER_EXPAND, group.items.length)} of {group.items.length}</span>
+                                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                  <button onClick={(e) => { e.stopPropagation(); if (subPage > 1) setExpandPages(prev => ({ ...prev, [key]: subPage - 1 })); }} disabled={subPage === 1} style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.04)', color: subPage === 1 ? 'rgba(255,255,255,0.15)' : c.textMuted, fontSize: 13, fontWeight: 700, cursor: subPage === 1 ? 'default' : 'pointer' }}>‹</button>
+                                  {getVisibleSubPages().map((p, i) => p === '...' ? (
+                                    <span key={`e-${i}`} style={{ fontSize: 11, color: c.textMuted, padding: '0 2px' }}>···</span>
+                                  ) : (
+                                    <button key={p} onClick={(e) => { e.stopPropagation(); setExpandPages(prev => ({ ...prev, [key]: p })); }} style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${subPage === p ? c.green : c.border}`, background: subPage === p ? c.green : 'rgba(255,255,255,0.04)', color: subPage === p ? '#000' : c.textMuted, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>{p}</button>
+                                  ))}
+                                  <button onClick={(e) => { e.stopPropagation(); if (subPage < totalSubPages) setExpandPages(prev => ({ ...prev, [key]: subPage + 1 })); }} disabled={subPage === totalSubPages} style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.04)', color: subPage === totalSubPages ? 'rgba(255,255,255,0.15)' : c.textMuted, fontSize: 13, fontWeight: 700, cursor: subPage === totalSubPages ? 'default' : 'pointer' }}>›</button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
                     );
-                  });
-                })() : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>📦</div><p style={{ color: c.textMuted }}>No inventory matches your filters</p><button onClick={() => { setFormData(prev => ({ ...prev, bulkRows: [{ qty: 1, size: '', cost: '' }] })); setModal('bulkAdd'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Add Items</button></div>}
+                }) : <div style={{ padding: 50, textAlign: 'center' }}><div style={{ fontSize: 48, marginBottom: 12 }}>📦</div><p style={{ color: c.textMuted }}>No inventory matches your filters</p><button onClick={() => { setFormData(prev => ({ ...prev, bulkRows: [{ qty: 1, size: '', cost: '' }] })); setModal('bulkAdd'); }} style={{ marginTop: 12, padding: '10px 20px', ...btnPrimary, fontSize: 13 }}>+ Add Items</button></div>}
               </div>
             ) : (
               <>
@@ -3465,24 +3494,24 @@ console.log('Found', items.length, 'items');
             )}
             
             {/* PAGINATION */}
-            {totalPages > 1 && (
+            {effectiveTotalPages > 1 && (
               <div style={{ padding: '16px 20px', borderTop: `1px solid ${c.border}`, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
                 <button onClick={() => setInventoryPage(1)} disabled={inventoryPage === 1} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: inventoryPage === 1 ? c.textMuted : '#fff', cursor: inventoryPage === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}>«</button>
                 <button onClick={() => setInventoryPage(p => Math.max(1, p - 1))} disabled={inventoryPage === 1} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: inventoryPage === 1 ? c.textMuted : '#fff', cursor: inventoryPage === 1 ? 'not-allowed' : 'pointer', fontSize: 12 }}>‹</button>
                 
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                {Array.from({ length: Math.min(5, effectiveTotalPages) }, (_, i) => {
                   let pageNum;
-                  if (totalPages <= 5) pageNum = i + 1;
+                 if (effectiveTotalPages <= 5)pageNum = i + 1;
                   else if (inventoryPage <= 3) pageNum = i + 1;
-                  else if (inventoryPage >= totalPages - 2) pageNum = totalPages - 4 + i;
+                  else if (inventoryPage >= effectiveTotalPages - 2) pageNum = effectiveTotalPages - 4 + i;
                   else pageNum = inventoryPage - 2 + i;
                   return (
                     <button key={pageNum} onClick={() => setInventoryPage(pageNum)} style={{ padding: '8px 14px', background: inventoryPage === pageNum ? c.green : 'rgba(255,255,255,0.05)', border: `1px solid ${inventoryPage === pageNum ? c.green : c.border}`, borderRadius: 6, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: inventoryPage === pageNum ? 700 : 400 }}>{pageNum}</button>
                   );
                 })}
                 
-                <button onClick={() => setInventoryPage(p => Math.min(totalPages, p + 1))} disabled={inventoryPage === totalPages} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: inventoryPage === totalPages ? c.textMuted : '#fff', cursor: inventoryPage === totalPages ? 'not-allowed' : 'pointer', fontSize: 12 }}>›</button>
-                <button onClick={() => setInventoryPage(totalPages)} disabled={inventoryPage === totalPages} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: inventoryPage === totalPages ? c.textMuted : '#fff', cursor: inventoryPage === totalPages ? 'not-allowed' : 'pointer', fontSize: 12 }}>»</button>
+                <button onClick={() => setInventoryPage(p => Math.min(effectiveTotalPages, p + 1))} disabled={inventoryPage === effectiveTotalPages} style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: inventoryPage === effectiveTotalPages ? c.textMuted : '#fff', cursor: inventoryPage === effectiveTotalPages ? 'not-allowed' : 'pointer', fontSize: 12 }}>›</button>
+                <button onClick={() => setInventoryPage(effectiveTotalPages)} disabled={inventoryPage === effectiveTotalPages}style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: inventoryPage === effectiveTotalPages ? c.textMuted : '#fff', cursor: inventoryPage === effectiveTotalPages ? 'not-allowed' : 'pointer', fontSize: 12 }}>»</button>
               </div>
             )}
           </div>
