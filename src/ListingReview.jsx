@@ -627,7 +627,7 @@ Questions? Message me before purchasing!`
                             updateItem(item.id, 'price', val);
                           }
                         }}
-                        onBlur={(e) => updateItem(item.id, 'price', parseFloat(e.target.value) || 0)}
+                        
                         style={{ ...input, paddingLeft: 28 }}
                       />
                       </div>
