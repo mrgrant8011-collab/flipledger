@@ -844,7 +844,8 @@ function App() {
   const [dataLoading, setDataLoading] = useState(true);
   
   // App state
-  const [page, setPage] = useState('dashboard');
+  const [page, setPage] = useState(() => localStorage.getItem('flipledger_page') || 'dashboard');
+  useEffect(() => { localStorage.setItem('flipledger_page', page); }, [page]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [modal, setModal] = useState(null);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 850);
