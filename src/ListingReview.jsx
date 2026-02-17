@@ -247,16 +247,42 @@ Questions? Message me before purchasing!`
   // ============================================
   // PHOTO UPLOAD
   // ============================================
-  const handlePhotoUpload = async (id, files) => {
-    // For now, just create object URLs for preview
-    // In production, upload to cloud storage
-    const newPhotos = Array.from(files).map(file => URL.createObjectURL(file));
-    
+ const handlePhotoUpload = async (id, files) => {
+    const uploadedUrls = [];
+
+    for (const file of Array.from(files)) {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${fileExt}`;
+      const filePath = `listing-photos/${fileName}`;
+
+      const { data, error } = await supabase.storage
+        .from('listing-photos')
+        .upload(filePath, file, { contentType: file.type, upsert: false });
+
+      if (error) {
+        console.error('Photo upload failed:', error.message);
+        continue;
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('listing-photos')
+        .getPublicUrl(filePath);
+
+      if (urlData?.publicUrl) {
+        uploadedUrls.push(urlData.publicUrl);
+      }
+    }
+
+    if (uploadedUrls.length === 0) {
+      alert('Photo upload failed. Check that the "listing-photos" bucket exists in Supabase Storage.');
+      return;
+    }
+
     setEnrichedItems(prev => prev.map(item => {
       if (item.id !== id) return item;
       return {
         ...item,
-        photos: [...item.photos, ...newPhotos].slice(0, 12),
+        photos: [...item.photos, ...uploadedUrls].slice(0, 12),
         photosSource: 'user'
       };
     }));
@@ -590,12 +616,19 @@ Questions? Message me before purchasing!`
                       <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 6 }}>PRICE</label>
                       <div style={{ position: 'relative' }}>
                         <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: c.textMuted }}>$</span>
-                        <input
-                          type="number"
-                          value={item.price}
-                          onChange={(e) => updateItem(item.id, 'price', parseInt(e.target.value) || 0)}
-                          style={{ ...input, paddingLeft: 28 }}
-                        />
+                     <input
+                        type="text"
+                        inputMode="decimal"
+                        value={item.price}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '' || /^\d*\.?\d{0,2}$/.test(val)) {
+                            updateItem(item.id, 'price', val);
+                          }
+                        }}
+                        onBlur={(e) => updateItem(item.id, 'price', parseFloat(e.target.value) || 0)}
+                        style={{ ...input, paddingLeft: 28 }}
+                      />
                       </div>
                     </div>
 
