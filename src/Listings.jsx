@@ -11,7 +11,8 @@ import { supabase } from './supabase';
  * 3) Delist History - Auto-delist activity log
  */
 export default function Listings({ stockxToken, ebayToken, purchases = [], c = { bg: '#0a0a0a', card: '#111111', border: '#1a1a1a', text: '#ffffff', textMuted: '#888888', gold: '#C9A962', green: '#10b981', red: '#ef4444' } }) {
-  const [activeTab, setActiveTab] = useState('repricer');
+ const [activeTab, setActiveTab] = useState(() => localStorage.getItem('flipledger_listings_tab') || 'repricer');
+  useEffect(() => { localStorage.setItem('flipledger_listings_tab', activeTab); }, [activeTab]);
   
   // Delist History state
   const [delistHistory, setDelistHistory] = useState([]);
