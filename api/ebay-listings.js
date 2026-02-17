@@ -1738,9 +1738,9 @@ async function createSingleListing(headers, item, config) {
 
   // Build title with size
   const baseTitle = item.name || item.title || 'Item';
-  const title = item.size 
-    ? `${baseTitle} Size ${item.size}`.substring(0, 80)
-    : baseTitle.substring(0, 80);
+ const sizeSuffix = item.size ? ` Size ${item.size}` : '';
+  const maxBaseLength = 80 - sizeSuffix.length;
+  const title = (baseTitle.substring(0, maxBaseLength) + sizeSuffix).substring(0, 80);
 
   console.log(`\n[eBay:Listing] ════════════════════════════════════════════════════════════`);
   console.log(`[eBay:Listing] STARTING LISTING CREATION`);
