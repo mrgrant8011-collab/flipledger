@@ -40,7 +40,7 @@ const FALLBACK_CATEGORIES = {
   default: '15709'     // Athletic Shoes as default for sneaker-focused app
 };
 
-const PRICE_MARKUP = 1.10; // 10% markup to cover eBay fees
+const PRICE_MARKUP = 1.00; // No markup - use exact price entered
 const LOCATION_KEY = 'flipledger-warehouse';
 
 // ═══════════════════════════════════════════════════════════════════════════════════
