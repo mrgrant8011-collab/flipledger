@@ -605,7 +605,7 @@ Questions? Message me before purchasing!`
                       <input
                         type="text"
                         value={item.title}
-                        onChange={(e) => updateItem(item.id, 'title', e.target.value)}
+                        onChange={(e) => updateItem(item.id, 'title', e.target.value.slice(0, 80))}
                         style={input}
                         maxLength={80}
                       />
