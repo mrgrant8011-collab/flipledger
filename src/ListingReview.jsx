@@ -108,6 +108,7 @@ Questions? Message me before purchasing!`
         styleCode: item.sku || item.styleId || '',
         silhouette: catalogData?.silhouette || inferSilhouette(item.name),
         type: catalogData?.type || 'Athletic',
+        catalogAspects: catalogData?.catalogAspects || {},
         // User inputs
         price: item.price || item.yourAsk || 100,
         condition: 'NEW',
@@ -325,6 +326,7 @@ Questions? Message me before purchasing!`
         department: item.department,
         silhouette: item.silhouette,
         type: item.type,
+        catalogAspects: item.catalogAspects,
         condition: item.condition,
         description: item.description,
         categoryId: item.categoryId,
