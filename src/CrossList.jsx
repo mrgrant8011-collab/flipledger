@@ -189,6 +189,7 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
   const [selectedItems, setSelectedItems] = useState(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [viewFilter, setViewFilter] = useState('unlisted');
+  const [expandedProduct, setExpandedProduct] = useState(null);
   const [toast, setToast] = useState(null);
 
   const showToast = (msg, type = 'success') => {
@@ -1098,41 +1099,92 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
           )}
         </div>
 
-        <div style={{ maxHeight: 500, overflowY: 'auto' }}>
-          {filteredProducts.map(p => (
-            <div key={p.sku} style={{ borderBottom: `1px solid ${c.border}` }}>
-              <div style={{ padding: '12px 16px', display: 'flex', gap: 10, alignItems: 'center', background: 'rgba(255,255,255,0.02)' }}>
-                <div style={{ width: 40, height: 40, background: 'rgba(255,255,255,0.05)', borderRadius: 8, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {p.image ? <img src={p.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; e.target.parentNode.innerHTML = '👟'; }} /> : '👟'}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</div>
-                  <div style={{ fontSize: 10, color: c.textMuted }}>
-                    {p.sku}
-                    {p.colorway && <span style={{ marginLeft: 8, opacity: 0.7 }}>• {p.colorway}</span>}
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right', fontSize: 12 }}>
-                  <div>{p.totalQty} items</div>
-                  {p.listedOnEbay > 0 && <div style={{ color: c.green }}>{p.listedOnEbay} on eBay</div>}
-                </div>
-              </div>
+    <div style={{ maxHeight: 600, overflowY: 'auto' }}>
+          {filteredProducts.map(p => {
+            const isExpanded = expandedProduct === p.sku;
+            const selectedInProduct = p.sizes.filter(s => selectedItems.has(s.key)).length;
+            const filteredSizes = viewFilter === 'unlisted' ? p.sizes.filter(s => !s.isOnEbay) 
+              : viewFilter === 'listed' ? p.sizes.filter(s => s.isOnEbay) 
+              : p.sizes;
+            const prices = filteredSizes.map(s => parseFloat(s.yourAsk || 0)).filter(v => v > 0);
+            const priceRange = prices.length > 0 
+              ? (Math.min(...prices) === Math.max(...prices) ? `$${Math.min(...prices)}` : `$${Math.min(...prices)} - $${Math.max(...prices)}`)
+              : '';
 
-              <div style={{ padding: '8px 16px 12px', display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {p.sizes.map(s => (
-                  <div key={s.key}
-                    onClick={() => { const n = new Set(selectedItems); n.has(s.key) ? n.delete(s.key) : n.add(s.key); setSelectedItems(n); }}
-                    style={{ padding: '8px 12px', background: selectedItems.has(s.key) ? 'rgba(201,169,98,0.2)' : s.isOnEbay ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.05)', border: `1px solid ${selectedItems.has(s.key) ? c.gold : s.isOnEbay ? c.green : c.border}`, borderRadius: 8, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 4, minWidth: 80 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ fontWeight: 700, fontSize: 13 }}>{s.size}</span>
-                      {s.isOnEbay && <span style={{ color: c.green, fontSize: 10 }}>✓ eBay</span>}
-                    </div>
-                    <div style={{ fontSize: 11, color: c.textMuted }}>${s.yourAsk || '—'}</div>
+            return (
+              <div key={p.sku} style={{ borderBottom: `1px solid ${c.border}` }}>
+                <div
+                  onClick={() => setExpandedProduct(isExpanded ? null : p.sku)}
+                  style={{ padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'center', cursor: 'pointer', background: isExpanded ? 'rgba(255,255,255,0.02)' : 'transparent' }}
+                >
+                  <div style={{ color: c.textMuted, fontSize: 11, width: 14, flexShrink: 0 }}>
+                    {isExpanded ? '▼' : '▶'}
                   </div>
-                ))}
+                  <div style={{ width: 44, height: 44, background: 'rgba(255,255,255,0.05)', borderRadius: 8, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {p.image ? <img src={p.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; e.target.parentNode.innerHTML = '👟'; }} /> : '👟'}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 3 }}>{p.name}</div>
+                    <div style={{ fontSize: 11, color: c.textMuted, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                      <span>{p.sku}</span>
+                      {priceRange && <span>{priceRange}</span>}
+                      {p.colorway && <span style={{ opacity: 0.7 }}>• {p.colorway}</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                    {selectedInProduct > 0 && (
+                      <span style={{ padding: '4px 8px', borderRadius: 6, fontSize: 10, fontWeight: 700, background: 'rgba(201,169,98,0.15)', color: c.gold }}>
+                        {selectedInProduct} sel
+                      </span>
+                    )}
+                    {p.listedOnEbay > 0 && (
+                      <span style={{ padding: '4px 8px', borderRadius: 6, fontSize: 10, fontWeight: 600, background: 'rgba(34,197,94,0.15)', color: c.green }}>
+                        {p.listedOnEbay} eBay
+                      </span>
+                    )}
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{filteredSizes.length}</div>
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div style={{ padding: '4px 16px 14px 46px', background: 'rgba(255,255,255,0.01)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <span style={{ fontSize: 11, color: c.textMuted }}>Click sizes to select</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const keys = filteredSizes.map(s => s.key);
+                          const allSelected = keys.every(k => selectedItems.has(k));
+                          const n = new Set(selectedItems);
+                          keys.forEach(k => allSelected ? n.delete(k) : n.add(k));
+                          setSelectedItems(n);
+                        }}
+                        style={{ fontSize: 11, color: c.gold, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+                      >
+                        {filteredSizes.every(s => selectedItems.has(s.key)) ? 'Deselect All' : 'Select All'}
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {filteredSizes.map(s => (
+                        <div key={s.key}
+                          onClick={(e) => { e.stopPropagation(); const n = new Set(selectedItems); n.has(s.key) ? n.delete(s.key) : n.add(s.key); setSelectedItems(n); }}
+                          style={{
+                            padding: '10px 14px', minWidth: 72, textAlign: 'center', cursor: 'pointer',
+                            background: selectedItems.has(s.key) ? 'rgba(201,169,98,0.15)' : s.isOnEbay ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.04)',
+                            border: `1.5px solid ${selectedItems.has(s.key) ? c.gold : s.isOnEbay ? c.green : c.border}`,
+                            borderRadius: 8, position: 'relative'
+                          }}>
+                          <div style={{ fontWeight: 700, fontSize: 14, color: selectedItems.has(s.key) ? c.gold : c.text }}>{s.size}</div>
+                          <div style={{ fontSize: 11, color: selectedItems.has(s.key) ? c.gold : c.textMuted, marginTop: 2 }}>${s.yourAsk || '—'}</div>
+                          {s.isOnEbay && <div style={{ position: 'absolute', top: -5, left: -5, fontSize: 10 }}>✅</div>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {filteredProducts.length === 0 && (
             <div style={{ padding: 40, textAlign: 'center', color: c.textMuted }}>
