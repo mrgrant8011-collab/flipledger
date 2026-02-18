@@ -512,6 +512,7 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
         mappingId: mapping?.id || null,
         expectedEbaySku // Store for debugging
       });
+      });
     
     return Object.values(g).map(p => ({
       ...p,
