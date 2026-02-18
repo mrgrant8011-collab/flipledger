@@ -2349,8 +2349,9 @@ async function handlePost(headers, body, res) {
         qty: sizeData.qty || sizeData.quantity || 1,
         condition: prod.condition || 'NEW',
         description: prod.description,
-        stockxListingId: sizeData.stockxListingId
-      };
+        stockxListingId: sizeData.stockxListingId,
+      catalogAspects: prod.catalogAspects
+    };
 
       console.log(`[eBay:POST] Processing: ${item.name} Size ${item.size} @ $${item.price}`);
 
