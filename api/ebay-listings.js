@@ -1219,6 +1219,34 @@ function buildProductAspects(item, categoryAspects) {
       if (euCalc) aspects['EU Shoe Size'] = [euCalc];
     }
   }
+ // Auto-fill specifics - ONLY values we're confident about
+  // Boolean/guaranteed fields for new sneakers
+  if (!aspects['Vintage']) aspects['Vintage'] = ['No'];
+  if (!aspects['Customized']) aspects['Customized'] = ['No'];
+  if (!aspects['Signed']) aspects['Signed'] = ['No'];
+  if (!aspects['Handmade']) aspects['Handmade'] = ['No'];
+  if (!aspects['Personalize']) aspects['Personalize'] = ['No'];
+  if (!aspects['Accents']) aspects['Accents'] = ['Logo'];
+  if (!aspects['Insole Material']) aspects['Insole Material'] = ['Foam'];
+  if (!aspects['Lining Material']) aspects['Lining Material'] = ['Fabric'];
+  if (!aspects['Pattern']) aspects['Pattern'] = ['Solid'];
+  if (!aspects['Season']) aspects['Season'] = ['Fall', 'Spring', 'Summer', 'Winter'];
+  if (!aspects['Features']) aspects['Features'] = ['Comfort'];
+  if (!aspects['Occasion']) aspects['Occasion'] = ['Casual'];
+
+  // Only fill these if we can detect from the title
+  const nl = productName.toLowerCase();
+  if (!aspects['Shoe Shaft Style']) {
+    if (nl.includes('high')) aspects['Shoe Shaft Style'] = ['High Top'];
+    else if (nl.includes('mid')) aspects['Shoe Shaft Style'] = ['Mid Top'];
+    else if (nl.includes('low') || nl.includes('dunk') || nl.includes('air force')) aspects['Shoe Shaft Style'] = ['Low Top'];
+    // else skip - don't guess
+  }
+  if (!aspects['Fabric Type']) {
+    if (nl.includes('knit') || nl.includes('flyknit') || nl.includes('primeknit')) aspects['Fabric Type'] = ['Knit'];
+    else if (nl.includes('mesh')) aspects['Fabric Type'] = ['Mesh'];
+    // else skip - don't guess
+  }
   // Fallbacks only for fields the catalog didn't provide
   if (!aspects['Model'] && item.model) {
     aspects['Model'] = [item.model];
