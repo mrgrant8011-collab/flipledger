@@ -1753,7 +1753,8 @@ async function createSingleListing(headers, item, config) {
   const ebaySku = makeEbaySku(baseSku, size);
 
   // Build title with size
-  const baseTitle = item.name || item.title || 'Item';
+  const rawTitle = item.name || item.title || 'Item';
+  const baseTitle = rawTitle.replace(/\s*Size\s+[\d\.]+[A-Z]?\s*/gi, ' ').replace(/\s+/g, ' ').trim();
  const sizeSuffix = item.size ? ` Size ${item.size}` : '';
   const maxBaseLength = 80 - sizeSuffix.length;
   const title = (baseTitle.substring(0, maxBaseLength) + sizeSuffix).substring(0, 80);
