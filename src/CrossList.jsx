@@ -459,7 +459,8 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
   // GROUPED PRODUCTS
   // ============================================
   const stockxProducts = useMemo(() => {
-    const g = {};
+   const g = {};
+    const matchedCounts = {}; // Track how many StockX items matched per eBay SKU
     stockxListings.forEach(l => {
       const sku = l.sku || l.styleId || 'UNKNOWN';
       if (!g[sku]) {
@@ -494,16 +495,23 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
         console.log(`[CrossList] Matching ${sku} size ${l.size} → expected eBay SKU: ${expectedEbaySku}, found: ${ebayMatch ? 'YES' : 'NO'}`);
       }
       
+    // Only mark as on eBay up to the eBay listing's available qty
+      const ebayQty = ebayMatch?.quantity || 0;
+      const alreadyMatched = matchedCounts[expectedEbaySku] || 0;
+      const isOnEbay = !!(mapping || (ebayMatch && alreadyMatched < ebayQty));
+      if (isOnEbay && !mapping && ebayMatch) {
+        matchedCounts[expectedEbaySku] = alreadyMatched + 1;
+      }
+      
       g[sku].sizes.push({
         ...l,
         key: `sx_${l.listingId}`,
         source: 'stockx',
-        isOnEbay: !!(mapping || ebayMatch),
+        isOnEbay,
         ebayOfferId: mapping?.ebay_offer_id || ebayMatch?.offerId || null,
         mappingId: mapping?.id || null,
         expectedEbaySku // Store for debugging
       });
-    });
     
     return Object.values(g).map(p => ({
       ...p,
