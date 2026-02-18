@@ -1154,42 +1154,61 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
                   </div>
                 </div>
 
-                {isExpanded && (
-                  <div style={{ padding: '4px 16px 14px 46px', background: 'rgba(255,255,255,0.01)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                      <span style={{ fontSize: 11, color: c.textMuted }}>Click sizes to select</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const keys = filteredSizes.map(s => s.key);
-                          const allSelected = keys.every(k => selectedItems.has(k));
-                          const n = new Set(selectedItems);
-                          keys.forEach(k => allSelected ? n.delete(k) : n.add(k));
-                          setSelectedItems(n);
-                        }}
-                        style={{ fontSize: 11, color: c.gold, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}
-                      >
-                        {filteredSizes.every(s => selectedItems.has(s.key)) ? 'Deselect All' : 'Select All'}
-                      </button>
+                {isExpanded && (() => {
+                  const sizeGroups = {};
+                  filteredSizes.forEach(s => {
+                    if (!sizeGroups[s.size]) sizeGroups[s.size] = [];
+                    sizeGroups[s.size].push(s);
+                  });
+                  const groupedSizes = Object.entries(sizeGroups).sort((a, b) => parseFloat(a[0]) - parseFloat(b[0]));
+
+                  return (
+                    <div style={{ padding: '4px 16px 14px 46px', background: 'rgba(255,255,255,0.01)' }}>
+                      <div style={{ fontSize: 11, color: c.textMuted, marginBottom: 10 }}>Tap size to select</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {groupedSizes.map(([size, items]) => {
+                          const keys = items.map(s => s.key);
+                          const isSelected = keys.every(k => selectedItems.has(k));
+                          const onEbayCount = items.filter(s => s.isOnEbay).length;
+                          const price = items[0]?.yourAsk;
+                          return (
+                            <div key={size}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const n = new Set(selectedItems);
+                                keys.forEach(k => isSelected ? n.delete(k) : n.add(k));
+                                setSelectedItems(n);
+                              }}
+                              style={{
+                                padding: '10px 14px', minWidth: 80, textAlign: 'center', cursor: 'pointer', position: 'relative',
+                                background: isSelected ? 'rgba(201,169,98,0.15)' : onEbayCount > 0 ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.04)',
+                                border: `1.5px solid ${isSelected ? c.gold : onEbayCount > 0 ? c.green : c.border}`,
+                                borderRadius: 8
+                              }}>
+                              {items.length > 1 && (
+                                <div style={{
+                                  position: 'absolute', top: -7, right: -7,
+                                  background: isSelected ? c.gold : '#555', color: isSelected ? '#000' : '#fff',
+                                  fontSize: 10, fontWeight: 700, width: 22, height: 22, borderRadius: '50%',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}>
+                                  x{items.length}
+                                </div>
+                              )}
+                              <div style={{ fontWeight: 700, fontSize: 15, color: isSelected ? c.gold : c.text }}>{size}</div>
+                              <div style={{ fontSize: 11, color: isSelected ? c.gold : c.textMuted, marginTop: 2 }}>${price || '—'}</div>
+                              {onEbayCount > 0 && (
+                                <div style={{ fontSize: 9, color: c.green, fontWeight: 600, marginTop: 3 }}>
+                                  {onEbayCount}/{items.length} eBay
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {filteredSizes.map(s => (
-                        <div key={s.key}
-                          onClick={(e) => { e.stopPropagation(); const n = new Set(selectedItems); n.has(s.key) ? n.delete(s.key) : n.add(s.key); setSelectedItems(n); }}
-                          style={{
-                            padding: '10px 14px', minWidth: 72, textAlign: 'center', cursor: 'pointer',
-                            background: selectedItems.has(s.key) ? 'rgba(201,169,98,0.15)' : s.isOnEbay ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.04)',
-                            border: `1.5px solid ${selectedItems.has(s.key) ? c.gold : s.isOnEbay ? c.green : c.border}`,
-                            borderRadius: 8, position: 'relative'
-                          }}>
-                          <div style={{ fontWeight: 700, fontSize: 14, color: selectedItems.has(s.key) ? c.gold : c.text }}>{s.size}</div>
-                          <div style={{ fontSize: 11, color: selectedItems.has(s.key) ? c.gold : c.textMuted, marginTop: 2 }}>${s.yourAsk || '—'}</div>
-                          {s.isOnEbay && <div style={{ position: 'absolute', top: -5, left: -5, fontSize: 10 }}>✅</div>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             );
           })}
