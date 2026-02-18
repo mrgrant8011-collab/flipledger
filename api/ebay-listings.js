@@ -735,6 +735,45 @@ function inferSilhouetteFromTitle(title) {
  * Parse size string to extract numeric size and department
  * StockX formats: "10", "10.5", "10W", "10Y", "10C", "10 GS", "Men's 10", "Women's 8"
  */
+function convertToUKSize(usSize, department) {
+  const size = parseFloat(usSize);
+  if (isNaN(size)) return null;
+  if (department === 'Women') {
+    const map = { 3.5: '1.5', 4: '1.5', 4.5: '2', 5: '2.5', 5.5: '3', 6: '3.5', 6.5: '4', 7: '4.5', 7.5: '5', 8: '5.5', 8.5: '6', 9: '6.5', 9.5: '7', 10: '7.5', 10.5: '8', 11: '8.5', 11.5: '9', 12: '9.5' };
+    return map[size] || String(size - 2.5);
+  }
+  if (department === 'Unisex Kids') {
+    const tdMap = { 1: '0.5', 2: '1.5', 3: '2.5', 4: '3.5', 5: '4.5', 6: '5.5', 7: '6.5', 8: '7.5', 9: '8.5', 10: '9.5' };
+    if (tdMap[size]) return tdMap[size];
+    const lkMap = { 10.5: '10', 11: '10.5', 11.5: '11', 12: '11.5', 12.5: '12', 13: '12.5', 13.5: '13' };
+    if (lkMap[size]) return lkMap[size];
+    const gsMap = { 1: '13.5', 1.5: '1', 2: '1.5', 2.5: '2', 3: '2.5', 3.5: '3', 4: '3.5', 4.5: '4', 5: '4.5', 5.5: '5', 6: '5.5', 6.5: '6', 7: '6' };
+    if (gsMap[size]) return gsMap[size];
+    return null;
+  }
+  const menMap = { 3.5: '3', 4: '3.5', 4.5: '4', 5: '4.5', 5.5: '5', 6: '5.5', 6.5: '6', 7: '6', 7.5: '6.5', 8: '7', 8.5: '7.5', 9: '8', 9.5: '8.5', 10: '9', 10.5: '9.5', 11: '10', 11.5: '10.5', 12: '11', 12.5: '11.5', 13: '12', 14: '13', 15: '14' };
+  return menMap[size] || String(size - 1);
+}
+
+function convertToEUSize(usSize, department) {
+  const size = parseFloat(usSize);
+  if (isNaN(size)) return null;
+  if (department === 'Women') {
+    const map = { 3.5: '33.5', 4: '34.5', 4.5: '35', 5: '35.5', 5.5: '36', 6: '36.5', 6.5: '37.5', 7: '38', 7.5: '38.5', 8: '39', 8.5: '40', 9: '40.5', 9.5: '41', 10: '42', 10.5: '42.5', 11: '43', 11.5: '44', 12: '44.5' };
+    return map[size] || String(Math.round(size + 31));
+  }
+  if (department === 'Unisex Kids') {
+    const tdMap = { 1: '16', 2: '17', 3: '18.5', 4: '19.5', 5: '21', 6: '22', 7: '23.5', 8: '25', 9: '26', 10: '27' };
+    if (tdMap[size]) return tdMap[size];
+    const lkMap = { 10.5: '27.5', 11: '28', 11.5: '28.5', 12: '29.5', 12.5: '30', 13: '31', 13.5: '31.5' };
+    if (lkMap[size]) return lkMap[size];
+    const gsMap = { 1: '32', 1.5: '33', 2: '33.5', 2.5: '34', 3: '35', 3.5: '35.5', 4: '36', 4.5: '36.5', 5: '37.5', 5.5: '38', 6: '38.5', 6.5: '39', 7: '40' };
+    if (gsMap[size]) return gsMap[size];
+    return null;
+  }
+  const menMap = { 3.5: '35.5', 4: '36', 4.5: '36.5', 5: '37.5', 5.5: '38', 6: '38.5', 6.5: '39', 7: '40', 7.5: '40.5', 8: '41', 8.5: '42', 9: '42.5', 9.5: '43', 10: '44', 10.5: '44.5', 11: '45', 11.5: '45.5', 12: '46', 12.5: '47', 13: '47.5', 14: '48.5', 15: '49.5' };
+  return menMap[size] || String(Math.round(size + 33));
+}
 function parseSize(sizeStr) {
   if (!sizeStr) {
     return { numericSize: null, department: 'Men', sizeType: 'US Shoe Size' };
@@ -1167,6 +1206,19 @@ function buildProductAspects(item, categoryAspects) {
     }
   }
   
+  // Calculate UK/EU sizes - skip catalog "Varies" values
+  const ukFromCatalog = catalog['UK Shoe Size'];
+  const euFromCatalog = catalog['EU Shoe Size'];
+  if (sizeInfo.numericSize) {
+    if (!ukFromCatalog || ukFromCatalog === 'Varies') {
+      const ukCalc = convertToUKSize(sizeInfo.numericSize, sizeInfo.department);
+      if (ukCalc) aspects['UK Shoe Size'] = [ukCalc];
+    }
+    if (!euFromCatalog || euFromCatalog === 'Varies') {
+      const euCalc = convertToEUSize(sizeInfo.numericSize, sizeInfo.department);
+      if (euCalc) aspects['EU Shoe Size'] = [euCalc];
+    }
+  }
   // Fallbacks only for fields the catalog didn't provide
   if (!aspects['Model'] && item.model) {
     aspects['Model'] = [item.model];
