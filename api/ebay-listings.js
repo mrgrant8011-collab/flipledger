@@ -1149,37 +1149,53 @@ function buildProductAspects(item, categoryAspects) {
   // Set additional aspects
   // ─────────────────────────────────────────────────────────────────────────
   
-  // Model - if available
-  if (item.model) {
+// Use catalog aspects from EPID lookup (real eBay data)
+  const catalog = item.catalogAspects || {};
+  
+  // Apply all catalog aspects directly
+  const catalogFields = [
+    'Product Line', 'Model', 'Silhouette', 'Colorway', 'Theme',
+    'Upper Material', 'Outsole Material', 'Lining Material', 'Insole Material',
+    'Closure', 'Shoe Width', 'UK Shoe Size', 'EU Shoe Size',
+    'Performance/Activity', 'Country/Region of Manufacture',
+    'Customized', 'Vintage', 'Style'
+  ];
+  
+  for (const field of catalogFields) {
+    if (catalog[field]) {
+      aspects[field] = [catalog[field]];
+    }
+  }
+  
+  // Fallbacks only for fields the catalog didn't provide
+  if (!aspects['Model'] && item.model) {
     aspects['Model'] = [item.model];
   }
-  
-  // Silhouette - if available (common for sneakers)
-  if (item.silhouette) {
+  if (!aspects['Silhouette'] && item.silhouette) {
     aspects['Silhouette'] = [item.silhouette];
   }
+  if (!aspects['Performance/Activity']) {
+    aspects['Performance/Activity'] = ['Casual'];
+  }
+  if (!aspects['Closure']) {
+    aspects['Closure'] = ['Lace Up'];
+  }
+  if (!aspects['Outsole Material']) {
+    aspects['Outsole Material'] = ['Rubber'];
+  }
   
-  // Style Code - if available
+  // Style Code - from our data, not catalog
   if (item.styleId || item.styleCode) {
     aspects['Style Code'] = [item.styleId || item.styleCode];
   }
   
-  // Full colorway for categories that support it
-  if (item.colorway) {
+  // Colorway - from our data if catalog didn't have it
+  if (!aspects['Colorway'] && item.colorway) {
     aspects['Colorway'] = [item.colorway];
   }
   
-  // Performance/Activity
-  aspects['Performance/Activity'] = ['Casual'];
-  
-  // Closure - default for sneakers
-  aspects['Closure'] = ['Lace Up'];
-  
-  // Outsole Material - common default
-  aspects['Outsole Material'] = ['Rubber'];
-  
-  // Upper Material - if provided
-  if (item.upperMaterial) {
+  // Upper Material - from item if catalog didn't have it
+  if (!aspects['Upper Material'] && item.upperMaterial) {
     aspects['Upper Material'] = [item.upperMaterial];
   }
   
@@ -2001,6 +2017,31 @@ async function handleGet(headers, query, res) {
 
       // Find best match (prefer items with EPID)
       const bestMatch = items.find(item => item.epid) || items[0];
+      // Fetch full item details to get actual item specifics from catalog
+      let catalogAspects = {};
+      if (bestMatch.itemId) {
+        try {
+          const itemUrl = `https://api.ebay.com/buy/browse/v1/item/${encodeURIComponent(bestMatch.itemId)}`;
+          const itemRes = await fetch(itemUrl, {
+            method: 'GET',
+            headers: {
+              ...headers,
+              'X-EBAY-C-MARKETPLACE-ID': EBAY_MARKETPLACE_ID
+            }
+          });
+          if (itemRes.ok) {
+            const itemData = await itemRes.json();
+            if (itemData.localizedAspects) {
+              for (const aspect of itemData.localizedAspects) {
+                catalogAspects[aspect.name] = aspect.value;
+              }
+              console.log(`[eBay:GET] Pulled ${Object.keys(catalogAspects).length} aspects from catalog:`, Object.keys(catalogAspects).join(', '));
+            }
+          }
+        } catch (e) {
+          console.log('[eBay:GET] Could not fetch item details:', e.message);
+        }
+      }
       
       // Extract data from the match
       const result = {
@@ -2018,7 +2059,8 @@ async function handleGet(headers, query, res) {
         colorway: null, // Not usually in browse results
         department: inferDepartmentFromTitle(bestMatch.title),
         silhouette: inferSilhouetteFromTitle(bestMatch.title),
-        type: 'Athletic',
+        type: catalogAspects['Type'] || 'Athletic',
+        catalogAspects: catalogAspects,
         // Additional info
         price: bestMatch.price?.value || null,
         condition: bestMatch.condition || 'New',
