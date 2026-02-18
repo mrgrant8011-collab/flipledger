@@ -1253,6 +1253,23 @@ function buildProductAspects(item, categoryAspects) {
     }
   }
   
+  // Post-process: split comma-separated values & enforce 65 char limit
+  for (const key of Object.keys(aspects)) {
+    const expanded = [];
+    for (const val of aspects[key]) {
+      if (typeof val === 'string' && val.includes(',') && val.length > 65) {
+        val.split(',').map(v => v.trim()).filter(Boolean).forEach(v => {
+          if (v.length <= 65) expanded.push(v);
+          else expanded.push(v.substring(0, 65));
+        });
+      } else if (typeof val === 'string' && val.length > 65) {
+        expanded.push(val.substring(0, 65));
+      } else {
+        expanded.push(val);
+      }
+    }
+    aspects[key] = expanded;
+  }
   console.log('[eBay:Aspects] Built aspects:', JSON.stringify(aspects, null, 2));
   
   return { aspects, missingRequired };
