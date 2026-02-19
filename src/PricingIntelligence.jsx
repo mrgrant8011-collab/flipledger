@@ -22,7 +22,7 @@ import React, { useState } from 'react';
  */
 export default function PricingIntelligence({ 
   price, setPrice, promotedOn, adRate, stockxAsk, 
-  marketData, size, ebaySellerLevel = 'above_standard', 
+  marketData, size, cost = 0, ebaySellerLevel = 'above_standard', 
   ebayStoreType = 'none', c 
 }) {
   const [showCompetitors, setShowCompetitors] = useState(false);
@@ -110,7 +110,7 @@ export default function PricingIntelligence({
         <FeeBreakdown pv={pv} fvf={fvf} fvfLabel={fvfLabel} perOrderFee={perOrderFee}
           promoFee={promoFee} rv={rv} ship={ship} shipLabel={shipLabel} ebayNet={ebayNet} 
           customShip={customShip} setCustomShip={setCustomShip} autoShip={autoShip}
-          c={c} card={card} />
+          cost={cost} c={c} card={card} />
       </div>
     );
   }
@@ -294,14 +294,14 @@ export default function PricingIntelligence({
       <FeeBreakdown pv={pv} fvf={fvf} fvfLabel={fvfLabel} perOrderFee={perOrderFee}
         promoFee={promoFee} rv={rv} ship={ship} shipLabel={shipLabel} ebayNet={ebayNet}
         customShip={customShip} setCustomShip={setCustomShip} autoShip={autoShip}
-        c={c} card={card} />
+        cost={cost} c={c} card={card} />
     </div>
   );
 }
 
 // Fee breakdown — renders with or without market data
 function FeeBreakdown({ pv, fvf, fvfLabel, perOrderFee, promoFee, rv, ship, shipLabel, 
-  ebayNet, customShip, setCustomShip, autoShip, c, card }) {
+  ebayNet, customShip, setCustomShip, autoShip, cost, c, card }) {
   const rows = [
     { l: 'List Price', v: `$${pv}`, bold: true },
     { l: fvfLabel, v: `-$${fvf.toFixed(2)}`, color: c.red },
@@ -358,6 +358,20 @@ function FeeBreakdown({ pv, fvf, fvfLabel, perOrderFee, promoFee, rv, ship, ship
         <span style={{ fontWeight: 700 }}>Your Net</span>
         <span style={{ fontWeight: 800, color: c.green }}>${ebayNet}</span>
       </div>
+      {cost > 0 && (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
+            <span style={{ color: c.textMuted }}>Buy Cost</span>
+            <span style={{ color: c.textMuted }}>-${parseFloat(cost).toFixed(2)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginTop: 4 }}>
+            <span style={{ fontWeight: 700 }}>Profit</span>
+            <span style={{ fontWeight: 800, color: (ebayNet - parseFloat(cost)) >= 0 ? c.green : c.red }}>
+              ${(ebayNet - parseFloat(cost)).toFixed(0)}
+            </span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
