@@ -46,8 +46,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'q or sku query param required' });
   }
 
-  // Build search query — use SKU if available for precision
-  const searchQuery = sku ? `${q} ${sku}`.trim() : q;
+ // Build search query — SKU alone is most precise (style code matches all listings)
+  const searchQuery = sku || q;
 
   console.log(`[eBay:Browse] Searching: "${searchQuery}" (limit: ${limit})`);
 
