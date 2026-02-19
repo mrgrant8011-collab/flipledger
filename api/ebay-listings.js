@@ -1644,6 +1644,92 @@ function buildImageUrls(primaryImage, additionalImages) {
  * Create an offer for an inventory item
  * POST /sell/inventory/v1/offer
  */
+// ═══════════════════════════════════════════════════════════════════════════════════
+// PROMOTED LISTINGS - Marketing API
+// ═══════════════════════════════════════════════════════════════════════════════════
+
+async function findOrCreateCampaign(headers) {
+  try {
+    const res = await fetch(
+      `${EBAY_API_BASE}/sell/marketing/v1/ad_campaign?campaign_status=RUNNING&limit=10`,
+      { headers: { ...headers, 'Content-Type': 'application/json' } }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const cpsCampaign = (data.campaigns || []).find(c =>
+        c.fundingStrategy?.fundingModel === 'COST_PER_SALE'
+      );
+      if (cpsCampaign) {
+        console.log(`[eBay:Promo] ✓ Found existing campaign: ${cpsCampaign.campaignId}`);
+        return { success: true, campaignId: cpsCampaign.campaignId };
+      }
+    }
+
+    console.log('[eBay:Promo] Creating new Promoted Listings Standard campaign...');
+    const createRes = await fetch(
+      `${EBAY_API_BASE}/sell/marketing/v1/ad_campaign`,
+      {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          campaignName: `FlipLedger Promo - ${new Date().toISOString().slice(0, 10)}`,
+          fundingStrategy: { fundingModel: 'COST_PER_SALE' },
+          marketplaceId: 'EBAY_US'
+        })
+      }
+    );
+
+    if (createRes.status === 201 || createRes.status === 200) {
+      const location = createRes.headers.get('location') || '';
+      const campaignId = location.split('/').pop();
+      console.log(`[eBay:Promo] ✓ Created campaign: ${campaignId}`);
+      return { success: true, campaignId };
+    }
+
+    const err = await createRes.json().catch(() => ({}));
+    console.error('[eBay:Promo] Failed to create campaign:', err);
+    return { success: false, error: err };
+  } catch (e) {
+    console.error('[eBay:Promo] Campaign error:', e.message);
+    return { success: false, error: e.message };
+  }
+}
+
+async function promoteListings(headers, listings) {
+  if (!listings.length) return { success: true, promoted: 0 };
+
+  const campaignResult = await findOrCreateCampaign(headers);
+  if (!campaignResult.success) {
+    console.error('[eBay:Promo] No campaign available, skipping promotion');
+    return { success: false, error: 'No campaign', promoted: 0 };
+  }
+
+  const { campaignId } = campaignResult;
+
+  try {
+    const res = await fetch(
+      `${EBAY_API_BASE}/sell/marketing/v1/ad_campaign/${campaignId}/bulk_create_ads_by_listing_id`,
+      {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requests: listings.map(l => ({
+            listingId: l.listingId,
+            bidPercentage: String(l.adRate)
+          }))
+        })
+      }
+    );
+
+    const data = await res.json().catch(() => ({}));
+    const promoted = (data.ads || []).filter(a => a.statusCode === 200 || a.statusCode === 201).length;
+    console.log(`[eBay:Promo] ✓ Promoted ${promoted}/${listings.length} listings at campaign ${campaignId}`);
+    return { success: true, promoted, campaignId };
+  } catch (e) {
+    console.error('[eBay:Promo] Bulk add error:', e.message);
+    return { success: false, error: e.message, promoted: 0 };
+  }
+}
 async function createOffer(headers, sku, offerData, policies, merchantLocationKey, categoryId) {
   console.log(`[eBay:Offer] ═══════════════════════════════════════════════`);
   console.log(`[eBay:Offer] Creating offer`);
@@ -2490,6 +2576,25 @@ async function handlePost(headers, body, res) {
   // ─────────────────────────────────────────────────────────────────────────
   // Return results
   // ─────────────────────────────────────────────────────────────────────────
+  const toPromote = [];
+  for (const prod of products) {
+    if (prod.promoted?.enabled && prod.promoted.adRate) {
+      const baseSku = (prod.sku || prod.styleId || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const matchingOffers = results.createdOffers.filter(o =>
+        o.baseSku === baseSku && o.listingId && !o.isDraft
+      );
+      matchingOffers.forEach(o => {
+        toPromote.push({ listingId: o.listingId, adRate: prod.promoted.adRate });
+      });
+    }
+  }
+
+  if (toPromote.length > 0) {
+    console.log(`[eBay:POST] Promoting ${toPromote.length} listings...`);
+    const promoResult = await promoteListings(headers, toPromote);
+    results.promoted = promoResult.promoted || 0;
+    results.promoteCampaignId = promoResult.campaignId || null;
+  }
   const draftsCreated = results.createdOffers.filter(o => o.isDraft).length;
   const publishedCreated = results.createdOffers.filter(o => !o.isDraft).length;
 
@@ -2520,7 +2625,9 @@ async function handlePost(headers, body, res) {
     errors: results.errors,
     createdOffers: results.createdOffers,
     message,
-    sellerHubUrl: draftsCreated > 0 ? 'https://www.ebay.com/sh/lst/drafts' : null
+    sellerHubUrl: draftsCreated > 0 ? 'https://www.ebay.com/sh/lst/drafts' : null,
+    promoted: results.promoted || 0,
+    promoteCampaignId: results.promoteCampaignId || null
   });
 }
 
