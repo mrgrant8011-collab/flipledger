@@ -422,6 +422,7 @@ export default function EbayInlineEdit({
             stockxAsk={stockxAsk}
             marketData={marketData}
             size={size}
+            cost={items[0]?.cost || 0}
             ebaySellerLevel={ebaySellerLevel}
             ebayStoreType={ebayStoreType}
             c={c}
