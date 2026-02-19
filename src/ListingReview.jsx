@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabase';
-
+import PricingIntelligence from './PricingIntelligence';
 /**
  * LISTING REVIEW - Review & Edit Before Publishing to eBay
  * 
@@ -35,6 +35,7 @@ export default function ListingReview({ items = [], ebayToken, onBack, onComplet
   const [publishing, setPublishing] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [toast, setToast] = useState(null);
+  const [marketDataCache, setMarketDataCache] = useState({});
 
   // Default description template
   const [descriptionTemplate] = useState(
@@ -47,6 +48,21 @@ export default function ListingReview({ items = [], ebayToken, onBack, onComplet
 Questions? Message me before purchasing!`
   );
 
+ const fetchMarketData = async (sku) => {
+    if (marketDataCache[sku] || !ebayToken) return;
+    try {
+      const params = new URLSearchParams({ sku, limit: '200' });
+      const res = await fetch(`/api/ebay-browse?${params}`, {
+        headers: { 'Authorization': `Bearer ${ebayToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMarketDataCache(prev => ({ ...prev, [sku]: data }));
+      }
+    } catch (e) {
+      console.error('[ListingReview] Market data fetch error:', e);
+    }
+  };
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4000);
@@ -118,6 +134,9 @@ Questions? Message me before purchasing!`
         stockxListingIds: item.stockxListingIds || [],
         // Tracking (legacy single ID for backwards compatibility)
         stockxListingId: item.stockxListingIds?.[0] || item.listingId || item.stockxListingId || null,
+       // Promoted listing
+        promotedOn: false,
+        adRate: '4',
         // Status
         status: catalogData?.epid ? 'ready' : (item.color || catalogData?.color) ? 'ready' : 'needs_color'
       };
@@ -133,6 +152,9 @@ Questions? Message me before purchasing!`
     if (epidCount > 0) {
       showToast(`Found ${epidCount}/${enriched.length} in eBay Catalog`);
     }
+    // Fetch market data for each unique SKU
+    const uniqueSkus = [...new Set(enriched.map(i => i.styleCode).filter(Boolean))];
+    uniqueSkus.forEach(sku => fetchMarketData(sku));
     if (needsColorCount > 0) {
       // Auto-expand first item needing color
       const firstNeedsColor = enriched.find(i => i.status === 'needs_color');
@@ -237,6 +259,10 @@ Questions? Message me before purchasing!`
       if (field === 'color') {
         updated.status = value ? 'ready' : 'needs_color';
       }
+      // Handle promoted toggle
+      if (field === 'promotedOn' || field === 'adRate') {
+        // already set above via [field]: value
+      }
       
       return updated;
     }));
@@ -338,6 +364,8 @@ Questions? Message me before purchasing!`
           qty: item.qty || 1,  // QTY SUPPORT: Use actual qty
           stockxListingId: item.stockxListingIds?.[0] || item.stockxListingId
         }],
+        // Promoted listing data
+        promoted: item.promotedOn ? { enabled: true, adRate: item.adRate } : null,
         // QTY SUPPORT: Track all stockxListingIds for mapping creation
         _stockxListingIds: item.stockxListingIds || []
       }));
@@ -538,9 +566,11 @@ Questions? Message me before purchasing!`
                 <div style={{ color: c.textMuted }}>{isExpanded ? '▼' : '▶'}</div>
               </div>
 
-              {/* Expanded Edit Form */}
+           {/* Expanded Edit Form */}
               {isExpanded && (
                 <div style={{ padding: '0 16px 16px', background: 'rgba(255,255,255,0.02)', borderTop: `1px solid ${c.border}` }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: marketDataCache[item.styleCode] ? '1fr 310px' : '1fr', gap: 16 }}>
+                  <div>
                   {/* Photos Section */}
                   <div style={{ marginTop: 16, marginBottom: 16 }}>
                     <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 8 }}>
@@ -738,6 +768,45 @@ Questions? Message me before purchasing!`
                     </div>
                   </div>
 
+                  {/* Promoted Listing Toggle */}
+                  <div style={{ marginTop: 16, padding: 14, background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: `1px solid ${c.border}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 700 }}>Promoted Listing</div>
+                        <div style={{ fontSize: 10, color: c.textMuted, marginTop: 2 }}>Only pay when it sells</div>
+                      </div>
+                      <div onClick={() => updateItem(item.id, 'promotedOn', !item.promotedOn)}
+                        style={{ width: 42, height: 22, borderRadius: 11, background: item.promotedOn ? c.green : '#333', cursor: 'pointer', position: 'relative' }}>
+                        <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#fff', position: 'absolute', top: 2, left: item.promotedOn ? 22 : 2, transition: 'left 0.2s' }} />
+                      </div>
+                    </div>
+                    {item.promotedOn && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+                        <span style={{ fontSize: 11, color: c.textMuted, fontWeight: 600 }}>Ad Rate</span>
+                        <div style={{ position: 'relative', width: 60 }}>
+                          <input type="text" inputMode="decimal" value={item.adRate}
+                            onChange={e => {
+                              const val = e.target.value;
+                              if (val === '' || /^\d*\.?\d{0,1}$/.test(val)) {
+                                updateItem(item.id, 'adRate', val);
+                              }
+                            }}
+                            style={{ width: '100%', padding: '7px 22px 7px 8px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: c.text, fontSize: 13, fontWeight: 700 }} />
+                          <span style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: c.textMuted }}>%</span>
+                        </div>
+                        {['2', '4', '5', '8'].map(r => (
+                          <button key={r} onClick={() => updateItem(item.id, 'adRate', r)}
+                            style={{
+                              padding: '5px 8px', borderRadius: 6, fontSize: 10, fontWeight: 600, cursor: 'pointer',
+                              border: item.adRate === r ? `1px solid ${c.green}` : `1px solid ${c.border}`,
+                              background: item.adRate === r ? 'rgba(34,197,94,0.1)' : 'transparent',
+                              color: item.adRate === r ? c.green : c.textMuted
+                            }}>{r}%</button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Remove Button */}
                   <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
                     <button
@@ -751,6 +820,22 @@ Questions? Message me before purchasing!`
                       {'🗑️'} Remove from batch
                     </button>
                   </div>
+                  </div>{/* end left column */}
+
+                  {/* ═══ RIGHT: PRICING INTELLIGENCE ═══ */}
+                  {marketDataCache[item.styleCode] && (
+                    <PricingIntelligence
+                      price={String(item.price)}
+                      setPrice={v => updateItem(item.id, 'price', v)}
+                      promotedOn={item.promotedOn}
+                      adRate={item.adRate}
+                      stockxAsk={item.yourAsk || item.price}
+                      marketData={marketDataCache[item.styleCode]}
+                      size={item.shoeSize}
+                      c={c}
+                    />
+                  )}
+                  </div>{/* end grid */}
                 </div>
               )}
             </div>
