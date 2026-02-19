@@ -32,7 +32,7 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
   const [expandedRows, setExpandedRows] = useState(new Set());
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth < 768);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
-  const [bulkEditMode, setBulkEditMode] = useState('beat');
+  const [bulkEditMode, setBulkEditMode] = useState('');
   const [bulkEditAmount, setBulkEditAmount] = useState('');
   const [sellerLevel, setSellerLevel] = useState(() => {
     try { return parseInt(localStorage.getItem('fl_stockx_seller_level')) || 1; } catch { return 1; }
@@ -309,9 +309,9 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
     if (!currentProduct) return;
     
     const newPrices = { ...editedPrices };
-    const sizesToUpdate = onlySelected 
+   const sizesToUpdate = onlySelected 
       ? currentProduct.sizes.filter(s => selectedSizes.has(s.listingId))
-      : currentProduct.sizes;
+      : (selectedSizes.size > 0 ? currentProduct.sizes.filter(s => selectedSizes.has(s.listingId)) : currentProduct.sizes);
     
     sizesToUpdate.forEach(s => {
       let newPrice = null;
@@ -445,53 +445,71 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
 
   return (
     <div style={{ width: '100%' }}>
+      <style>{`input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; } input[type=number] { -moz-appearance: textfield; }`}</style>
       {toast && (
         <div style={{ position: 'fixed', top: 20, right: 20, padding: '12px 20px', background: toast.type === 'error' ? c.red : c.green, borderRadius: 8, color: '#fff', fontWeight: 600, zIndex: 1000 }}>
           {toast.msg}
         </div>
       )}
 
-      {/* Bulk Edit Modal */}
+    {/* Edit Prices Modal */}
       {bulkEditOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setBulkEditOpen(false)}>
-          <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, padding: 24, width: '90%', maxWidth: 440 }} onClick={e => e.stopPropagation()}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Bulk Edit</h3>
-              <button onClick={() => setBulkEditOpen(false)} style={{ background: 'none', border: 'none', color: c.textMuted, fontSize: 20, cursor: 'pointer' }}>✕</button>
+        <>
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 998 }} onClick={() => { setBulkEditOpen(false); setBulkEditMode(''); setBulkEditAmount(''); }} />
+          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, padding: 28, width: '90%', maxWidth: 420, zIndex: 999 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Edit Prices</h3>
+              <button onClick={() => { setBulkEditOpen(false); setBulkEditMode(''); setBulkEditAmount(''); }} style={{ background: 'none', border: 'none', color: c.textMuted, fontSize: 20, cursor: 'pointer' }}>✕</button>
             </div>
-            <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 16 }}>
-              {selectedSizes.size > 0 ? `Applying to ${selectedSizes.size} selected sizes` : `Applying to all ${currentProduct?.sizes?.length || 0} sizes in ${currentProduct?.name || 'product'}`}
+            <div style={{ fontSize: 12, color: c.textMuted, marginBottom: 20 }}>
+              {selectedSizes.size > 0 ? `Applying to ${selectedSizes.size} selected size${selectedSizes.size !== 1 ? 's' : ''}` : `Applying to all ${currentProduct?.sizes?.length || 0} sizes`}
             </div>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap' }}>
+
+            <div style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, marginBottom: 6, letterSpacing: '0.5px' }}>QUICK STRATEGIES</div>
+            {[
+              { key: 'beat', label: 'Beat Lowest Ask', desc: 'Set $1 below lowest', icon: '⚡' },
+              { key: 'match', label: 'Match Lowest Ask', desc: 'Match the lowest price', icon: '🎯' },
+              { key: 'sellfast', label: 'Sell Fast', desc: 'Match sell fast price', icon: '🚀' },
+              { key: 'matchbid', label: 'Match Highest Bid', desc: 'Match the top bid', icon: '💰' },
+            ].map(s => (
+              <button key={s.key} onClick={() => { applyStrategy(s.key); setBulkEditOpen(false); setBulkEditMode(''); }}
+                style={{ width: '100%', padding: '12px 14px', marginBottom: 4, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 10, color: c.text, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left' }}>
+                <span style={{ fontSize: 16 }}>{s.icon}</span>
+                <div>
+                  <div style={{ fontWeight: 600 }}>{s.label}</div>
+                  <div style={{ fontSize: 10, color: c.textMuted, marginTop: 1 }}>{s.desc}</div>
+                </div>
+              </button>
+            ))}
+
+            <div style={{ height: 1, background: c.border, margin: '12px 0' }} />
+
+            <div style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, marginBottom: 6, letterSpacing: '0.5px' }}>CUSTOM AMOUNT</div>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
               {[
-                { key: 'changeto', label: 'Change Price To' },
-                { key: 'decrease', label: 'Decrease By' },
-                { key: 'increase', label: 'Increase By' },
-                { key: 'beat', label: 'Beat Lowest By' }
+                { key: 'changeto', label: 'Set Price' },
+                { key: 'decrease', label: 'Decrease' },
+                { key: 'increase', label: 'Increase' },
               ].map(m => (
-                <button key={m.key} onClick={() => setBulkEditMode(m.key)}
-                  style={{ padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: bulkEditMode === m.key ? `2px solid ${c.gold}` : `1px solid ${c.border}`, background: bulkEditMode === m.key ? 'rgba(201,169,98,0.15)' : 'rgba(255,255,255,0.05)', color: bulkEditMode === m.key ? c.gold : c.text }}>
+                <button key={m.key} onClick={() => setBulkEditMode(bulkEditMode === m.key ? '' : m.key)}
+                  style={{ flex: 1, padding: '10px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', borderRadius: 8, border: bulkEditMode === m.key ? `2px solid ${c.gold}` : `1px solid ${c.border}`, background: bulkEditMode === m.key ? 'rgba(201,169,98,0.12)' : 'rgba(255,255,255,0.03)', color: bulkEditMode === m.key ? c.gold : c.text }}>
                   {m.label}
                 </button>
               ))}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 24 }}>
-              <span style={{ fontSize: 20, fontWeight: 700, color: c.textMuted }}>$</span>
-              <input type="number" value={bulkEditAmount} onChange={e => setBulkEditAmount(e.target.value)} placeholder="0"
-                style={{ flex: 1, padding: '12px 16px', fontSize: 20, fontWeight: 700, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text }} autoFocus />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <button onClick={() => setBulkEditOpen(false)}
-                style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-                Cancel
-              </button>
-              <button onClick={applyBulkEdit}
-                style={{ padding: '10px 24px', background: c.gold, border: 'none', borderRadius: 8, color: '#000', fontSize: 13, fontWeight: 700, cursor: 'pointer', opacity: bulkEditAmount ? 1 : 0.5 }}>
-                Apply
-              </button>
-            </div>
+            {['changeto', 'decrease', 'increase'].includes(bulkEditMode) && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontSize: 18, fontWeight: 700, color: c.textMuted }}>$</span>
+                <input type="number" value={bulkEditAmount} onChange={e => setBulkEditAmount(e.target.value)} placeholder="0" autoFocus
+                  style={{ flex: 1, padding: '12px 16px', fontSize: 18, fontWeight: 700, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text }} />
+                <button onClick={() => { applyBulkEdit(); setBulkEditMode(''); }} disabled={!bulkEditAmount}
+                  style={{ padding: '12px 20px', background: bulkEditAmount ? c.gold : '#333', border: 'none', borderRadius: 8, color: bulkEditAmount ? '#000' : c.textMuted, fontWeight: 700, fontSize: 13, cursor: bulkEditAmount ? 'pointer' : 'not-allowed' }}>
+                  Apply
+                </button>
+              </div>
+            )}
           </div>
-        </div>
+        </>
       )}
 
       {/* Header */}
@@ -557,7 +575,13 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
       {/* Save bar */}
       {changesCount > 0 && (
         <div style={{ position: 'sticky', top: 0, zIndex: 10, marginBottom: 12, padding: '12px 16px', background: 'rgba(6,6,6,0.95)', backdropFilter: 'blur(10px)', border: `1px solid ${c.gold}`, borderRadius: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 13, color: c.textMuted }}><span style={{ color: c.gold, fontWeight: 700 }}>{changesCount}</span> price change{changesCount !== 1 ? 's' : ''} pending</span>
+         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button onClick={() => setEditedPrices({})}
+              style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, color: c.red, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              ✕ Discard
+            </button>
+            <span style={{ fontSize: 13, color: c.textMuted }}><span style={{ color: c.gold, fontWeight: 700 }}>{changesCount}</span> price change{changesCount !== 1 ? 's' : ''} pending</span>
+          </div>
           <button onClick={handleUpdatePrices} disabled={updating}
             style={{ padding: '10px 20px', background: c.gold, border: 'none', borderRadius: 8, color: '#000', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
             {updating ? '⏳ Saving...' : `💾 Save ${changesCount} Changes`}
@@ -631,18 +655,15 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
                   <div style={{ padding: '8px 14px', background: 'rgba(201,169,98,0.05)', fontSize: 12, color: c.gold, textAlign: 'center' }}>⏳ Loading market data...</div>
                 )}
 
-                {/* Strategy buttons — same onClick handlers as original */}
-                <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.02)', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', borderBottom: `1px solid ${c.border}` }}>
-                  <button onClick={() => applyStrategy('beat')} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 6, color: c.green, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>Beat Lowest (-$1)</button>
-                  <button onClick={() => applyStrategy('match')} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 6, color: c.green, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>Match Lowest</button>
-                  {product.sizes.some(s => s.sellFaster) && (
-                    <button onClick={() => applyStrategy('sellfast')} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 6, color: c.green, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>Sell Fast</button>
-                  )}
-                  {product.sizes.some(s => s.highestBid) && (
-                    <button onClick={() => applyStrategy('matchbid')} style={{ padding: '6px 12px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: 6, color: c.green, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>Match Bid</button>
-                  )}
-                  <span style={{ marginLeft: 'auto', fontSize: 10, color: c.textMuted }}>{selectedSizes.size > 0 && isActive ? `${selectedSizes.size} selected` : ''}</span>
-                  <button onClick={() => { setSelectedProduct(product.sku); setBulkEditOpen(true); }} style={{ padding: '6px 12px', background: 'rgba(201,169,98,0.1)', border: '1px solid rgba(201,169,98,0.3)', borderRadius: 6, color: c.gold, fontSize: 10, fontWeight: 600, cursor: 'pointer' }}>✏️ Bulk Edit</button>
+                {/* Action bar — select + edit button */}
+                <div style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.02)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${c.border}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input type="checkbox" checked={isActive && selectedSizes.size === product.sizes.length} onChange={() => { setSelectedProduct(product.sku); if (selectedSizes.size === product.sizes.length) { setSelectedSizes(new Set()); } else { setSelectedSizes(new Set(product.sizes.map(s => s.listingId))); } }} style={{ width: 16, height: 16, cursor: 'pointer', accentColor: c.gold }} />
+                    <span style={{ fontSize: 11, color: c.textMuted }}>{isActive && selectedSizes.size > 0 ? `${selectedSizes.size} selected` : 'Select sizes'}</span>
+                  </div>
+                  <button onClick={() => { setSelectedProduct(product.sku); setBulkEditOpen(true); }} style={{ padding: '8px 16px', background: 'rgba(201,169,98,0.1)', border: '1px solid rgba(201,169,98,0.3)', borderRadius: 8, color: c.gold, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+                    ✏️ {isActive && selectedSizes.size > 0 ? `Edit ${selectedSizes.size} Selected` : 'Edit All Prices'}
+                  </button>
                 </div>
 
                 {/* Table header */}
