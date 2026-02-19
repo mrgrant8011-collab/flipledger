@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { supabase } from './supabase';
 import ListingReview from './ListingReview';
+import EbayInlineEdit from './EbayInlineEdit';
 
 /**
  * CROSS LIST - Multi-platform listing management
@@ -190,6 +191,9 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
   const [searchQuery, setSearchQuery] = useState('');
   const [viewFilter, setViewFilter] = useState('unlisted');
   const [expandedProduct, setExpandedProduct] = useState(null);
+  const [editingSize, setEditingSize] = useState(null);
+  const [marketDataCache, setMarketDataCache] = useState({});
+  const [loadingMarketData, setLoadingMarketData] = useState(null);
   const [toast, setToast] = useState(null);
 
   const showToast = (msg, type = 'success') => {
@@ -885,6 +889,62 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
     setDelisting(false);
   };
 
+  // ============================================
+  // EBAY MARKET DATA (for PricingIntelligence)
+  // ============================================
+  const fetchMarketData = async (sku, productName) => {
+    if (marketDataCache[sku] || !ebayToken) return;
+    setLoadingMarketData(sku);
+    try {
+      const params = new URLSearchParams({ q: productName || '', sku: sku || '', limit: '20' });
+      const res = await fetch(`/api/ebay-browse?${params}`, {
+        headers: { 'Authorization': `Bearer ${ebayToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMarketDataCache(prev => ({ ...prev, [sku]: data }));
+      }
+    } catch (e) {
+      console.error('[CrossList] Market data fetch error:', e);
+    }
+    setLoadingMarketData(null);
+  };
+
+  // ============================================
+  // INLINE EDIT SAVE (On eBay listings)
+  // ============================================
+  const handleInlineEditSave = async ({ offerIds, skus, changes, promoted }) => {
+    if (!ebayToken) return;
+    try {
+      if (Object.keys(changes).length > 0) {
+        const updates = offerIds.map(offerId => ({ offerId, sku: skus[0] || '', ...changes }));
+        const res = await fetch('/api/ebay-update', {
+          method: 'PATCH',
+          headers: { 'Authorization': `Bearer ${ebayToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ updates })
+        });
+        const data = await res.json();
+        if (data.updated > 0) showToast(`✓ Updated ${data.updated} listing(s)`);
+        if (data.failed > 0) showToast(`${data.failed} update(s) failed`, 'error');
+      }
+      if (promoted) {
+        const action = promoted.enabled ? 'add' : 'remove';
+        const items = skus.map(sku => ({ sku, adRate: promoted.adRate }));
+        const res = await fetch('/api/ebay-update', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${ebayToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, items })
+        });
+        const data = await res.json();
+        if (action === 'add' && data.added > 0) showToast(`✓ Promoted ${data.added} listing(s) at ${promoted.adRate}%`);
+        else if (action === 'remove' && data.removed > 0) showToast(`✓ Removed promotion from ${data.removed} listing(s)`);
+      }
+      await syncAll();
+    } catch (e) {
+      console.error('[CrossList] Inline edit save error:', e);
+      showToast('Save failed: ' + e.message, 'error');
+    }
+  };
   const handleOversellSync = async () => {
     showToast('Checking for oversells...');
     
@@ -1029,7 +1089,7 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
           { id: 'listed', label: '✅ On eBay', count: stats.onEbay },
           { id: 'all', label: '📦 All', count: stats.total }
         ].map(tab => (
-          <button key={tab.id} onClick={() => setViewFilter(tab.id)}
+          <button key={tab.id} onClick={() => { setViewFilter(tab.id); setEditingSize(null); }}
             style={{ padding: '8px 12px', background: viewFilter === tab.id ? 'rgba(255,255,255,0.1)' : 'transparent', border: `1px solid ${viewFilter === tab.id ? c.gold : c.border}`, borderRadius: 6, color: viewFilter === tab.id ? c.gold : c.textMuted, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
             {tab.label} <span style={{ opacity: 0.7 }}>{tab.count}</span>
           </button>
@@ -1123,7 +1183,7 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
             return (
               <div key={p.sku} style={{ borderBottom: `1px solid ${c.border}` }}>
                 <div
-                  onClick={() => setExpandedProduct(isExpanded ? null : p.sku)}
+                  onClick={() => { setExpandedProduct(isExpanded ? null : p.sku); setEditingSize(null); }}
                   style={{ padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'center', cursor: 'pointer', background: isExpanded ? 'rgba(255,255,255,0.02)' : 'transparent' }}
                 >
                   <div style={{ color: c.textMuted, fontSize: 11, width: 14, flexShrink: 0 }}>
@@ -1163,41 +1223,50 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
                   });
                   const groupedSizes = Object.entries(sizeGroups).sort((a, b) => parseFloat(a[0]) - parseFloat(b[0]));
 
-                  return (
+               return (
+                    <>
                     <div style={{ padding: '4px 16px 14px 46px', background: 'rgba(255,255,255,0.01)' }}>
-                      <div style={{ fontSize: 11, color: c.textMuted, marginBottom: 10 }}>Tap size to select</div>
+                      <div style={{ fontSize: 11, color: c.textMuted, marginBottom: 10 }}>
+                        {viewFilter === 'listed' ? 'Tap size to edit' : 'Tap size to select'}
+                      </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                         {groupedSizes.map(([size, items]) => {
                           const keys = items.map(s => s.key);
-                          const isSelected = keys.every(k => selectedItems.has(k));
+                          const isEditing = viewFilter === 'listed' && editingSize === size;
+                          const isSelected = viewFilter === 'listed' ? isEditing : keys.every(k => selectedItems.has(k));
                           const onEbayCount = items.filter(s => s.isOnEbay).length;
                           const price = items[0]?.yourAsk;
                           return (
                             <div key={size}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const n = new Set(selectedItems);
-                                keys.forEach(k => isSelected ? n.delete(k) : n.add(k));
-                                setSelectedItems(n);
+                                if (viewFilter === 'listed') {
+                                  setEditingSize(editingSize === size ? null : size);
+                                  if (!marketDataCache[p.sku]) fetchMarketData(p.sku, p.name);
+                                } else {
+                                  const n = new Set(selectedItems);
+                                  keys.forEach(k => isSelected ? n.delete(k) : n.add(k));
+                                  setSelectedItems(n);
+                                }
                               }}
                               style={{
                                 padding: '10px 14px', minWidth: 80, textAlign: 'center', cursor: 'pointer', position: 'relative',
-                                background: isSelected ? 'rgba(201,169,98,0.15)' : onEbayCount > 0 ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.04)',
-                                border: `1.5px solid ${isSelected ? c.gold : onEbayCount > 0 ? c.green : c.border}`,
+                                background: isSelected ? (viewFilter === 'listed' ? 'rgba(34,197,94,0.15)' : 'rgba(201,169,98,0.15)') : onEbayCount > 0 ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.04)',
+                                border: `1.5px solid ${isSelected ? (viewFilter === 'listed' ? c.green : c.gold) : onEbayCount > 0 ? c.green : c.border}`,
                                 borderRadius: 8
                               }}>
                               {items.length > 1 && (
                                 <div style={{
                                   position: 'absolute', top: -7, right: -7,
-                                  background: isSelected ? c.gold : '#555', color: isSelected ? '#000' : '#fff',
+                                  background: isSelected ? (viewFilter === 'listed' ? c.green : c.gold) : '#555', color: isSelected ? '#000' : '#fff',
                                   fontSize: 10, fontWeight: 700, width: 22, height: 22, borderRadius: '50%',
                                   display: 'flex', alignItems: 'center', justifyContent: 'center'
                                 }}>
                                   x{items.length}
                                 </div>
                               )}
-                              <div style={{ fontWeight: 700, fontSize: 15, color: isSelected ? c.gold : c.text }}>{size}</div>
-                              <div style={{ fontSize: 11, color: isSelected ? c.gold : c.textMuted, marginTop: 2 }}>${price || '—'}</div>
+                              <div style={{ fontWeight: 700, fontSize: 15, color: isSelected ? (viewFilter === 'listed' ? c.green : c.gold) : c.text }}>{size}</div>
+                              <div style={{ fontSize: 11, color: isSelected ? (viewFilter === 'listed' ? c.green : c.gold) : c.textMuted, marginTop: 2 }}>${price || '—'}</div>
                               {onEbayCount > 0 && (
                                 <div style={{ fontSize: 9, color: c.green, fontWeight: 600, marginTop: 3 }}>
                                   {onEbayCount}/{items.length} eBay
@@ -1208,6 +1277,21 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
                         })}
                       </div>
                     </div>
+
+                    {viewFilter === 'listed' && editingSize && sizeGroups[editingSize] && (
+                      <EbayInlineEdit
+                        size={editingSize}
+                        items={sizeGroups[editingSize]}
+                        product={p}
+                        ebayToken={ebayToken}
+                        stockxAsk={sizeGroups[editingSize][0]?.yourAsk}
+                        marketData={marketDataCache[p.sku] || null}
+                        onSave={handleInlineEditSave}
+                        onClose={() => setEditingSize(null)}
+                        c={c}
+                      />
+                    )}
+                    </>
                   );
                 })()}
               </div>
