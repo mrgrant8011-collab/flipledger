@@ -22,7 +22,7 @@ import React, { useState } from 'react';
  */
 export default function PricingIntelligence({ 
   price, setPrice, promotedOn, adRate, stockxAsk, 
-  marketData, shippingEstimate = 14, c 
+  marketData, shippingEstimate = 14, size, c 
 }) {
   const [showCompetitors, setShowCompetitors] = useState(false);
 
@@ -41,9 +41,31 @@ export default function PricingIntelligence({
   const sxNet = Math.round(sxAsk * 0.88);
 
   const diff = ebayNet - sxNet;
+  
   const rank = marketData?.listings 
     ? marketData.listings.filter(l => l.price < pv).length + 1 
     : null;
+
+  // Size-specific filtering
+  const sizeStr = size ? String(size).replace(/[^0-9.]/g, '') : '';
+  const sizeListings = marketData?.listings && sizeStr
+    ? marketData.listings.filter(l => {
+        const ls = String(l.size).replace(/[^0-9.]/g, '');
+        return ls === sizeStr;
+      })
+    : null;
+  const sizePrices = sizeListings ? sizeListings.map(l => l.price).sort((a, b) => a - b) : null;
+  const sizeStats = sizePrices && sizePrices.length > 0 ? {
+    low: sizePrices[0],
+    high: sizePrices[sizePrices.length - 1],
+    avg: Math.round(sizePrices.reduce((s, p) => s + p, 0) / sizePrices.length),
+    median: sizePrices.length % 2 === 0 
+      ? Math.round((sizePrices[Math.floor(sizePrices.length / 2) - 1] + sizePrices[Math.floor(sizePrices.length / 2)]) / 2)
+      : sizePrices[Math.floor(sizePrices.length / 2)],
+    count: sizePrices.length,
+    promotedPct: sizeListings.length > 0 ? Math.round(sizeListings.filter(l => l.promoted).length / sizeListings.length * 100) : 0
+  } : null;
+  const sizeRank = sizeListings ? sizeListings.filter(l => l.price < pv).length + 1 : null;
 
   const card = { background: c.card, borderRadius: 12, border: `1px solid ${c.border}` };
 
@@ -97,8 +119,52 @@ export default function PricingIntelligence({
 
       {/* ════ ACTIVE LISTINGS ════ */}
       <div style={{ ...card, padding: 14, marginBottom: 10 }}>
+        {/* SIZE-SPECIFIC STATS */}
+        {sizeStats && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>SIZE {sizeStr} LISTINGS</span>
+              <span style={{ 
+                padding: '2px 6px', background: 'rgba(201,169,98,0.1)', 
+                borderRadius: 10, fontSize: 9, color: c.gold, fontWeight: 600 
+              }}>
+                {sizeStats.count} listed
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
+              {[
+                { l: 'LOWEST', v: `$${sizeStats.low}`, color: c.gold, big: true },
+                { l: 'AVERAGE', v: `$${sizeStats.avg}`, big: true },
+                { l: 'MEDIAN', v: `$${sizeStats.median}` },
+                { l: 'HIGHEST', v: `$${sizeStats.high}` },
+              ].map(s => (
+                <div key={s.l} style={{ padding: 8, background: 'rgba(201,169,98,0.04)', borderRadius: 8, textAlign: 'center' }}>
+                  <div style={{ fontSize: 9, color: c.textMuted, marginBottom: 2 }}>{s.l}</div>
+                  <div style={{ fontSize: s.big ? 16 : 13, fontWeight: s.big ? 800 : 700, color: s.color || c.text }}>{s.v}</div>
+                </div>
+              ))}
+            </div>
+
+            {sizeRank !== null && (
+              <div style={{ 
+                padding: '6px 10px', background: 'rgba(201,169,98,0.06)', 
+                border: '1px solid rgba(201,169,98,0.15)', borderRadius: 8, marginBottom: 10,
+                fontSize: 11, fontWeight: 700 
+              }}>
+                ${pv} ranks <span style={{ color: c.gold }}>#{sizeRank}</span> of {sizeStats.count} (size {sizeStr})
+              </div>
+            )}
+
+            <div style={{ height: 1, background: c.border, margin: '10px 0' }} />
+          </>
+        )}
+
+        {/* ALL SIZES STATS */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>EBAY ACTIVE LISTINGS</span>
+          <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>
+            {sizeStats ? 'ALL SIZES' : 'EBAY ACTIVE LISTINGS'}
+          </span>
           <span style={{ 
             padding: '2px 6px', background: 'rgba(34,197,94,0.1)', 
             borderRadius: 10, fontSize: 9, color: c.green, fontWeight: 600 
@@ -109,8 +175,8 @@ export default function PricingIntelligence({
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 10 }}>
           {[
-            { l: 'LOWEST', v: `$${marketData.low}`, color: c.gold, big: true },
-            { l: 'AVERAGE', v: `$${marketData.avg}`, big: true },
+            { l: 'LOWEST', v: `$${marketData.low}`, color: c.gold, big: !sizeStats },
+            { l: 'AVERAGE', v: `$${marketData.avg}`, big: !sizeStats },
             { l: 'MEDIAN', v: `$${marketData.median}` },
             { l: 'HIGHEST', v: `$${marketData.high}` },
           ].map(s => (
@@ -121,8 +187,8 @@ export default function PricingIntelligence({
           ))}
         </div>
 
-        {/* Position */}
-        {rank !== null && (
+        {/* Position (all sizes) */}
+        {rank !== null && !sizeStats && (
           <div style={{ 
             padding: '6px 10px', background: 'rgba(201,169,98,0.06)', 
             border: '1px solid rgba(201,169,98,0.15)', borderRadius: 8, marginBottom: 10,
