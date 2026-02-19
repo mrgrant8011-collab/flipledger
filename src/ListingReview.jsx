@@ -36,6 +36,12 @@ export default function ListingReview({ items = [], ebayToken, onBack, onComplet
   const [expandedId, setExpandedId] = useState(null);
   const [toast, setToast] = useState(null);
   const [marketDataCache, setMarketDataCache] = useState({});
+  const [ebaySellerLevel] = useState(() => {
+    try { return localStorage.getItem('fl_ebay_seller_level') || 'above_standard'; } catch { return 'above_standard'; }
+  });
+  const [ebayStoreType] = useState(() => {
+    try { return localStorage.getItem('fl_ebay_store_type') || 'none'; } catch { return 'none'; }
+  });
 
   // Default description template
   const [descriptionTemplate] = useState(
@@ -832,6 +838,9 @@ Questions? Message me before purchasing!`
                       stockxAsk={item.yourAsk || item.price}
                       marketData={marketDataCache[item.styleCode]}
                       size={item.shoeSize}
+                      cost={item.cost || 0}
+                      ebaySellerLevel={ebaySellerLevel}
+                      ebayStoreType={ebayStoreType}
                       c={c}
                     />
                   )}
