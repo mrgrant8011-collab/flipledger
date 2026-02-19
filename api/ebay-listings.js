@@ -2579,10 +2579,11 @@ async function handlePost(headers, body, res) {
   const toPromote = [];
   for (const prod of products) {
     if (prod.promoted?.enabled && prod.promoted.adRate) {
-      const baseSku = (prod.sku || prod.styleId || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-      const matchingOffers = results.createdOffers.filter(o =>
-        o.baseSku === baseSku && o.listingId && !o.isDraft
-      );
+      const cleanSku = (prod.sku || prod.styleId || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const matchingOffers = results.createdOffers.filter(o => {
+        const oClean = (o.baseSku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        return oClean === cleanSku && o.listingId;
+      });
       matchingOffers.forEach(o => {
         toPromote.push({ listingId: o.listingId, adRate: prod.promoted.adRate });
       });
