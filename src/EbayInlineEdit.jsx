@@ -420,6 +420,7 @@ export default function EbayInlineEdit({
             adRate={adRate}
             stockxAsk={stockxAsk}
             marketData={marketData}
+            size={size}
             c={c}
           />
         )}
