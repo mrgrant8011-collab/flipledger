@@ -38,7 +38,8 @@ const CONDITIONS = [
 
 export default function EbayInlineEdit({
   size, items = [], product = {}, ebayToken,
-  stockxAsk, marketData, onSave, onClose, c
+  stockxAsk, marketData, onSave, onClose,
+  ebaySellerLevel, ebayStoreType, c
 }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -421,6 +422,8 @@ export default function EbayInlineEdit({
             stockxAsk={stockxAsk}
             marketData={marketData}
             size={size}
+            ebaySellerLevel={ebaySellerLevel}
+            ebayStoreType={ebayStoreType}
             c={c}
           />
         )}
