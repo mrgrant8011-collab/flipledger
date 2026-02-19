@@ -265,7 +265,7 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
     if (currentProduct) {
       fetchProductMarketData(currentProduct);
     }
-  }, [currentProduct?.sku]);
+  }, [currentProduct?.sku, stockxListings]);
 
   // Stats
   const stats = useMemo(() => {
@@ -408,6 +408,7 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
       if (res.ok) {
         showToast(`Updated ${changes.length} prices`);
         setEditedPrices({});
+        setSelectedSizes(new Set());
         await syncStockX();
       } else {
         showToast('Update failed', 'error');
