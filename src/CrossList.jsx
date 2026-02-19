@@ -553,8 +553,14 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
         matchedCounts[expectedEbaySku] = alreadyMatched + 1;
       }
       
+      const purchaseMatch = (purchases || []).find(p => 
+        (p.sku || p.styleId || '') === sku && 
+        String(p.size) === String(l.size) && !p.sold
+      );
+
       g[sku].sizes.push({
         ...l,
+        cost: l.cost || purchaseMatch?.cost || 0,
         key: `sx_${l.listingId}`,
         source: 'stockx',
         isOnEbay,
