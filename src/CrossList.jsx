@@ -194,6 +194,12 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
   const [editingSize, setEditingSize] = useState(null);
   const [marketDataCache, setMarketDataCache] = useState({});
   const [loadingMarketData, setLoadingMarketData] = useState(null);
+  const [ebaySellerLevel, setEbaySellerLevel] = useState(() => {
+    try { return localStorage.getItem('fl_ebay_seller_level') || 'above_standard'; } catch { return 'above_standard'; }
+  });
+  const [ebayStoreType, setEbayStoreType] = useState(() => {
+    try { return localStorage.getItem('fl_ebay_store_type') || 'none'; } catch { return 'none'; }
+  });
   const [toast, setToast] = useState(null);
 
   const showToast = (msg, type = 'success') => {
@@ -207,6 +213,46 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
   useEffect(() => {
     loadMappings();
   }, []);
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data } = await supabase
+          .from('user_settings')
+          .select('ebay_seller_level, ebay_store_type')
+          .eq('user_id', user.id)
+          .single();
+        if (data?.ebay_seller_level) {
+          setEbaySellerLevel(data.ebay_seller_level);
+          localStorage.setItem('fl_ebay_seller_level', data.ebay_seller_level);
+        }
+        if (data?.ebay_store_type) {
+          setEbayStoreType(data.ebay_store_type);
+          localStorage.setItem('fl_ebay_store_type', data.ebay_store_type);
+        }
+      } catch {}
+    })();
+  }, []);
+
+  const saveEbaySetting = async (field, value) => {
+    if (field === 'ebay_seller_level') {
+      setEbaySellerLevel(value);
+      localStorage.setItem('fl_ebay_seller_level', value);
+    } else {
+      setEbayStoreType(value);
+      localStorage.setItem('fl_ebay_store_type', value);
+    }
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      await supabase.from('user_settings').upsert({
+        user_id: user.id,
+        [field]: value,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id' });
+    } catch {}
+  };
 
   const loadMappings = async () => {
     try {
@@ -1096,6 +1142,33 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
         ))}
       </div>
 
+      {/* eBay Fee Settings (compact inline) */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 10, color: c.textMuted, fontWeight: 600 }}>Seller Level:</span>
+          <select value={ebaySellerLevel} onChange={e => saveEbaySetting('ebay_seller_level', e.target.value)}
+            style={{ padding: '4px 8px', fontSize: 11, background: c.card, color: c.text, border: `1px solid ${c.border}`, borderRadius: 6, cursor: 'pointer' }}>
+            <option value="top_rated">Top Rated</option>
+            <option value="above_standard">Above Standard</option>
+            <option value="below_standard">Below Standard</option>
+          </select>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 10, color: c.textMuted, fontWeight: 600 }}>Store:</span>
+          <select value={ebayStoreType} onChange={e => saveEbaySetting('ebay_store_type', e.target.value)}
+            style={{ padding: '4px 8px', fontSize: 11, background: c.card, color: c.text, border: `1px solid ${c.border}`, borderRadius: 6, cursor: 'pointer' }}>
+            <option value="none">No Store</option>
+            <option value="starter">Starter</option>
+            <option value="basic">Basic</option>
+            <option value="premium">Premium</option>
+            <option value="anchor">Anchor</option>
+            <option value="enterprise">Enterprise</option>
+          </select>
+        </div>
+        {ebaySellerLevel === 'below_standard' && (
+          <span style={{ fontSize: 9, color: c.red, fontWeight: 600 }}>⚠️ +6% penalty fee</span>
+        )}
+      </div>
       {/* Action Bar */}
       {selectedItems.size > 0 && (
         <div style={{ ...card, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -1288,6 +1361,8 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
                         marketData={marketDataCache[p.sku] || null}
                         onSave={handleInlineEditSave}
                         onClose={() => setEditingSize(null)}
+                        ebaySellerLevel={ebaySellerLevel}
+                        ebayStoreType={ebayStoreType}
                         c={c}
                       />
                     )}
