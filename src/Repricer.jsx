@@ -1,5 +1,14 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { supabase } from './supabase';
 
+// StockX fee rates by seller level (transaction fee + 3% payment processing)
+const STOCKX_FEE_RATES = {
+  1: 0.12,    // 9% + 3%
+  2: 0.115,   // 8.5% + 3%
+  3: 0.11,    // 8% + 3%
+  4: 0.105,   // 7.5% + 3%
+  5: 0.10,    // 7% + 3%
+};
 /**
  * REPRICER - StockX Only
  * - Fetch StockX listings with market data
@@ -25,6 +34,43 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [bulkEditMode, setBulkEditMode] = useState('beat');
   const [bulkEditAmount, setBulkEditAmount] = useState('');
+  const [sellerLevel, setSellerLevel] = useState(() => {
+    try { return parseInt(localStorage.getItem('fl_stockx_seller_level')) || 1; } catch { return 1; }
+  });
+  const [showLevelPicker, setShowLevelPicker] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data } = await supabase
+          .from('user_settings')
+          .select('stockx_seller_level')
+          .eq('user_id', user.id)
+          .single();
+        if (data?.stockx_seller_level) {
+          setSellerLevel(data.stockx_seller_level);
+          localStorage.setItem('fl_stockx_seller_level', data.stockx_seller_level);
+        }
+      } catch {}
+    })();
+  }, []);
+
+  const saveSellerLevel = async (level) => {
+    setSellerLevel(level);
+    setShowLevelPicker(false);
+    localStorage.setItem('fl_stockx_seller_level', level);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      await supabase.from('user_settings').upsert({
+        user_id: user.id,
+        stockx_seller_level: level,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id' });
+    } catch {}
+  };
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -455,6 +501,34 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
           <p style={{ margin: '4px 0 0', fontSize: 13, color: c.textMuted }}>Stay competitive on StockX</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {/* Seller Level Picker */}
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => setShowLevelPicker(!showLevelPicker)}
+              style={{ padding: '10px 14px', background: 'rgba(201,169,98,0.08)', border: '1px solid rgba(201,169,98,0.3)', borderRadius: 8, color: c.gold, fontSize: 12, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+              👤 Level {sellerLevel} <span style={{ color: c.textMuted, fontWeight: 400 }}>({(STOCKX_FEE_RATES[sellerLevel] * 100).toFixed(1)}%)</span> ▾
+            </button>
+            {showLevelPicker && (
+              <>
+                <div style={{ position: 'fixed', inset: 0, zIndex: 98 }} onClick={() => setShowLevelPicker(false)} />
+                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: 6, background: '#1a1a1a', border: `1px solid ${c.border}`, borderRadius: 10, padding: 6, zIndex: 99, width: 260, boxShadow: '0 12px 40px rgba(0,0,0,0.6)' }}>
+                  <div style={{ padding: '8px 12px 6px', fontSize: 11, fontWeight: 700, color: c.textMuted, borderBottom: `1px solid ${c.border}` }}>StockX Seller Level</div>
+                  {Object.entries(STOCKX_FEE_RATES).map(([lvl, rate]) => (
+                    <button key={lvl} onClick={() => saveSellerLevel(Number(lvl))}
+                      style={{ width: '100%', padding: '10px 12px', background: sellerLevel === Number(lvl) ? 'rgba(201,169,98,0.12)' : 'transparent', border: 'none', borderRadius: 6, color: c.text, fontSize: 12, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', textAlign: 'left' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ width: 26, height: 26, borderRadius: '50%', background: sellerLevel === Number(lvl) ? c.gold : '#333', color: sellerLevel === Number(lvl) ? '#000' : c.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 11 }}>{lvl}</div>
+                        <span style={{ fontWeight: 600 }}>Level {lvl}</span>
+                      </div>
+                      <span style={{ color: c.textMuted, fontSize: 11 }}>{(rate * 100).toFixed(1)}% total</span>
+                    </button>
+                  ))}
+                  <div style={{ padding: '8px 12px', borderTop: `1px solid ${c.border}`, fontSize: 10, color: c.textMuted, lineHeight: 1.4 }}>
+                    💡 Find your level at stockx.com/sell → Seller Dashboard
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
           <input type="text" placeholder="Search SKU..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
             style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, width: 160 }} />
           <button onClick={syncStockX} disabled={syncing}
@@ -600,7 +674,7 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
                   const needsReprice = item.lowestAsk && item.yourAsk > item.lowestAsk;
                   const isSelected = selectedSizes.has(item.listingId);
                   const priceNum = parseFloat(currentPrice);
-                  const feeMultiplier = (item.inventoryType === 'DIRECT' || item.inventoryType === 'FLEX') ? 0.92 : 0.90;
+                  const feeMultiplier = 1 - (STOCKX_FEE_RATES[sellerLevel] || 0.12);
                   const displayProfit = item.cost && !isNaN(priceNum) && priceNum > 0 ? Math.round(priceNum * feeMultiplier - item.cost) : null;
                   const isRowExpanded = expandedRows.has(item.listingId);
 
