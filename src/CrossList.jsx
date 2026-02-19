@@ -896,7 +896,7 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
     if (marketDataCache[sku] || !ebayToken) return;
     setLoadingMarketData(sku);
     try {
-      const params = new URLSearchParams({ q: productName || '', sku: sku || '', limit: '20' });
+      const params = new URLSearchParams({ q: productName || '', sku: sku || '', limit: '200' });
       const res = await fetch(`/api/ebay-browse?${params}`, {
         headers: { 'Authorization': `Bearer ${ebayToken}` }
       });
