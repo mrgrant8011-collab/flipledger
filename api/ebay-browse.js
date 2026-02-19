@@ -40,7 +40,7 @@ export default async function handler(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const q = url.searchParams.get('q') || '';
   const sku = url.searchParams.get('sku') || '';
-  const limit = Math.min(parseInt(url.searchParams.get('limit')) || 20, 50);
+  const limit = Math.min(parseInt(url.searchParams.get('limit')) || 200, 200);
 
   if (!q && !sku) {
     return res.status(400).json({ error: 'q or sku query param required' });
