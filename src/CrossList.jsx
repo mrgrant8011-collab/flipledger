@@ -708,6 +708,7 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
               size: sizeItem.size,
               price: sizeItem.yourAsk || 100,
               yourAsk: sizeItem.yourAsk,
+              cost: sizeItem.cost || 0,
               qty: 0,
               stockxListingIds: []
             };
