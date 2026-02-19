@@ -2636,7 +2636,8 @@ async function handlePost(headers, body, res) {
 // ═══════════════════════════════════════════════════════════════════════════════════
 
 async function handleDelete(headers, body, res) {
-  const { offerIds } = body || {};
+  const { offerIds: rawOfferIds } = body || {};
+  const offerIds = [...new Set(rawOfferIds || [])];
 
   if (!offerIds || !Array.isArray(offerIds) || offerIds.length === 0) {
     return res.status(400).json({
