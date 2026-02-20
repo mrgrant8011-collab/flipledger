@@ -1,3 +1,5 @@
+import { createClient } from '@supabase/supabase-js';
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 /**
  * ═══════════════════════════════════════════════════════════════════════════════════
  * EBAY LISTINGS API - v7.0 Production (Fixed Item Specifics)
@@ -1363,7 +1365,7 @@ function buildProductAspects(item, categoryAspects) {
  * Ensures a merchant location exists for the seller
  * Required for creating offers
  */
-async function ensureMerchantLocation(headers) {
+async function ensureMerchantLocation(headers, userSettings) {
   console.log('[eBay:Location] Checking for existing merchant locations...');
 
   // Step 1: List all existing locations
@@ -1406,10 +1408,10 @@ async function ensureMerchantLocation(headers) {
   console.log('[eBay:Location] No locations found, creating new location...');
 
   const address = {
-    addressLine1: process.env.EBAY_LOCATION_ADDRESS || '100 Commerce Street',
-    city: process.env.EBAY_LOCATION_CITY || 'Los Angeles',
-    stateOrProvince: process.env.EBAY_LOCATION_STATE || 'CA',
-    postalCode: process.env.EBAY_LOCATION_ZIP || '90001',
+    addressLine1: userSettings?.ebay_location_address || process.env.EBAY_LOCATION_ADDRESS || '100 Commerce Street',
+    city: userSettings?.ebay_location_city || process.env.EBAY_LOCATION_CITY || 'Los Angeles',
+    stateOrProvince: userSettings?.ebay_location_state || process.env.EBAY_LOCATION_STATE || 'CA',
+    postalCode: userSettings?.ebay_location_zip || process.env.EBAY_LOCATION_ZIP || '90001',
     country: 'US'
   };
 
@@ -2424,6 +2426,23 @@ async function handleGet(headers, query, res) {
 // HANDLER: POST - Create Listings
 // ═══════════════════════════════════════════════════════════════════════════════════
 
+async function getUserPolicies(userId) {
+  if (!userId) return null;
+  try {
+    const { data } = await supabase
+      .from('user_settings')
+      .select('ebay_fulfillment_policy_id, ebay_payment_policy_id, ebay_return_policy_id, ebay_location_address, ebay_location_city, ebay_location_state, ebay_location_zip')
+      .eq('user_id', userId)
+      .single();
+    if (data?.ebay_fulfillment_policy_id) {
+      console.log('[eBay:Policies] ✓ Using per-user policies from Supabase');
+      return data;
+    }
+  } catch (e) {
+    console.log('[eBay:Policies] No user settings found, using env fallback');
+  }
+  return null;
+}
 async function handlePost(headers, body, res) {
   console.log('\n[eBay:POST] ═══════════════════════════════════════════════════════════════');
   console.log('[eBay:POST] CREATE LISTINGS REQUEST');
@@ -2432,16 +2451,22 @@ async function handlePost(headers, body, res) {
   // ─────────────────────────────────────────────────────────────────────────
   // Validate environment variables
   // ─────────────────────────────────────────────────────────────────────────
-  const envCheck = validateAndLogEnv();
-  if (!envCheck.valid) {
+  const userSettings = await getUserPolicies(body?.userId);
+  
+  const policies = {
+    EBAY_FULFILLMENT_POLICY_ID: userSettings?.ebay_fulfillment_policy_id || process.env.EBAY_FULFILLMENT_POLICY_ID?.trim(),
+    EBAY_PAYMENT_POLICY_ID: userSettings?.ebay_payment_policy_id || process.env.EBAY_PAYMENT_POLICY_ID?.trim(),
+    EBAY_RETURN_POLICY_ID: userSettings?.ebay_return_policy_id || process.env.EBAY_RETURN_POLICY_ID?.trim()
+  };
+
+  const missingPolicies = Object.entries(policies).filter(([_, v]) => !v).map(([k]) => k);
+  if (missingPolicies.length > 0) {
     return res.status(400).json({
       success: false,
-      error: `Missing required policy IDs: ${envCheck.missing.join(', ')}`,
-      hint: 'Set EBAY_FULFILLMENT_POLICY_ID, EBAY_PAYMENT_POLICY_ID, EBAY_RETURN_POLICY_ID in environment'
+      error: `Missing required policy IDs: ${missingPolicies.join(', ')}`,
+      hint: 'Connect your eBay account in Settings or set environment variables'
     });
   }
-
-  const policies = envCheck.policies;
 
   // ─────────────────────────────────────────────────────────────────────────
   // Validate request body
@@ -2470,7 +2495,7 @@ async function handlePost(headers, body, res) {
   // Ensure merchant location exists
   // ─────────────────────────────────────────────────────────────────────────
   console.log('[eBay:POST] Ensuring merchant location...');
-  const locationResult = await ensureMerchantLocation(headers);
+  const locationResult = await ensureMerchantLocation(headers, userSettings);
 
   if (!locationResult.success) {
     return res.status(400).json({
