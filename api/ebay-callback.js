@@ -1,6 +1,8 @@
 // eBay OAuth Callback - Exchange code for access token
+import { createClient } from '@supabase/supabase-js';
 export default async function handler(req, res) {
-  const { code, error, error_description } = req.query;
+  const { code, state, error, error_description } = req.query;
+  const userId = state ? decodeURIComponent(state) : null;
   
   // User declined or error occurred
   if (error) {
@@ -46,13 +48,68 @@ export default async function handler(req, res) {
       return res.redirect(`/?ebay_error=${encodeURIComponent(tokenData.error_description || tokenData.error)}`);
     }
     
-    // Success! Redirect with token
-    // Token will be stored in localStorage on frontend
     const accessToken = tokenData.access_token;
     const refreshToken = tokenData.refresh_token;
     const expiresIn = tokenData.expires_in;
-    
-    // Redirect back to app with tokens in URL (will be grabbed and stored by frontend)
+
+    // Save tokens + auto-fetch policies per-user
+    if (userId) {
+      try {
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        if (supabaseUrl && supabaseServiceKey) {
+          const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+          // Save tokens
+          await supabase.from('user_tokens').upsert({
+            user_id: userId,
+            platform: 'ebay',
+            access_token: accessToken,
+            refresh_token: refreshToken || null,
+            expires_at: new Date(Date.now() + (expiresIn || 7200) * 1000).toISOString(),
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'user_id,platform' });
+
+          // Auto-fetch business policies
+          const policyUpdates = {};
+          const policyTypes = [
+            { endpoint: 'fulfillment_policy', fields: ['fulfillment'] },
+            { endpoint: 'payment_policy', fields: ['payment'] },
+            { endpoint: 'return_policy', fields: ['return'] }
+          ];
+
+          for (const pt of policyTypes) {
+            try {
+              const pRes = await fetch(`https://api.ebay.com/sell/account/v1/${pt.endpoint}?marketplace_id=EBAY_US`, {
+                headers: { 'Authorization': `Bearer ${accessToken}`, 'Accept': 'application/json' }
+              });
+              if (pRes.ok) {
+                const pData = await pRes.json();
+                const policies = pData[pt.endpoint.replace('_policy', '_policies')] || pData.policies || [];
+                if (policies.length > 0) {
+                  const policy = policies.find(p => p.name?.toLowerCase().includes('default')) || policies[0];
+                  policyUpdates[`ebay_${pt.fields[0]}_policy_id`] = policy[`${pt.fields[0]}PolicyId`] || policy.policyId || policy.id;
+                }
+              }
+            } catch (pErr) {
+              console.warn(`[eBay Callback] Failed to fetch ${pt.endpoint}:`, pErr.message);
+            }
+          }
+
+          if (Object.keys(policyUpdates).length > 0) {
+            policyUpdates.user_id = userId;
+            policyUpdates.updated_at = new Date().toISOString();
+            await supabase.from('user_settings').upsert(policyUpdates, { onConflict: 'user_id' });
+            console.log('[eBay Callback] Saved policies:', Object.keys(policyUpdates));
+          } else {
+            console.warn('[eBay Callback] No business policies found - user may need to create them in Seller Hub');
+          }
+        }
+      } catch (dbErr) {
+        console.error('[eBay Callback] DB/policy error:', dbErr.message);
+      }
+    }
+
     res.redirect(`/?ebay_connected=true&ebay_token=${encodeURIComponent(accessToken)}&ebay_refresh=${encodeURIComponent(refreshToken || '')}&ebay_expires=${expiresIn}`);
     
   } catch (err) {
