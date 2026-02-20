@@ -1305,12 +1305,14 @@ const loadedUserRef = useRef(null);
   // Check for StockX token in URL on load
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get('access_token');
+   const token = params.get('access_token');
+    const stockxRefresh = params.get('refresh_token');
     if (token) {
       localStorage.setItem('flipledger_stockx_token', token);
+      if (stockxRefresh) localStorage.setItem('flipledger_stockx_refresh', stockxRefresh);
       setStockxToken(token);
       setStockxConnected(true);
-      linkTokensToServer('stockx', token, null, 86400);
+      linkTokensToServer('stockx', token, stockxRefresh, 86400);
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, []);
@@ -1441,6 +1443,7 @@ const loadedUserRef = useRef(null);
   // Disconnect StockX
   const disconnectStockX = () => {
     localStorage.removeItem('flipledger_stockx_token');
+    localStorage.removeItem('flipledger_stockx_refresh');
     setStockxToken(null);
     setStockxConnected(false);
   };
@@ -1579,7 +1582,7 @@ const loadedUserRef = useRef(null);
       }]);
       setPendingCosts(prev => prev.filter(s => s.id !== saleId));
       // Mark matching inventory item as sold
-     const matchedItem = [...purchases].sort((a, b) => new Date(a.date || a.created_at) - new Date(b.date || b.created_at)).find(p => !p.sold && sale.sku && p.sku && p.sku.toLowerCase() === sale.sku.toLowerCase() && (!sale.size || !p.size || p.size.toString() === sale.size.toString()));
+    const matchedItem = [...purchases].sort((a, b) => new Date(a.date || a.created_at) - new Date(b.date || b.created_at)).find(p => !p.sold && sale.sku && p.sku && p.sku.toLowerCase() === sale.sku.toLowerCase() && (!sale.size || !p.size || p.size.toString() === sale.size.toString()));
       if (matchedItem) {
         await updateInventoryInSupabase({ ...matchedItem, sold: true });
         setPurchases(prev => prev.map(p => p.id === matchedItem.id ? { ...p, sold: true } : p));
@@ -4409,7 +4412,7 @@ Let me know if you need anything else.`;
                       </div>
                     ) : (
                       <button
-                        onClick={() => window.location.href = '/api/stockx-auth'}
+                        onClick={() => window.location.href = `/api/stockx-auth?userId=${user.id}`}
                         style={{ width: '100%', padding: '12px', background: '#00c165', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
                       >
                         Connect StockX
@@ -4579,7 +4582,7 @@ Let me know if you need anything else.`;
                       </div>
                     ) : (
                       <button
-                        onClick={() => window.location.href = '/api/ebay-auth'}
+                        onClick={() => window.location.href = `/api/ebay-auth?userId=${user.id}`}
                         style={{ width: '100%', padding: '12px', background: '#e53238', border: 'none', borderRadius: 8, color: '#fff', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
                       >
                         Connect eBay Account
@@ -4913,7 +4916,7 @@ Let me know if you need anything else.`;
                   </button>
                 ) : (
                   <button
-                    onClick={() => window.location.href = '/api/ebay-auth'}
+                    onClick={() => window.location.href = `/api/ebay-auth?userId=${user.id}`}
                     style={{ padding: '10px 20px', background: '#e53238', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
                   >
                     Connect eBay
@@ -4943,7 +4946,7 @@ Let me know if you need anything else.`;
                   </button>
                 ) : (
                   <button
-                    onClick={() => window.location.href = '/api/stockx-auth'}
+                    onClick={() => window.location.href = `/api/stockx-auth?userId=${user.id}`}
                     style={{ padding: '10px 20px', background: '#00c165', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
                   >
                     Connect
