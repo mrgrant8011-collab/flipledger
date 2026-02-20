@@ -33,7 +33,8 @@ export default function handler(req, res) {
     'https://api.ebay.com/oauth/api_scope/sell.marketing.readonly',
     'https://api.ebay.com/oauth/api_scope/sell.marketing',
     'https://api.ebay.com/oauth/api_scope/sell.account',
-    'https://api.ebay.com/oauth/api_scope/sell.account.readonly'
+    'https://api.ebay.com/oauth/api_scope/sell.account.readonly',
+    'https://api.ebay.com/oauth/api_scope/commerce.identity.readonly'
   ].join(' ');
   
   // eBay OAuth URL
