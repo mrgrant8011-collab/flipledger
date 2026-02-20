@@ -107,19 +107,22 @@ export default async function handler(req, res) {
           } else {
             console.warn('[eBay Callback] No business policies found - user may need to create them in Seller Hub');
           }
-          // Auto-fetch seller location from Inventory API
+        // Auto-fetch seller location
           try {
-            const locRes = await fetch('https://api.ebay.com/sell/inventory/v1/location?limit=1', {
-              headers: { 'Authorization': `Bearer ${accessToken}`, 'Accept': 'application/json' }
-            });
-            console.log('[eBay Callback] Inventory location API status:', locRes.status);
-            if (locRes.ok) {
-              const locData = await locRes.json();
-              console.log('[eBay Callback] Location response:', JSON.stringify(locData).substring(0, 500));
-              const locations = locData.locations || [];
-              if (locations.length > 0) {
-                const loc = locations[0].location || {};
-                const addr = loc.address || {};
+            let addressFound = false;
+
+            // Method 1: Try Identity API for registration address
+            console.log('[eBay Callback] Trying Identity API...');
+            try {
+              const idRes = await fetch('https://apiz.ebay.com/commerce/identity/v1/user/', {
+                headers: { 'Authorization': `Bearer ${accessToken}`, 'Accept': 'application/json' }
+              });
+              console.log('[eBay Callback] Identity API status:', idRes.status);
+              if (idRes.ok) {
+                const idData = await idRes.json();
+                console.log('[eBay Callback] Identity keys:', Object.keys(idData));
+                const addr = idData.registrationAddress || idData.businessAccount?.address || {};
+                console.log('[eBay Callback] Identity address:', JSON.stringify(addr));
                 if (addr.city || addr.postalCode) {
                   await supabase.from('user_settings').upsert({
                     user_id: userId,
@@ -129,11 +132,45 @@ export default async function handler(req, res) {
                     ebay_location_zip: addr.postalCode || null,
                     updated_at: new Date().toISOString()
                   }, { onConflict: 'user_id' });
-                  console.log('[eBay Callback] Saved location:', addr.city, addr.stateOrProvince);
+                  console.log('[eBay Callback] Saved location from Identity:', addr.city, addr.stateOrProvince);
+                  addressFound = true;
                 }
-              } else {
-                console.warn('[eBay Callback] No inventory locations found');
               }
+            } catch (idErr) {
+              console.warn('[eBay Callback] Identity API error:', idErr.message);
+            }
+
+            // Method 2: Fall back to fulfillment policy shipFromLocation
+            if (!addressFound) {
+              console.log('[eBay Callback] Trying fulfillment policy shipFromLocation...');
+              const fpRes = await fetch('https://api.ebay.com/sell/account/v1/fulfillment_policy?marketplace_id=EBAY_US', {
+                headers: { 'Authorization': `Bearer ${accessToken}`, 'Accept': 'application/json' }
+              });
+              if (fpRes.ok) {
+                const fpData = await fpRes.json();
+                const fps = fpData.fulfillmentPolicies || [];
+                for (const fp of fps) {
+                  const sfl = fp.shipFromLocation || {};
+                  console.log('[eBay Callback] shipFromLocation:', JSON.stringify(sfl));
+                  if (sfl.city || sfl.postalCode) {
+                    await supabase.from('user_settings').upsert({
+                      user_id: userId,
+                      ebay_location_address: sfl.addressLine1 || null,
+                      ebay_location_city: sfl.city || null,
+                      ebay_location_state: sfl.stateOrProvince || null,
+                      ebay_location_zip: sfl.postalCode || null,
+                      updated_at: new Date().toISOString()
+                    }, { onConflict: 'user_id' });
+                    console.log('[eBay Callback] Saved location from policy:', sfl.city, sfl.stateOrProvince);
+                    addressFound = true;
+                    break;
+                  }
+                }
+              }
+            }
+
+            if (!addressFound) {
+              console.warn('[eBay Callback] No address found from any source');
             }
           } catch (locErr) {
             console.warn('[eBay Callback] Failed to fetch location:', locErr.message);
