@@ -107,6 +107,31 @@ export default async function handler(req, res) {
           } else {
             console.warn('[eBay Callback] No business policies found - user may need to create them in Seller Hub');
           }
+          // Auto-fetch seller location from eBay Identity API
+          try {
+            const identityRes = await fetch('https://apiz.ebay.com/commerce/identity/v1/user/', {
+              headers: { 'Authorization': `Bearer ${accessToken}`, 'Accept': 'application/json' }
+            });
+            if (identityRes.ok) {
+              const identity = await identityRes.json();
+              const addr = identity.registrationAddress || identity.businessAddress || {};
+              if (addr.city || addr.postalCode) {
+                await supabase.from('user_settings').upsert({
+                  user_id: userId,
+                  ebay_location_address: addr.addressLine1 || null,
+                  ebay_location_city: addr.city || null,
+                  ebay_location_state: addr.stateOrProvince || null,
+                  ebay_location_zip: addr.postalCode || null,
+                  updated_at: new Date().toISOString()
+                }, { onConflict: 'user_id' });
+                console.log('[eBay Callback] Saved location:', addr.city, addr.stateOrProvince);
+              }
+            } else {
+              console.warn('[eBay Callback] Identity API returned', identityRes.status);
+            }
+          } catch (locErr) {
+            console.warn('[eBay Callback] Failed to fetch location:', locErr.message);
+          }
         }
       } catch (dbErr) {
         console.error('[eBay Callback] DB/policy error:', dbErr.message);
