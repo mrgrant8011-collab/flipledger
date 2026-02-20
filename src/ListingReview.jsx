@@ -28,7 +28,7 @@ const CONDITIONS = [
   { value: 'USED_GOOD', label: 'Pre-owned - Good' }
 ];
 
-export default function ListingReview({ items = [], ebayToken, onBack, onComplete, c }) {
+export default function ListingReview({ items = [], ebayToken, userId, onBack, onComplete, c }) {
   // Items with enriched data from EPID lookup
   const [enrichedItems, setEnrichedItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -382,7 +382,7 @@ Questions? Message me before purchasing!`
           'Authorization': `Bearer ${ebayToken}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ products, publishImmediately: true })
+       body: JSON.stringify({ products, publishImmediately: true, userId })
       });
 
       const data = await res.json();
