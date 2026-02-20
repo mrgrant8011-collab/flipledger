@@ -107,9 +107,10 @@ export default async function handler(req, res) {
           } else {
             console.warn('[eBay Callback] No business policies found - user may need to create them in Seller Hub');
           }
-          // Auto-fetch seller location from eBay Identity API
+           // Auto-fetch seller location from eBay Identity API
+          console.log('[eBay Callback] Starting Identity API fetch...');
           try {
-            const identityRes = await fetch('https://apiz.ebay.com/commerce/identity/v1/user/', {
+            const identityRes = await fetch('https://api.ebay.com/commerce/identity/v1/user/', {
               headers: { 'Authorization': `Bearer ${accessToken}`, 'Accept': 'application/json' }
             });
             if (identityRes.ok) {
