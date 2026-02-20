@@ -282,6 +282,7 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
       const { data, error } = await supabase
         .from('cross_list_links')
        .insert([{
+          user_id: userId,
           sku: mapping.sku,
           size: mapping.size,
           stockx_listing_id: mapping.stockx_listing_id,
