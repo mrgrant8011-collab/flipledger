@@ -2,6 +2,7 @@
 export default function handler(req, res) {
   const clientId = process.env.EBAY_CLIENT_ID;
   const ruName = process.env.EBAY_RU_NAME;
+  const userId = req.query.userId || '';
   
   // Debug mode - show what we have
   if (req.query.debug === 'true') {
@@ -36,7 +37,7 @@ export default function handler(req, res) {
   ].join(' ');
   
   // eBay OAuth URL
-  const authUrl = `https://auth.ebay.com/oauth2/authorize?client_id=${clientId}&response_type=code&redirect_uri=${ruName}&scope=${encodeURIComponent(scopes)}`;
+ const authUrl = `https://auth.ebay.com/oauth2/authorize?client_id=${clientId}&response_type=code&redirect_uri=${ruName}&scope=${encodeURIComponent(scopes)}&state=${encodeURIComponent(userId)}`;
   
   res.redirect(authUrl);
 }
