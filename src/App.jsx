@@ -1579,7 +1579,7 @@ const loadedUserRef = useRef(null);
       }]);
       setPendingCosts(prev => prev.filter(s => s.id !== saleId));
       // Mark matching inventory item as sold
-      const matchedItem = purchases.find(p => !p.sold && sale.sku && p.sku && p.sku.toLowerCase() === sale.sku.toLowerCase() && (!sale.size || !p.size || p.size.toString() === sale.size.toString()));
+     const matchedItem = [...purchases].sort((a, b) => new Date(a.date || a.created_at) - new Date(b.date || b.created_at)).find(p => !p.sold && sale.sku && p.sku && p.sku.toLowerCase() === sale.sku.toLowerCase() && (!sale.size || !p.size || p.size.toString() === sale.size.toString()));
       if (matchedItem) {
         await updateInventoryInSupabase({ ...matchedItem, sold: true });
         setPurchases(prev => prev.map(p => p.id === matchedItem.id ? { ...p, sold: true } : p));
