@@ -201,6 +201,10 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
     try { return localStorage.getItem('fl_ebay_store_type') || 'none'; } catch { return 'none'; }
   });
   const [toast, setToast] = useState(null);
+  const [userId, setUserId] = useState(null);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => { if (user) setUserId(user.id); });
+  }, []);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -842,7 +846,7 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
       const res = await fetch('/api/ebay-listings', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${ebayToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ products, publishImmediately })
+        body: JSON.stringify({ products, publishImmediately, userId })
       });
       
       const data = await res.json();
@@ -1036,6 +1040,7 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
       <ListingReview
         items={itemsToReview}
         ebayToken={ebayToken}
+        userId={userId}
         onComplete={handleReviewComplete}
         onBack={handleReviewBack}
         c={c}
