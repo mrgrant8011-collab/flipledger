@@ -73,9 +73,9 @@ export default async function handler(req, res) {
           // Auto-fetch business policies
           const policyUpdates = {};
           const policyTypes = [
-            { endpoint: 'fulfillment_policy', fields: ['fulfillment'] },
-            { endpoint: 'payment_policy', fields: ['payment'] },
-            { endpoint: 'return_policy', fields: ['return'] }
+            { endpoint: 'fulfillment_policy', responseKey: 'fulfillmentPolicies', idKey: 'fulfillmentPolicyId', dbField: 'ebay_fulfillment_policy_id' },
+            { endpoint: 'payment_policy', responseKey: 'paymentPolicies', idKey: 'paymentPolicyId', dbField: 'ebay_payment_policy_id' },
+            { endpoint: 'return_policy', responseKey: 'returnPolicies', idKey: 'returnPolicyId', dbField: 'ebay_return_policy_id' }
           ];
 
           for (const pt of policyTypes) {
@@ -85,11 +85,14 @@ export default async function handler(req, res) {
               });
               if (pRes.ok) {
                 const pData = await pRes.json();
-                const policies = pData[pt.endpoint.replace('_policy', '_policies')] || pData.policies || [];
+                console.log(`[eBay Callback] ${pt.endpoint} response keys:`, Object.keys(pData));
+                const policies = pData[pt.responseKey] || pData.policies || [];
                 if (policies.length > 0) {
                   const policy = policies.find(p => p.name?.toLowerCase().includes('default')) || policies[0];
-                  policyUpdates[`ebay_${pt.fields[0]}_policy_id`] = policy[`${pt.fields[0]}PolicyId`] || policy.policyId || policy.id;
+                  policyUpdates[pt.dbField] = policy[pt.idKey] || policy.policyId || policy.id;
                 }
+              } else {
+                console.warn(`[eBay Callback] ${pt.endpoint} returned ${pRes.status}`);
               }
             } catch (pErr) {
               console.warn(`[eBay Callback] Failed to fetch ${pt.endpoint}:`, pErr.message);
