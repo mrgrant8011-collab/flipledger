@@ -2690,9 +2690,9 @@ console.log('Found', items.length, 'items');
       </aside>
 
       <main id="mainContent" style={{ flex: 1, padding: '32px 48px', overflowY: 'auto' }}>
-        <div className="desktop-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32, paddingBottom: 24, borderBottom: `1px solid ${c.border}` }}>
+       <div className="desktop-header" style={{ display: page === 'listings' ? 'none' : 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32, paddingBottom: 24, borderBottom: `1px solid ${c.border}` }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: '0.5px' }}>{navItems.find(n => n.id === page)?.label || 'Dashboard'}</h1>
+           <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: '0.5px' }}>{page === 'listings' ? '' : (navItems.find(n => n.id === page)?.label || 'Dashboard')}</h1>
           </div>
           <div className="no-mobile" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 20px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 100, fontSize: 12, fontWeight: 500, color: c.textMuted }}>
