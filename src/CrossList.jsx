@@ -1115,10 +1115,7 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
           📦 StockX Listings ({stockxListings.length})
           {!stockxToken && <span style={{ marginLeft: 6, color: '#ef4444', fontSize: 10 }}>⚠️</span>}
         </button>
-        <button onClick={() => { setSource('inventory'); setSelectedItems(new Set()); }}
-          style={{ padding: '10px 16px', background: source === 'inventory' ? c.card : 'transparent', border: `1px solid ${source === 'inventory' ? c.gold : c.border}`, borderRadius: 8, color: source === 'inventory' ? c.gold : c.textMuted, fontWeight: 600, cursor: 'pointer' }}>
-          🏷️ FlipLedger Inventory ({(purchases || []).filter(p => !p.sold).length})
-        </button>
+       
       </div>
 
       {/* Stats */}
@@ -1234,24 +1231,8 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
       <div style={{ ...card, overflow: 'hidden' }}>
         <div style={{ padding: '12px 16px', borderBottom: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: c.textMuted }}>PRODUCTS ({filteredProducts.length})</span>
-          {viewFilter === 'unlisted' && (
-            <button onClick={() => {
-              const allUnlisted = [];
-              filteredProducts.forEach(p => { p.sizes.forEach(s => { if (!s.isOnEbay) allUnlisted.push(s.key); }); });
-              setSelectedItems(new Set(allUnlisted));
-            }} style={{ fontSize: 11, color: c.gold, background: 'none', border: 'none', cursor: 'pointer' }}>
-              Select All Unlisted
-            </button>
-          )}
-          {viewFilter === 'listed' && (
-            <button onClick={() => {
-              const allOnEbay = [];
-              filteredProducts.forEach(p => { p.sizes.forEach(s => { if (s.isOnEbay) allOnEbay.push(s.key); }); });
-              setSelectedItems(new Set(allOnEbay));
-            }} style={{ fontSize: 11, color: c.red, background: 'none', border: 'none', cursor: 'pointer' }}>
-              Select All on eBay
-            </button>
-          )}
+          
+        
         </div>
 
     <div style={{ maxHeight: 600, overflowY: 'auto' }}>
