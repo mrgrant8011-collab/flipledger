@@ -2659,7 +2659,7 @@ console.log('Found', items.length, 'items');
       {/* Mobile Menu Overlay */}
       {mobileMenuOpen && <div className="mobile-only" onClick={() => setMobileMenuOpen(false)} style={{ display: 'none', position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 199 }} id="mobileOverlay" />}
 
-      <aside className={`no-print ${mobileMenuOpen ? 'open' : ''}`} id="sidebar" style={{ width: 240, minWidth: 240, background: '#0A0A0A', borderRight: `1px solid ${c.border}`, display: 'flex', flexDirection: 'column', zIndex: 200, position: 'relative' }}>
+      <aside className={`no-print ${mobileMenuOpen ? 'open' : ''}`} id="sidebar" style={{ width: 200, minWidth: 200, background: '#0A0A0A', borderRight: `1px solid ${c.border}`, display: 'flex', flexDirection: 'column', zIndex: 200, position: 'relative' }}>
         <div style={{ padding: 24, borderBottom: `1px solid ${c.border}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <div style={{ width: 44, height: 44, background: `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)`, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18, color: '#000' }}>FL</div>
