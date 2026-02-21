@@ -2689,7 +2689,7 @@ console.log('Found', items.length, 'items');
         </div>
       </aside>
 
-      <main id="mainContent" style={{ flex: 1, padding: '32px 48px', overflowY: 'auto' }}>
+      <main id="mainContent" style={{ flex: 1, padding: '24px 24px', overflowY: 'auto' }}>
        <div className="desktop-header" style={{ display: page === 'listings' ? 'none' : 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32, paddingBottom: 24, borderBottom: `1px solid ${c.border}` }}>
           <div>
            <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: '0.5px' }}>{page === 'listings' ? '' : (navItems.find(n => n.id === page)?.label || 'Dashboard')}</h1>
