@@ -1091,8 +1091,24 @@ const loadedUserRef = useRef(null);
           }
         }
 
-        if (ebayTok) loadEbayPolicies(ebayTok);
-        
+       if (ebayTok) loadEbayPolicies(ebayTok);
+
+        // Load saved eBay policy selections
+        const { data: policySettings } = await supabase
+          .from('user_settings')
+          .select('setting_value')
+          .eq('user_id', user.id)
+          .eq('setting_key', 'ebay_policies')
+          .single();
+
+        if (policySettings?.setting_value) {
+          const saved = policySettings.setting_value;
+          setSelectedPolicies({
+            fulfillment: saved.fulfillment_policy_id || '',
+            payment: saved.payment_policy_id || '',
+            return: saved.return_policy_id || ''
+          });
+        }
 
       } catch (error) {
         console.error('Error loading data:', error);
