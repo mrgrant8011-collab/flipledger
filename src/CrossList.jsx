@@ -1118,25 +1118,7 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
        
       </div>
 
-      {/* Stats */}
-      <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
-        <div style={{ ...card, padding: '12px 16px', flex: 1 }}>
-          <div style={{ fontSize: 11, color: c.textMuted, marginBottom: 4 }}>TOTAL</div>
-          <div style={{ fontSize: 20, fontWeight: 700 }}>{stats.total}</div>
-        </div>
-        <div style={{ ...card, padding: '12px 16px', flex: 1 }}>
-          <div style={{ fontSize: 11, color: c.textMuted, marginBottom: 4 }}>ON EBAY</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: c.green }}>{stats.onEbay}</div>
-        </div>
-        <div style={{ ...card, padding: '12px 16px', flex: 1 }}>
-          <div style={{ fontSize: 11, color: c.textMuted, marginBottom: 4 }}>NOT ON EBAY</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: c.gold }}>{stats.notOnEbay}</div>
-        </div>
-        <div style={{ ...card, padding: '12px 16px', flex: 1 }}>
-          <div style={{ fontSize: 11, color: c.textMuted, marginBottom: 4 }}>ACTIVE MAPPINGS</div>
-          <div style={{ fontSize: 20, fontWeight: 700 }}>{mappings.filter(m => m.status === 'active').length}</div>
-        </div>
-      </div>
+     
 
       {/* View Filter */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
