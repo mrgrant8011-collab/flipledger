@@ -873,6 +873,10 @@ function App() {
   const [goatConnected, setGoatConnected] = useState(false);
   const [ebayConnected, setEbayConnected] = useState(false);
   const [ebayToken, setEbayToken] = useState(null);
+  const [ebayPolicies, setEbayPolicies] = useState({ fulfillment: [], payment: [], return: [] });
+  const [selectedPolicies, setSelectedPolicies] = useState({ fulfillment: '', payment: '', return: '' });
+  const [policiesLoading, setPoliciesLoading] = useState(false);
+  const [policiesSaved, setPoliciesSaved] = useState(false);
   const [qbConnected, setQbConnected] = useState(false);
   const [stockxSyncing, setStockxSyncing] = useState(false);
   const [ebaySyncing, setEbaySyncing] = useState(false);
@@ -1062,10 +1066,32 @@ const loadedUserRef = useRef(null);
         const ebayTok = await getValidEbayToken((newToken) => {
           setEbayToken(newToken);
         });
-        if (ebayTok) {
+       if (ebayTok) {
           setEbayToken(ebayTok);
           setEbayConnected(true);
         }
+
+        // Fetch eBay business policies
+        async function loadEbayPolicies(token) {
+          setPoliciesLoading(true);
+          try {
+            const res = await fetch('/api/ebay-policies', {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+              const data = await res.json();
+              if (data.policies) {
+                setEbayPolicies(data.policies);
+              }
+            }
+          } catch (err) {
+            console.error('Failed to fetch eBay policies:', err);
+          } finally {
+            setPoliciesLoading(false);
+          }
+        }
+
+        if (ebayTok) loadEbayPolicies(ebayTok);
         
 
       } catch (error) {
@@ -1288,6 +1314,31 @@ const loadedUserRef = useRef(null);
 
   // ============ LOCAL STORAGE BACKUP (for settings/tokens) ============
 
+  // Save eBay policy defaults to Supabase
+  async function saveEbayPolicies() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch('/api/save-ebay-policies', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({
+          fulfillment_policy_id: selectedPolicies.fulfillment,
+          payment_policy_id: selectedPolicies.payment,
+          return_policy_id: selectedPolicies.return
+        })
+      });
+      if (res.ok) {
+        setPoliciesSaved(true);
+        setTimeout(() => setPoliciesSaved(false), 3000);
+      }
+    } catch (err) {
+      console.error('Failed to save policies:', err);
+    }
+  }
   // Save settings to localStorage (user-specific)
   useEffect(() => {
     if (user) {
@@ -4954,12 +5005,79 @@ Let me know if you need anything else.`;
                 )}
               </div>
             </div>
-          </div>
+         </div>
+
+          {/* eBay Business Policies */}
+          {ebayConnected && (
+            <div style={{ ...cardStyle, padding: 24, marginBottom: 16 }}>
+              <h3 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10 }}>
+                📦 eBay Business Policies
+              </h3>
+
+              {policiesLoading && (
+                <p style={{ margin: 0, fontSize: 13, color: c.textMuted }}>Loading policies...</p>
+              )}
+
+              {!policiesLoading && ebayPolicies.fulfillment.length === 0 && (
+                <p style={{ margin: 0, fontSize: 13, color: c.textMuted }}>No policies found. Reconnect eBay to reload.</p>
+              )}
+
+              {ebayPolicies.fulfillment.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 12, color: c.textMuted, marginBottom: 4, display: 'block' }}>Shipping Policy</label>
+                    <select
+                      value={selectedPolicies.fulfillment}
+                      onChange={e => setSelectedPolicies(prev => ({ ...prev, fulfillment: e.target.value }))}
+                      style={{ width: '100%', padding: '10px 12px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 13 }}
+                    >
+                      {ebayPolicies.fulfillment.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: 12, color: c.textMuted, marginBottom: 4, display: 'block' }}>Payment Policy</label>
+                    <select
+                      value={selectedPolicies.payment}
+                      onChange={e => setSelectedPolicies(prev => ({ ...prev, payment: e.target.value }))}
+                      style={{ width: '100%', padding: '10px 12px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 13 }}
+                    >
+                      {ebayPolicies.payment.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: 12, color: c.textMuted, marginBottom: 4, display: 'block' }}>Return Policy</label>
+                    <select
+                      value={selectedPolicies.return}
+                      onChange={e => setSelectedPolicies(prev => ({ ...prev, return: e.target.value }))}
+                      style={{ width: '100%', padding: '10px 12px', background: c.card, border: `1px solid ${c.border}`, borderRadius: 8, color: c.text, fontSize: 13 }}
+                    >
+                      {ebayPolicies.return.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <button
+                    onClick={saveEbayPolicies}
+                    style={{ marginTop: 8, padding: '10px 20px', background: policiesSaved ? 'rgba(16,185,129,0.2)' : '#e53238', border: policiesSaved ? '1px solid rgba(16,185,129,0.4)' : 'none', borderRadius: 8, color: policiesSaved ? '#10b981' : '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+                  >
+                    {policiesSaved ? '✓ Saved!' : 'Save Defaults'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Simple explanation */}
           <div style={{ ...cardStyle, padding: 24, marginBottom: 16, background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.1)' }}>
-            <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700 }}>💡 Fee Settings</h3>
-            <p style={{ margin: 0, fontSize: 13, color: c.textMuted, lineHeight: 1.6 }}>
+           <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700 }}>💡 Fee Settings</h3>
+            <p style={{ margin: '0 0 0', fontSize: 13, color: c.textMuted, lineHeight: 1.6 }}>
               <strong>API Sync & CSV Import:</strong> Fees are automatically calculated from your StockX payout. No settings needed.
             </p>
             <p style={{ margin: '12px 0 0', fontSize: 13, color: c.textMuted, lineHeight: 1.6 }}>
