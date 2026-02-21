@@ -45,13 +45,16 @@ export default function ListingReview({ items = [], ebayToken, userId, onBack, o
 
   // Default description template
   const [descriptionTemplate] = useState(
-    `100% Authentic, Brand New with Original Box ✅
+    `Condition: Brand New
 
-• Ships within 1-2 business days
-• Double-boxed for protection
-• All items verified authentic
+AUTHENTICITY
+All items are guaranteed 100% authentic and sourced from authorized retailers!
 
-Questions? Message me before purchasing!`
+SHIPPING
+Orders ship Monday-Friday, excluding holidays.
+All orders are shipped double-boxed with tracking & delivery confirmation.
+All order information is FINAL. Please verify your shipping address before purchasing.
+We cannot guarantee the ability to cancel orders once placed. Please review all details before checkout.`
   );
 
  const fetchMarketData = async (sku) => {
@@ -191,16 +194,17 @@ Questions? Message me before purchasing!`
   const buildDescription = (item, catalogData) => {
     const name = catalogData?.title || item.name || 'Item';
     const sku = item.sku || item.styleId || '';
+    const size = item.size || '';
     const colorway = item.colorway || catalogData?.colorway || '';
     
     let desc = `${name}\n`;
     if (sku) desc += `Style Code: ${sku}\n`;
+    if (size) desc += `Size: ${size}\n`;
     if (colorway) desc += `Colorway: ${colorway}\n`;
     desc += `\n${descriptionTemplate}`;
     
     return desc;
   };
-
   // ============================================
   // HELPER FUNCTIONS
   // ============================================
