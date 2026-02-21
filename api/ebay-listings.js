@@ -1584,26 +1584,27 @@ function sanitizeTitle(title) {
  * Generate a description from item data
  */
 function generateDescription(itemData) {
-  const parts = [];
-  
-  parts.push(`<p><strong>${sanitizeTitle(itemData.title)}</strong></p>`);
-  
-  if (itemData.size) {
-    parts.push(`<p><strong>Size:</strong> ${itemData.size}</p>`);
-  }
-  
-  if (itemData.colorway) {
-    parts.push(`<p><strong>Colorway:</strong> ${itemData.colorway}</p>`);
-  }
-  
-  if (itemData.styleId) {
-    parts.push(`<p><strong>Style Code:</strong> ${itemData.styleId}</p>`);
-  }
-  
-  parts.push(`<p>Brand new, 100% authentic. Ships within 1-2 business days.</p>`);
-  parts.push(`<p>All items are shipped double-boxed for protection.</p>`);
-  
-  return parts.join('\n');
+  const name = sanitizeTitle(itemData.title);
+  const styleId = itemData.styleId || '';
+  const size = itemData.size || '';
+  const colorway = itemData.colorway || '';
+
+  let desc = `<p><strong>${name}</strong></p>`;
+  if (styleId) desc += `<p>Style Code: ${styleId}</p>`;
+  if (size) desc += `<p>Size: ${size}</p>`;
+  if (colorway) desc += `<p>Colorway: ${colorway}</p>`;
+  desc += `<p>Condition: Brand New</p>`;
+  desc += `<br>`;
+  desc += `<p><strong>AUTHENTICITY</strong></p>`;
+  desc += `<p>All items are guaranteed 100% authentic and sourced from authorized retailers!</p>`;
+  desc += `<br>`;
+  desc += `<p><strong>SHIPPING</strong></p>`;
+  desc += `<p>Orders ship Monday-Friday, excluding holidays.</p>`;
+  desc += `<p>All orders are shipped double-boxed with tracking & delivery confirmation.</p>`;
+  desc += `<p>All order information is FINAL. Please verify your shipping address before purchasing.</p>`;
+  desc += `<p>We cannot guarantee the ability to cancel orders once placed. Please review all details before checkout.</p>`;
+
+  return desc;
 }
 
 /**
