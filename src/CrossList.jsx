@@ -1316,10 +1316,29 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
                               )}
                               <div style={{ fontWeight: 700, fontSize: 15, color: isSelected ? (viewFilter === 'listed' ? c.green : c.gold) : c.text }}>{size}</div>
                               <div style={{ fontSize: 11, color: isSelected ? (viewFilter === 'listed' ? c.green : c.gold) : c.textMuted, marginTop: 2 }}>${price || '—'}</div>
-                              {onEbayCount > 0 && (
+                             {onEbayCount > 0 && (
                                 <div style={{ fontSize: 9, color: c.green, fontWeight: 600, marginTop: 3 }}>
                                   {onEbayCount}/{items.length} eBay
                                 </div>
+                              )}
+                              {onEbayCount > 0 && (
+                                <div
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const offerIds = [...new Set(items.filter(s => s.ebayOfferId).map(s => s.ebayOfferId))];
+                                    if (offerIds.length > 0 && confirm(`Remove size ${size} from eBay?`)) {
+                                      handleDelistFromEbay(offerIds);
+                                    }
+                                  }}
+                                  style={{
+                                    marginTop: 4, fontSize: 9, color: c.red, cursor: 'pointer',
+                                    padding: '2px 6px', borderRadius: 4, background: 'rgba(239,68,68,0.1)',
+                                    fontWeight: 600
+                                  }}>
+                                  🗑️ Remove
+                                </div>
+                              )}
+                            </div>
                               )}
                             </div>
                           );
