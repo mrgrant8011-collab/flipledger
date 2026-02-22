@@ -1339,8 +1339,7 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
                                 </div>
                               )}
                             </div>
-                              )}
-                            </div>
+                            
                           );
                         })}
                       </div>
