@@ -445,7 +445,10 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
         const sxMatch = sx.find(s => {
           const sxBaseClean = (s.sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
           const sxSizeClean = (s.size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-          return sxBaseClean === baseSkuClean && sxSizeClean === size;
+          if (sxSizeClean !== size) return false;
+          if (sxBaseClean === baseSkuClean) return true;
+          if (sxBaseClean.includes(baseSkuClean) || baseSkuClean.includes(sxBaseClean)) return true;
+          return false;
         });
         
         const baseSku = sxMatch?.sku || baseSkuClean; // Use original StockX SKU if found
