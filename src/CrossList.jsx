@@ -305,11 +305,11 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
     }
   };
 
-  const updateMappingStatus = async (ebayOfferId, status) => {
+  const updateMappingStatus = async (ebayOfferId, status, extras = {}) => {
     try {
       const { error } = await supabase
         .from('cross_list_links')
-        .update({ status })
+        .update({ status, updated_at: new Date().toISOString(), ...extras })
         .eq('ebay_offer_id', ebayOfferId);
       
       if (error) console.error('[CrossList] Update mapping error:', error);
@@ -470,8 +470,15 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
         }
       }
       
-      // Verify mappings - mark as delisted if not found on eBay
-const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
+     // SAFEGUARD: Don't mass-delist if eBay returned 0 listings (likely sync failure)
+if (eb.length === 0) {
+  console.log('[CrossList] Skipping delist check — eBay returned 0 listings (possible sync failure)');
+  await loadMappings();
+  showToast(`Synced ${sx.length} StockX + 0 eBay (skipped delist check)`);
+  setSyncing(false);
+  return;
+}
+      const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
       const activeMappings = mappings.filter(m => m.status === 'active');
       let delistedCount = 0;
       
@@ -1045,7 +1052,10 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
     
     if (toRemove.length > 0) {
       showToast(`Found ${oversells} potential oversells. Removing from eBay...`);
-      await handleDelistFromEbay(toRemove);
+     for (const offerId of toRemove) {
+  await handleDelistFromEbay([offerId]);
+  await updateMappingStatus(offerId, 'sold', { sold_on: 'stockx', sold_at: new Date().toISOString() });
+}
     } else {
       showToast('No oversells detected ✓');
     }
