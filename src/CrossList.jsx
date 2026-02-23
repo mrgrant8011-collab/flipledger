@@ -543,7 +543,20 @@ const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
       
       // FIX: Use canonical makeEbaySku() for matching instead of string concat
       const expectedEbaySku = makeEbaySku(sku, l.size);
-      const ebayMatch = ebaySkuSet.skuToOffer.get(expectedEbaySku);
+      let ebayMatch = ebaySkuSet.skuToOffer.get(expectedEbaySku);
+      
+      // Contains match for dual-SKU products
+      if (!ebayMatch) {
+        const cleanBase = (sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        for (const [ebSku, ebOffer] of ebaySkuSet.skuToOffer) {
+          const { baseSku: ebBase, size: ebSize } = parseEbaySku(ebSku);
+          const cleanSize = (l.size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          if (ebSize === cleanSize && (ebBase.includes(cleanBase) || cleanBase.includes(ebBase))) {
+            ebayMatch = ebOffer;
+            break;
+          }
+        }
+      }
       
       // Also check mappings by stockx_listing_id
       const mapping = mappings.find(m => m.stockx_listing_id === l.listingId && m.status === 'active');
