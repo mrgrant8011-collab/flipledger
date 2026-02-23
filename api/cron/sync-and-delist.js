@@ -19,7 +19,10 @@ async function syncEbaySales(userId, accessToken) {
     const url = `${getBaseUrl()}/api/ebay-sales?startDate=${startDate}&endDate=${endDate}`;
     
     const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
-    if (!response.ok) return { success: false, sales: [] };
+    if (!response.ok) {
+  const errBody = await response.text().catch(() => '');
+  return { success: false, sales: [], error: `HTTP ${response.status}: ${errBody.substring(0, 200)}` };
+}
     
     const data = await response.json();
     const sales = data.sales || [];
@@ -47,7 +50,10 @@ async function syncStockXSales(userId, accessToken) {
   try {
     const url = `${getBaseUrl()}/api/stockx-sales`;
     const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
-    if (!response.ok) return { success: false, sales: [] };
+    if (!response.ok) {
+  const errBody = await response.text().catch(() => '');
+  return { success: false, sales: [], error: `HTTP ${response.status}: ${errBody.substring(0, 200)}` };
+}
     
     const data = await response.json();
     const sales = data.sales || [];
