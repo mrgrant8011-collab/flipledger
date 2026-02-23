@@ -2339,25 +2339,43 @@ async function handleGet(headers, query, res) {
   try {
     console.log('[eBay:GET] Fetching inventory items first (workaround for eBay API bug)...');
     
-    // Step 1: Get inventory items
-    const invUrl = `${EBAY_API_BASE}/sell/inventory/v1/inventory_item?limit=100`;
-    const invRes = await fetch(invUrl, { method: 'GET', headers });
+   // Step 1: Get ALL inventory items (paginated)
+    const inventoryItems = [];
+    let offset = 0;
+    const pageSize = 100;
     
-    if (!invRes.ok) {
-      const errText = await invRes.text();
-      console.error(`[eBay:GET] Inventory fetch failed ${invRes.status}:`, errText.substring(0, 300));
-      const parsed = parseEbayError(errText);
-      return res.status(invRes.status).json({
-        success: false,
-        error: parsed.summary,
-        ebayErrors: parsed.ebayErrors,
-        rawResponse: errText.substring(0, 300)
-      });
+    while (true) {
+      const invUrl = `${EBAY_API_BASE}/sell/inventory/v1/inventory_item?limit=${pageSize}&offset=${offset}`;
+      console.log(`[eBay:GET] Fetching inventory items offset=${offset}...`);
+      const invRes = await fetch(invUrl, { method: 'GET', headers });
+      
+      if (!invRes.ok) {
+        const errText = await invRes.text();
+        console.error(`[eBay:GET] Inventory fetch failed ${invRes.status}:`, errText.substring(0, 300));
+        if (inventoryItems.length === 0) {
+          const parsed = parseEbayError(errText);
+          return res.status(invRes.status).json({
+            success: false,
+            error: parsed.summary,
+            ebayErrors: parsed.ebayErrors,
+            rawResponse: errText.substring(0, 300)
+          });
+        }
+        break;
+      }
+      
+      const invData = await invRes.json();
+      const pageItems = invData.inventoryItems || [];
+      inventoryItems.push(...pageItems);
+      
+      console.log(`[eBay:GET] Page: ${pageItems.length} items (total so far: ${inventoryItems.length})`);
+      
+      // No more pages
+      if (pageItems.length < pageSize) break;
+      offset += pageSize;
     }
     
-    const invData = await invRes.json();
-    const inventoryItems = invData.inventoryItems || [];
-    console.log(`[eBay:GET] Found ${inventoryItems.length} inventory items`);
+    console.log(`[eBay:GET] Found ${inventoryItems.length} total inventory items`);
     
     // Step 2: Filter to valid SKUs only (alphanumeric)
     const validSkus = inventoryItems
