@@ -15,17 +15,28 @@ function verifyCronSecret(req) {
 
 async function fetchStockXActiveOrders(accessToken) {
   try {
-    const url = 'https://api.stockx.com/v2/selling/orders/active?pageSize=100';
-    const res = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'x-api-key': process.env.STOCKX_API_KEY,
-        'Content-Type': 'application/json'
-      }
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.orders || [];
+    let allOrders = [];
+    let pageNumber = 1;
+
+    while (pageNumber <= 10) {
+      const url = `https://api.stockx.com/v2/selling/orders/active?pageSize=100&pageNumber=${pageNumber}`;
+      const res = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'x-api-key': process.env.STOCKX_API_KEY,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (!res.ok) break;
+      const data = await res.json();
+      const orders = data.orders || [];
+      if (orders.length === 0) break;
+      allOrders = [...allOrders, ...orders];
+      if (!data.hasNextPage || orders.length < 100) break;
+      pageNumber++;
+    }
+
+    return allOrders;
   } catch (err) {
     console.error('[Cron] StockX active orders fetch error:', err.message);
     return [];
