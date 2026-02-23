@@ -2377,26 +2377,37 @@ async function handleGet(headers, query, res) {
     
     console.log(`[eBay:GET] Found ${inventoryItems.length} total inventory items`);
     
-    // Step 2: Filter to valid SKUs only (alphanumeric)
-    const validSkus = inventoryItems
-      .map(item => item.sku)
-      .filter(sku => sku && /^[A-Za-z0-9]+$/.test(sku));
+  
     
-    console.log(`[eBay:GET] Valid SKUs: ${validSkus.length} of ${inventoryItems.length}`);
-    
-    // Step 3: Fetch offers for each valid SKU
+    // Step 3: Fetch ALL offers (paginated bulk - handles thousands)
     const allOffers = [];
-    for (const sku of validSkus) {
+    let offerOffset = 0;
+    const offerPageSize = 200;
+    
+    while (true) {
       try {
-        const offerUrl = `${EBAY_API_BASE}/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}`;
+        const offerUrl = `${EBAY_API_BASE}/sell/inventory/v1/offer?marketplace_id=${EBAY_MARKETPLACE_ID}&limit=${offerPageSize}&offset=${offerOffset}`;
+        console.log(`[eBay:GET] Fetching offers offset=${offerOffset}...`);
         const offerRes = await fetch(offerUrl, { method: 'GET', headers });
         
-        if (offerRes.ok) {
-          const offerData = await offerRes.json();
-          if (offerData.offers && offerData.offers.length > 0) {
-            allOffers.push(...offerData.offers);
-          }
+        if (!offerRes.ok) {
+          console.error(`[eBay:GET] Offer fetch failed at offset ${offerOffset}:`, offerRes.status);
+          break;
         }
+        
+        const offerData = await offerRes.json();
+        const pageOffers = offerData.offers || [];
+        allOffers.push(...pageOffers);
+        
+        console.log(`[eBay:GET] Offers page: ${pageOffers.length} (total: ${allOffers.length})`);
+        
+        if (pageOffers.length < offerPageSize) break;
+        offerOffset += offerPageSize;
+      } catch (e) {
+        console.error(`[eBay:GET] Offer fetch error at offset ${offerOffset}:`, e.message);
+        break;
+      }
+    }
       } catch (e) {
         console.error(`[eBay:GET] Error fetching offers for SKU ${sku}:`, e.message);
       }
