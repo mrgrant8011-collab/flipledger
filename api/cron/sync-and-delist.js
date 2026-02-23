@@ -1,6 +1,8 @@
 import { getValidToken, getUsersWithTokens, supabaseAdmin } from '../lib/token-manager.js';
-import { processDelistForSale, getUnprocessedSales, acquireLock, releaseLock } from '../lib/delist-processor.js';
+import { acquireLock, releaseLock } from '../lib/delist-processor.js';
 import { delistEbayOffer } from '../lib/ebay-delist.js';
+import { delistStockXListing } from '../lib/stockx-delist.js';
+
 function getBaseUrl() {
   return process.env.NEXT_PUBLIC_SITE_URL || 'https://flipledger.vercel.app';
 }
@@ -11,33 +13,27 @@ function verifyCronSecret(req) {
   return req.headers.authorization === `Bearer ${cronSecret}`;
 }
 
-async function fetchStockXListings(accessToken) {
+async function fetchStockXActiveOrders(accessToken) {
   try {
-    const url = `${getBaseUrl()}/api/stockx-listings?skipMarketData=true`;
-    const res = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+    const url = 'https://api.stockx.com/v2/selling/orders/active?pageSize=100';
+    const res = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'x-api-key': process.env.STOCKX_API_KEY,
+        'Content-Type': 'application/json'
+      }
+    });
     if (!res.ok) return [];
     const data = await res.json();
-    return data.listings || [];
+    return data.orders || [];
   } catch (err) {
-    console.error('[Cron] StockX listings fetch error:', err.message);
+    console.error('[Cron] StockX active orders fetch error:', err.message);
     return [];
   }
 }
 
-async function fetchEbayListings(accessToken) {
-  try {
-    const url = `${getBaseUrl()}/api/ebay-listings`;
-    const res = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.offers || data.listings || [];
-  } catch (err) {
-    console.error('[Cron] eBay listings fetch error:', err.message);
-    return [];
-  }
-}
 async function processUser(userId, platforms) {
-  const result = { userId, locked: false, stockxListings: 0, activeMappings: 0, delisted: 0, failed: 0 };
+  const result = { userId, locked: false, activeMappings: 0, stockxSales: 0, ebaySales: 0, delisted: 0, failed: 0 };
 
   const lockAcquired = await acquireLock(userId);
   if (!lockAcquired) { result.locked = true; return result; }
@@ -56,15 +52,6 @@ async function processUser(userId, platforms) {
 
     if (!tokens.ebayToken || !tokens.stockxToken) return result;
 
-    const sxListings = await fetchStockXListings(tokens.stockxToken);
-    result.stockxListings = sxListings.length;
-
-    // SAFEGUARD: Skip if StockX returned 0 (possible API failure)
-    if (sxListings.length === 0) {
-      console.log('[Cron] Skipping — StockX returned 0 listings (possible sync failure)');
-      return result;
-    }
-
     const { data: activeMappings } = await supabaseAdmin
       .from('cross_list_links')
       .select('*')
@@ -74,36 +61,112 @@ async function processUser(userId, platforms) {
     if (!activeMappings || activeMappings.length === 0) return result;
     result.activeMappings = activeMappings.length;
 
-    const sxListingIds = new Set(sxListings.map(s => s.listingId));
+    // ═══════════════════════════════════════════════════════
+    // DIRECTION 1: StockX confirmed sale → delist from eBay
+    // ═══════════════════════════════════════════════════════
+    try {
+      const sxOrders = await fetchStockXActiveOrders(tokens.stockxToken);
+      result.stockxSales = sxOrders.length;
 
-    for (const mapping of activeMappings) {
-      if (mapping.stockx_listing_id && !sxListingIds.has(mapping.stockx_listing_id) && mapping.ebay_offer_id) {
-        try {
-          const delistResult = await delistEbayOffer(tokens.ebayToken, mapping.ebay_offer_id);
+      for (const order of sxOrders) {
+        const variant = order.variant || {};
+        const product = order.product || {};
+        const orderSku = (product.styleId || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const orderSize = (variant.variantValue || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-          if (delistResult.success || delistResult.alreadyRemoved) {
-            await supabaseAdmin.from('cross_list_links').update({
-              status: 'sold', sold_on: 'stockx', sold_at: new Date().toISOString(), updated_at: new Date().toISOString()
-            }).eq('id', mapping.id);
+        const match = activeMappings.find(m => {
+          const mSku = (m.sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          const mSize = (m.size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          return (mSku === orderSku || mSku.includes(orderSku) || orderSku.includes(mSku)) && mSize === orderSize;
+        });
 
-            await supabaseAdmin.from('delist_log').insert({
-              user_id: userId, sold_on: 'stockx', delisted_from: 'ebay',
-              item_sku: mapping.sku, item_size: mapping.size,
-              listing_id_delisted: mapping.ebay_offer_id,
-              cross_list_link_id: mapping.id, status: 'success'
-            });
+        if (match && match.ebay_offer_id) {
+          try {
+            const delistResult = await delistEbayOffer(tokens.ebayToken, match.ebay_offer_id);
 
-            result.delisted++;
-            console.log(`[Cron] Delisted from eBay: ${mapping.sku} size ${mapping.size}`);
-          } else {
+            if (delistResult.success || delistResult.alreadyRemoved) {
+              await supabaseAdmin.from('cross_list_links').update({
+                status: 'sold', sold_on: 'stockx', sold_at: new Date().toISOString(), updated_at: new Date().toISOString()
+              }).eq('id', match.id);
+
+              await supabaseAdmin.from('delist_log').insert({
+                user_id: userId, sold_on: 'stockx', delisted_from: 'ebay',
+                item_sku: match.sku, item_size: match.size,
+                listing_id_delisted: match.ebay_offer_id,
+                cross_list_link_id: match.id, status: 'success'
+              });
+
+              result.delisted++;
+              console.log(`[Cron] StockX sale → Delisted from eBay: ${match.sku} size ${match.size}`);
+            } else {
+              result.failed++;
+            }
+          } catch (err) {
             result.failed++;
+            console.error('[Cron] eBay delist failed:', err.message);
           }
-        } catch (err) {
-          result.failed++;
-          console.error('[Cron] eBay delist failed:', err.message);
         }
       }
+    } catch (err) {
+      console.error('[Cron] StockX orders check error:', err.message);
     }
+
+    // ═══════════════════════════════════════════════════════
+    // DIRECTION 2: eBay confirmed sale → delist from StockX
+    // ═══════════════════════════════════════════════════════
+    try {
+      const now = new Date().toISOString();
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const salesUrl = `${getBaseUrl()}/api/ebay-sales?startDate=${weekAgo}&endDate=${now}`;
+      const salesRes = await fetch(salesUrl, { headers: { 'Authorization': `Bearer ${tokens.ebayToken}` } });
+
+      if (salesRes.ok) {
+        const salesData = await salesRes.json();
+        const ebaySales = salesData.sales || [];
+        result.ebaySales = ebaySales.length;
+
+        for (const sale of ebaySales) {
+          const saleSku = (sale.sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          const saleSize = (sale.size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+          const match = activeMappings.find(m => {
+            const mSku = (m.ebay_sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            const mSize = (m.size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            return (mSku === saleSku || mSku.includes(saleSku) || saleSku.includes(mSku)) && mSize === saleSize;
+          });
+
+          if (match && match.stockx_listing_id) {
+            try {
+              const delistResult = await delistStockXListing(tokens.stockxToken, match.stockx_listing_id);
+
+              if (delistResult.success || delistResult.alreadyRemoved) {
+                await supabaseAdmin.from('cross_list_links').update({
+                  status: 'sold', sold_on: 'ebay', sold_at: new Date().toISOString(), updated_at: new Date().toISOString()
+                }).eq('id', match.id);
+
+                await supabaseAdmin.from('delist_log').insert({
+                  user_id: userId, sold_on: 'ebay', delisted_from: 'stockx',
+                  item_sku: match.sku, item_size: match.size,
+                  listing_id_delisted: match.stockx_listing_id,
+                  cross_list_link_id: match.id, status: 'success'
+                });
+
+                result.delisted++;
+                console.log(`[Cron] eBay sale → Delisted from StockX: ${match.sku} size ${match.size}`);
+              } else {
+                result.failed++;
+              }
+            } catch (err) {
+              result.failed++;
+              console.error('[Cron] StockX delist failed:', err.message);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[Cron] eBay sales check error:', err.message);
+    }
+
   } finally {
     await releaseLock(userId);
   }
@@ -114,13 +177,13 @@ async function processUser(userId, platforms) {
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
   if (!verifyCronSecret(req)) return res.status(401).json({ error: 'Unauthorized' });
-  
+
   try {
     const users = await getUsersWithTokens();
     if (users.length === 0) {
       return res.status(200).json({ success: true, message: 'No users with tokens', timestamp: new Date().toISOString() });
     }
-    
+
     const results = [];
     for (const user of users) {
       try {
@@ -130,8 +193,8 @@ export default async function handler(req, res) {
         results.push({ userId: user.userId, error: err.message });
       }
     }
-    
-   return res.status(200).json({ success: true, timestamp: new Date().toISOString(), results });
+
+    return res.status(200).json({ success: true, timestamp: new Date().toISOString(), results });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message, timestamp: new Date().toISOString() });
   }
