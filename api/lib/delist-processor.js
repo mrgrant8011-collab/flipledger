@@ -113,10 +113,15 @@ async function findCrossListLink(userId, sku, size, soldOn) {
     
     if (error || !links || links.length === 0) return { found: false };
     
-    const matches = links.filter(link => {
+   const matches = links.filter(link => {
       const linkSku = normalizeSkuForMatch(link.sku);
       const linkSize = normalizeSize(link.size);
-      return linkSku === normalizedSku && linkSize === normalizedSize;
+      if (linkSize !== normalizedSize) return false;
+      // Exact match first
+      if (linkSku === normalizedSku) return true;
+      // Contains match for dual-SKU products (e.g. FV2345500 matches FV2345500FV2346500)
+      if (linkSku.includes(normalizedSku) || normalizedSku.includes(linkSku)) return true;
+      return false;
     });
     
     // QTY SUPPORT: Pick first match (multiple matches expected when qty > 1)
