@@ -1,5 +1,6 @@
 import { getValidToken, getUsersWithTokens, supabaseAdmin } from '../lib/token-manager.js';
 import { processDelistForSale, getUnprocessedSales, acquireLock, releaseLock } from '../lib/delist-processor.js';
+import { delistEbayOffer } from '../lib/ebay-delist.js';
 function getBaseUrl() {
   return process.env.NEXT_PUBLIC_SITE_URL || 'https://flipledger.vercel.app';
 }
@@ -10,112 +11,103 @@ function verifyCronSecret(req) {
   return req.headers.authorization === `Bearer ${cronSecret}`;
 }
 
-async function syncEbaySales(userId, accessToken) {
+async function fetchStockXListings(accessToken) {
   try {
-    const endDate = new Date().toISOString();
-    const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const url = `${getBaseUrl()}/api/ebay-sales?startDate=${startDate}&endDate=${endDate}`;
-    
-    const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
-    if (!response.ok) {
-  const errBody = await response.text().catch(() => '');
-  return { success: false, sales: [], error: `HTTP ${response.status}: ${errBody.substring(0, 200)}` };
-}
-    
-    const data = await response.json();
-    const sales = data.sales || [];
-    
-    let inserted = 0;
-    for (const sale of sales) {
-      try {
-        const { error } = await supabaseAdmin.from('pending_costs').insert({
-          user_id: userId, name: sale.name, sku: sale.sku || '', size: sale.size || '',
-          sale_price: sale.sale_price, platform: 'eBay', fees: sale.fees || 0,
-          payout: sale.payout || null, sale_date: sale.sale_date, order_id: sale.order_id,
-          image: sale.image || null, delist_processed: false
-        });
-        if (!error) inserted++;
-      } catch (e) {}
-    }
-    
-    return { success: true, sales, inserted };
+    const url = `${getBaseUrl()}/api/stockx-listings?skipMarketData=true`;
+    const res = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.listings || [];
   } catch (err) {
-    return { success: false, sales: [], error: err.message };
+    console.error('[Cron] StockX listings fetch error:', err.message);
+    return [];
   }
 }
 
-async function syncStockXSales(userId, accessToken) {
+async function fetchEbayListings(accessToken) {
   try {
-    const url = `${getBaseUrl()}/api/stockx-sales`;
-    const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
-    if (!response.ok) {
-  const errBody = await response.text().catch(() => '');
-  return { success: false, sales: [], error: `HTTP ${response.status}: ${errBody.substring(0, 200)}` };
-}
-    
-    const data = await response.json();
-    const sales = data.sales || [];
-    
-    let inserted = 0;
-    for (const sale of sales) {
-      try {
-        const { error } = await supabaseAdmin.from('pending_costs').insert({
-          user_id: userId, name: sale.name, sku: sale.sku || '', size: sale.size || '',
-          sale_price: sale.sale_price, platform: sale.platform || 'StockX', fees: sale.fees || 0,
-          payout: sale.payout || null, sale_date: sale.sale_date, order_id: sale.order_id,
-          image: sale.image || null, delist_processed: false
-        });
-        if (!error) inserted++;
-      } catch (e) {}
-    }
-    
-    return { success: true, sales, inserted };
+    const url = `${getBaseUrl()}/api/ebay-listings`;
+    const res = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.offers || data.listings || [];
   } catch (err) {
-    return { success: false, sales: [], error: err.message };
+    console.error('[Cron] eBay listings fetch error:', err.message);
+    return [];
   }
 }
-
 async function processUser(userId, platforms) {
-  const result = { userId, locked: false, ebaySync: null, stockxSync: null, delists: { processed: 0, success: 0, failed: 0, skipped: 0 } };
-  
+  const result = { userId, locked: false, stockxListings: 0, activeMappings: 0, delisted: 0, failed: 0 };
+
   const lockAcquired = await acquireLock(userId);
   if (!lockAcquired) { result.locked = true; return result; }
-  
+
   try {
     const tokens = { ebayToken: null, stockxToken: null };
-    
+
     if (platforms.includes('ebay')) {
-      const ebayResult = await getValidToken(userId, 'ebay');
-      if (ebayResult.success) tokens.ebayToken = ebayResult.accessToken;
+      const r = await getValidToken(userId, 'ebay');
+      if (r.success) tokens.ebayToken = r.accessToken;
     }
-    
     if (platforms.includes('stockx')) {
-      const stockxResult = await getValidToken(userId, 'stockx');
-      if (stockxResult.success) tokens.stockxToken = stockxResult.accessToken;
+      const r = await getValidToken(userId, 'stockx');
+      if (r.success) tokens.stockxToken = r.accessToken;
     }
-    
-    if (tokens.ebayToken) result.ebaySync = await syncEbaySales(userId, tokens.ebayToken);
-    if (tokens.stockxToken) result.stockxSync = await syncStockXSales(userId, tokens.stockxToken);
-    
-    if (tokens.ebayToken && tokens.stockxToken) {
-      const unprocessedSales = await getUnprocessedSales(userId);
-      
-      for (const sale of unprocessedSales) {
+
+    if (!tokens.ebayToken || !tokens.stockxToken) return result;
+
+    const sxListings = await fetchStockXListings(tokens.stockxToken);
+    result.stockxListings = sxListings.length;
+
+    // SAFEGUARD: Skip if StockX returned 0 (possible API failure)
+    if (sxListings.length === 0) {
+      console.log('[Cron] Skipping — StockX returned 0 listings (possible sync failure)');
+      return result;
+    }
+
+    const { data: activeMappings } = await supabaseAdmin
+      .from('cross_list_links')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('status', 'active');
+
+    if (!activeMappings || activeMappings.length === 0) return result;
+    result.activeMappings = activeMappings.length;
+
+    const sxListingIds = new Set(sxListings.map(s => s.listingId));
+
+    for (const mapping of activeMappings) {
+      if (mapping.stockx_listing_id && !sxListingIds.has(mapping.stockx_listing_id) && mapping.ebay_offer_id) {
         try {
-          const delistResult = await processDelistForSale(sale, tokens);
-          result.delists.processed++;
-          if (delistResult.status === 'success') result.delists.success++;
-          else if (delistResult.status === 'skipped' || delistResult.status === 'not_found') result.delists.skipped++;
-          else result.delists.failed++;
+          const delistResult = await delistEbayOffer(tokens.ebayToken, mapping.ebay_offer_id);
+
+          if (delistResult.success || delistResult.alreadyRemoved) {
+            await supabaseAdmin.from('cross_list_links').update({
+              status: 'sold', sold_on: 'stockx', sold_at: new Date().toISOString(), updated_at: new Date().toISOString()
+            }).eq('id', mapping.id);
+
+            await supabaseAdmin.from('delist_log').insert({
+              user_id: userId, sold_on: 'stockx', delisted_from: 'ebay',
+              item_sku: mapping.sku, item_size: mapping.size,
+              listing_id_delisted: mapping.ebay_offer_id,
+              cross_list_link_id: mapping.id, status: 'success'
+            });
+
+            result.delisted++;
+            console.log(`[Cron] Delisted from eBay: ${mapping.sku} size ${mapping.size}`);
+          } else {
+            result.failed++;
+          }
         } catch (err) {
-          result.delists.failed++;
+          result.failed++;
+          console.error('[Cron] eBay delist failed:', err.message);
         }
       }
     }
   } finally {
     await releaseLock(userId);
   }
-  
+
   return result;
 }
 
@@ -139,15 +131,7 @@ export default async function handler(req, res) {
       }
     }
     
-    const summary = {
-      usersProcessed: results.filter(r => !r.locked && !r.error).length,
-      usersSkipped: results.filter(r => r.locked).length,
-      usersErrored: results.filter(r => r.error).length,
-      totalDelists: results.reduce((sum, r) => sum + (r.delists?.processed || 0), 0),
-      successfulDelists: results.reduce((sum, r) => sum + (r.delists?.success || 0), 0)
-    };
-    
-    return res.status(200).json({ success: true, timestamp: new Date().toISOString(), summary, results });
+   return res.status(200).json({ success: true, timestamp: new Date().toISOString(), results });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message, timestamp: new Date().toISOString() });
   }
