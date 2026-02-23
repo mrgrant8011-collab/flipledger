@@ -1,5 +1,10 @@
 import { getValidToken, getUsersWithTokens, supabaseAdmin } from '../lib/token-manager.js';
 import { processDelistForSale, getUnprocessedSales, acquireLock, releaseLock } from '../lib/delist-processor.js';
+function getBaseUrl() {
+  const raw = process.env.VERCEL_URL || process.env.NEXT_PUBLIC_SITE_URL || 'flipledger.vercel.app';
+  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+  return `https://${raw}`;
+}
 
 function verifyCronSecret(req) {
   const cronSecret = process.env.CRON_SECRET;
@@ -11,7 +16,7 @@ async function syncEbaySales(userId, accessToken) {
   try {
     const endDate = new Date().toISOString();
     const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const url = `${process.env.VERCEL_URL || 'https://flipledger.vercel.app'}/api/ebay-sales?startDate=${startDate}&endDate=${endDate}`;
+    const url = `${getBaseUrl()}/api/ebay-sales?startDate=${startDate}&endDate=${endDate}`;
     
     const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
     if (!response.ok) return { success: false, sales: [] };
@@ -40,7 +45,7 @@ async function syncEbaySales(userId, accessToken) {
 
 async function syncStockXSales(userId, accessToken) {
   try {
-    const url = `${process.env.VERCEL_URL || 'https://flipledger.vercel.app'}/api/stockx-sales`;
+    const url = `${getBaseUrl()}/api/stockx-sales`;
     const response = await fetch(url, { headers: { 'Authorization': `Bearer ${accessToken}` } });
     if (!response.ok) return { success: false, sales: [] };
     
