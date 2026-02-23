@@ -1,9 +1,7 @@
 import { getValidToken, getUsersWithTokens, supabaseAdmin } from '../lib/token-manager.js';
 import { processDelistForSale, getUnprocessedSales, acquireLock, releaseLock } from '../lib/delist-processor.js';
 function getBaseUrl() {
-  const raw = process.env.VERCEL_URL || process.env.NEXT_PUBLIC_SITE_URL || 'flipledger.vercel.app';
-  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
-  return `https://${raw}`;
+  return process.env.NEXT_PUBLIC_SITE_URL || 'https://flipledger.vercel.app';
 }
 
 function verifyCronSecret(req) {
