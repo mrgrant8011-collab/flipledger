@@ -2408,10 +2408,7 @@ async function handleGet(headers, query, res) {
         break;
       }
     }
-      } catch (e) {
-        console.error(`[eBay:GET] Error fetching offers for SKU ${sku}:`, e.message);
-      }
-    }
+     
 
     // DEBUG: Log offer count and sample SKUs for sync troubleshooting
     console.log(`[eBay:GET] ═══════════════════════════════════════════════`);
