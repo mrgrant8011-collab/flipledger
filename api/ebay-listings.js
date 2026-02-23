@@ -2379,33 +2379,32 @@ async function handleGet(headers, query, res) {
     
   
     
-    // Step 3: Fetch ALL offers (paginated bulk - handles thousands)
-    const allOffers = [];
-    let offerOffset = 0;
-    const offerPageSize = 200;
+    // Step 2: Filter to valid SKUs only (alphanumeric)
+    const validSkus = inventoryItems
+      .map(item => item.sku)
+      .filter(sku => sku && /^[A-Za-z0-9]+$/.test(sku));
     
-    while (true) {
-      try {
-        const offerUrl = `${EBAY_API_BASE}/sell/inventory/v1/offer?marketplace_id=${EBAY_MARKETPLACE_ID}&limit=${offerPageSize}&offset=${offerOffset}`;
-        console.log(`[eBay:GET] Fetching offers offset=${offerOffset}...`);
-        const offerRes = await fetch(offerUrl, { method: 'GET', headers });
-        
-        if (!offerRes.ok) {
-          console.error(`[eBay:GET] Offer fetch failed at offset ${offerOffset}:`, offerRes.status);
-          break;
+    console.log(`[eBay:GET] Valid SKUs: ${validSkus.length} of ${inventoryItems.length}`);
+
+    // Step 3: Fetch offers in parallel batches (safe per-SKU, fast via batching)
+    const allOffers = [];
+    const batchSize = 25;
+    
+    for (let i = 0; i < validSkus.length; i += batchSize) {
+      const batch = validSkus.slice(i, i + batchSize);
+      console.log(`[eBay:GET] Fetching offers batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(validSkus.length/batchSize)} (${batch.length} SKUs)...`);
+      
+      const results = await Promise.allSettled(
+        batch.map(sku =>
+          fetch(`${EBAY_API_BASE}/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}`, { method: 'GET', headers })
+            .then(r => r.ok ? r.json() : null)
+        )
+      );
+      
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value?.offers) {
+          allOffers.push(...result.value.offers);
         }
-        
-        const offerData = await offerRes.json();
-        const pageOffers = offerData.offers || [];
-        allOffers.push(...pageOffers);
-        
-        console.log(`[eBay:GET] Offers page: ${pageOffers.length} (total: ${allOffers.length})`);
-        
-        if (pageOffers.length < offerPageSize) break;
-        offerOffset += offerPageSize;
-      } catch (e) {
-        console.error(`[eBay:GET] Offer fetch error at offset ${offerOffset}:`, e.message);
-        break;
       }
     }
      
