@@ -188,8 +188,9 @@ function mergeOfferUpdates(offer, update) {
     merged.listingDescription = update.description;
   }
 
-  // Quantity — handled ONLY at inventory item level (Step 5)
-  // Do NOT set availableQuantity on offer — eBay ignores it for Inventory API listings
+ // Quantity — handled ONLY at inventory item level (Step 5)
+  // MUST delete availableQuantity from offer so the PUT doesn't send the stale value back
+  delete merged.availableQuantity;
 
   // Condition - maps to offer-level condition
   if (update.condition !== undefined) {
