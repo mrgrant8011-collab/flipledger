@@ -1,6 +1,6 @@
 import { getValidToken, getUsersWithTokens, supabaseAdmin } from '../lib/token-manager.js';
 import { acquireLock, releaseLock } from '../lib/delist-processor.js';
-import { delistEbayOffer } from '../lib/ebay-delist.js';
+import { delistEbayOffer, reduceEbayQuantity } from '../lib/ebay-delist.js';
 import { delistStockXListing } from '../lib/stockx-delist.js';
 
 function getBaseUrl() {
@@ -91,9 +91,27 @@ async function processUser(userId, platforms) {
           return (mSku === orderSku || mSku.includes(orderSku) || orderSku.includes(mSku)) && mSize === orderSize;
         });
 
-        if (match && match.ebay_offer_id) {
+       if (match && match.ebay_offer_id) {
           try {
-            const delistResult = await delistEbayOffer(tokens.ebayToken, match.ebay_offer_id);
+            // QTY SUPPORT: Check how many active links share this eBay listing
+            const { data: sharedLinks } = await supabaseAdmin
+              .from('cross_list_links')
+              .select('id')
+              .eq('user_id', userId)
+              .eq('ebay_offer_id', match.ebay_offer_id)
+              .eq('status', 'active');
+
+            const activeCount = sharedLinks ? sharedLinks.length : 0;
+            let delistResult;
+
+            if (activeCount > 1) {
+              // Multiple sizes share this listing — reduce quantity
+              const newQty = activeCount - 1;
+              delistResult = await reduceEbayQuantity(tokens.ebayToken, match.ebay_sku, newQty);
+            } else {
+              // Last one — delete the listing entirely
+              delistResult = await delistEbayOffer(tokens.ebayToken, match.ebay_offer_id);
+            }
 
             if (delistResult.success || delistResult.alreadyRemoved) {
               await supabaseAdmin.from('cross_list_links').update({
