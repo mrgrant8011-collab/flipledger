@@ -145,9 +145,15 @@ async function handleUpdateOffers(headers, body, res) {
       console.log(`[eBay:Update] ✓ Updated offer ${offerId}`);
       results.push({ offerId, success: true });
 
-      // Step 4: If title changed, also update inventory item
+     // Step 4: If title changed, also update inventory item
       if (update.title && sku) {
         await updateInventoryItemTitle(headers, sku, update.title);
+      }
+
+      // Step 5: If qty changed, also update inventory item quantity
+      const qtyVal = update.qty !== undefined ? update.qty : update.quantity;
+      if (qtyVal !== undefined && sku) {
+        await updateInventoryItemQty(headers, sku, parseInt(qtyVal));
       }
 
     } catch (e) {
@@ -182,9 +188,10 @@ function mergeOfferUpdates(offer, update) {
     merged.listingDescription = update.description;
   }
 
-  // Quantity
-  if (update.quantity !== undefined) {
-    merged.availableQuantity = parseInt(update.quantity);
+  // Quantity (frontend sends "qty", normalize to "quantity")
+  const newQty = update.quantity !== undefined ? update.quantity : update.qty;
+  if (newQty !== undefined) {
+    merged.availableQuantity = parseInt(newQty);
   }
 
   // Condition - maps to offer-level condition
@@ -232,6 +239,33 @@ async function updateInventoryItemTitle(headers, sku, title) {
   }
 }
 
+/**
+ * Update inventory item quantity
+ * Uses: PUT /sell/inventory/v1/inventory_item/{sku}
+ */
+async function updateInventoryItemQty(headers, sku, newQty) {
+  try {
+    const getRes = await fetch(`${EBAY_API_BASE}/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`, {
+      headers
+    });
+    if (!getRes.ok) return;
+
+    const item = await getRes.json();
+    item.availability = item.availability || {};
+    item.availability.shipToLocationAvailability = item.availability.shipToLocationAvailability || {};
+    item.availability.shipToLocationAvailability.quantity = newQty;
+
+    await fetch(`${EBAY_API_BASE}/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(item)
+    });
+
+    console.log(`[eBay:Update] ✓ Updated inventory item qty for ${sku} → ${newQty}`);
+  } catch (e) {
+    console.warn(`[eBay:Update] Could not update inventory qty ${sku}:`, e.message);
+  }
+}
 // ═══════════════════════════════════════════════════════════════════════════════════
 // POST — Promoted Listings Management (Marketing API)
 // ═══════════════════════════════════════════════════════════════════════════════════
