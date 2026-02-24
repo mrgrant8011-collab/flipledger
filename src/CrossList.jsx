@@ -997,8 +997,31 @@ if (eb.length === 0) {
   const handleInlineEditSave = async ({ offerIds, skus, changes, promoted }) => {
     if (!ebayToken) return;
     try {
-      if (Object.keys(changes).length > 0) {
-        const updates = offerIds.map(offerId => ({ offerId, sku: skus[0] || '', ...changes }));
+      // Split qty out — route through bulk_update_price_quantity (ebay-listings PATCH)
+      const { qty, ...otherChanges } = changes;
+
+      if (qty !== undefined || otherChanges.price !== undefined) {
+        const qtyPriceUpdates = offerIds.map(offerId => ({
+          offerId,
+          sku: skus[0] || '',
+          ...(qty !== undefined ? { quantity: qty } : {}),
+          ...(otherChanges.price !== undefined ? { price: otherChanges.price } : {})
+        }));
+        const qpRes = await fetch('/api/ebay-listings', {
+          method: 'PATCH',
+          headers: { 'Authorization': `Bearer ${ebayToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ updates: qtyPriceUpdates })
+        });
+        const qpData = await qpRes.json();
+        if (qpData.updated > 0) showToast(`✓ Updated ${qpData.updated} listing(s)`);
+        if (qpData.failed > 0) showToast(`${qpData.failed} update(s) failed`, 'error');
+        // Remove price from otherChanges since it's handled
+        delete otherChanges.price;
+      }
+
+      // Send remaining field changes (title, description, color, etc.) to ebay-update
+      if (Object.keys(otherChanges).length > 0) {
+        const updates = offerIds.map(offerId => ({ offerId, sku: skus[0] || '', ...otherChanges }));
         const res = await fetch('/api/ebay-update', {
           method: 'PATCH',
           headers: { 'Authorization': `Bearer ${ebayToken}`, 'Content-Type': 'application/json' },
