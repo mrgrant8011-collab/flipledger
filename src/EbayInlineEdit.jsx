@@ -60,6 +60,8 @@ export default function EbayInlineEdit({
   const [silhouette, setSilhouette] = useState('');
   const [description, setDescription] = useState('');
   const [photos, setPhotos] = useState([]);
+// Quantity
+  const [qty, setQty] = useState(items.length || 1);
 
   // Promoted listing
   const [promotedOn, setPromotedOn] = useState(false);
@@ -172,6 +174,7 @@ export default function EbayInlineEdit({
     if (department !== original.department) changes.department = department;
     if (styleCode !== original.styleCode) changes.styleCode = styleCode;
     if (silhouette !== original.silhouette) changes.silhouette = silhouette;
+    if (qty !== (original.qty || items.length)) changes.qty = qty;
 
     // Promoted changes
     const promoChanged = promotedOn !== original.promoted || adRate !== original.adRate;
@@ -283,10 +286,18 @@ export default function EbayInlineEdit({
               </div>
             </div>
 
-            {/* Size (read-only) */}
+           {/* Size (read-only) */}
             <div>
               <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 6 }}>SIZE</label>
               <input type="text" value={size} readOnly style={{ ...input, opacity: 0.6 }} />
+            </div>
+
+            {/* Quantity */}
+            <div>
+              <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 6 }}>QTY</label>
+              <input type="number" min="1" value={qty}
+                onChange={e => { setQty(Math.max(1, parseInt(e.target.value) || 1)); markDirty(); }}
+                style={input} />
             </div>
 
             {/* Condition */}
