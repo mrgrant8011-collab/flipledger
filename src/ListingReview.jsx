@@ -686,6 +686,18 @@ We cannot guarantee the ability to cancel orders once placed. Please review all 
                       />
                     </div>
 
+                    {/* Quantity */}
+                    <div>
+                      <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 6 }}>QTY</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={item.qty || 1}
+                        onChange={(e) => updateItem(item.id, 'qty', Math.max(1, parseInt(e.target.value) || 1))}
+                        style={input}
+                      />
+                    </div>
+
                     {/* Condition */}
                     <div>
                       <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 6 }}>CONDITION</label>
