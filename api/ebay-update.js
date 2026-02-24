@@ -188,11 +188,8 @@ function mergeOfferUpdates(offer, update) {
     merged.listingDescription = update.description;
   }
 
-  // Quantity (frontend sends "qty", normalize to "quantity")
-  const newQty = update.quantity !== undefined ? update.quantity : update.qty;
-  if (newQty !== undefined) {
-    merged.availableQuantity = parseInt(newQty);
-  }
+  // Quantity — handled ONLY at inventory item level (Step 5)
+  // Do NOT set availableQuantity on offer — eBay ignores it for Inventory API listings
 
   // Condition - maps to offer-level condition
   if (update.condition !== undefined) {
