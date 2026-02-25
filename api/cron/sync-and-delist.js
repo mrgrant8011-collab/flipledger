@@ -107,7 +107,7 @@ async function processUser(userId, platforms) {
             if (activeCount > 1) {
               // Multiple sizes share this listing — reduce quantity
               const newQty = activeCount - 1;
-              delistResult = await reduceEbayQuantity(tokens.ebayToken, match.ebay_sku, newQty);
+              delistResult = await reduceEbayQuantity(tokens.ebayToken, match.ebay_sku, newQty, match.ebay_offer_id);
             } else {
               // Last one — delete the listing entirely
               delistResult = await delistEbayOffer(tokens.ebayToken, match.ebay_offer_id);
