@@ -997,30 +997,25 @@ if (eb.length === 0) {
   const handleInlineEditSave = async ({ offerIds, skus, changes, promoted }) => {
     if (!ebayToken) return;
     try {
-      // Split qty out — route through bulk_update_price_quantity (ebay-listings PATCH)
-      const { qty, ...otherChanges } = changes;
+    // Split qty and price out — route through bulk_update_price_quantity (ebay-listings PATCH)
+      const { qty, price, ...otherChanges } = changes;
 
-     // Price-only → fast bulk endpoint
-      if (otherChanges.price !== undefined) {
-        const priceUpdates = offerIds.map(offerId => ({
+      // Price and/or Qty → fast bulk endpoint (bulkUpdatePriceQuantity updates the live listing)
+      if (price !== undefined || qty !== undefined) {
+        const bulkUpdates = offerIds.map(offerId => ({
           offerId,
           sku: skus[0] || '',
-          price: otherChanges.price
+          ...(price !== undefined ? { price } : {}),
+          ...(qty !== undefined ? { quantity: qty } : {})
         }));
         const qpRes = await fetch('/api/ebay-listings', {
           method: 'PATCH',
           headers: { 'Authorization': `Bearer ${ebayToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ updates: priceUpdates })
+          body: JSON.stringify({ updates: bulkUpdates })
         });
         const qpData = await qpRes.json();
-        if (qpData.updated > 0) showToast(`✓ Price updated`);
-        if (qpData.failed > 0) showToast(`Price update failed`, 'error');
-        delete otherChanges.price;
-      }
-
-      // Qty → inventory item level update (eBay requires this for Inventory API listings)
-      if (qty !== undefined) {
-        otherChanges.qty = qty;
+        if (qpData.updated > 0) showToast(`✓ Listing updated`);
+        if (qpData.failed > 0) showToast(`Update failed`, 'error');
       }
 
       // Send remaining field changes (title, description, color, etc.) to ebay-update
