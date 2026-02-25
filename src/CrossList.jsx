@@ -1000,9 +1000,10 @@ if (eb.length === 0) {
     // Split qty and price out — route through bulk_update_price_quantity (ebay-listings PATCH)
       const { qty, price, ...otherChanges } = changes;
 
-      // Price and/or Qty → fast bulk endpoint (bulkUpdatePriceQuantity updates the live listing)
+// Price and/or Qty → fast bulk endpoint (bulkUpdatePriceQuantity updates the live listing)
       if (price !== undefined || qty !== undefined) {
-        const bulkUpdates = offerIds.map(offerId => ({
+        const uniqueOfferIds = [...new Set(offerIds)];
+        const bulkUpdates = uniqueOfferIds.map(offerId => ({
           offerId,
           sku: skus[0] || '',
           ...(price !== undefined ? { price } : {}),
