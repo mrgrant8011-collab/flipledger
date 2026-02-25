@@ -2,43 +2,18 @@ import React, { useState, useEffect } from 'react';
 import PricingIntelligence from './PricingIntelligence';
 
 /**
- * EBAY INLINE EDIT - Expandable edit form for On eBay listings
+ * EBAY INLINE EDIT - Simplified edit form for On eBay listings
  * 
- * Renders below grouped size chip in CrossList when "On eBay" filter is active.
- * Fetches full offer data from eBay on open, then provides full edit form
- * matching ListingReview fields + PricingIntelligence sidebar.
+ * Two actions only:
+ * 1. Change Price (the main thing)
+ * 2. Sold Elsewhere (reduce eBay qty — never goes up here)
  * 
- * Props:
- * - size: string (the grouped size, e.g. "12")
- * - items: array of size items in this group (from CrossList filteredSizes)
- * - product: the parent product { sku, name, brand, colorway, image, styleId }
- * - ebayToken: string
- * - stockxAsk: number (user's StockX ask for net comparison)
- * - marketData: object from ebay-browse API (or null if not loaded)
- * - onSave: function({ offerIds, changes }) — called when user saves
- * - onClose: function() — called when user collapses
- * - c: color theme
+ * Adding inventory is done from the "Not on eBay" tab.
  */
 
-const COLORS = [
-  'Black','White','Red','Blue','Green','Yellow','Orange',
-  'Purple','Pink','Brown','Gray','Beige','Tan','Gold',
-  'Silver','Navy','Cream','Multicolor'
-];
-
-const DEPARTMENTS = ['Men','Women','Unisex','Boys','Girls','Unisex Kids'];
-
-const CONDITIONS = [
-  { value: 'NEW', label: 'New with Box' },
-  { value: 'NEW_WITHOUT_BOX', label: 'New without Box' },
-  { value: 'NEW_WITH_DEFECTS', label: 'New with Defects' },
-  { value: 'USED_EXCELLENT', label: 'Pre-owned - Excellent' },
-  { value: 'USED_GOOD', label: 'Pre-owned - Good' },
-];
-
 export default function EbayInlineEdit({
-  size, items = [], product = {}, ebayToken,
-  stockxAsk, marketData, onSave, onClose,
+  size, items = [], product = {}, ebayToken, ebayListings = [],
+  stockxAsk, marketData, onSave, onSoldElsewhere, onClose,
   ebaySellerLevel, ebayStoreType, c
 }) {
   const [loading, setLoading] = useState(true);
@@ -49,34 +24,20 @@ export default function EbayInlineEdit({
   // Original values (from eBay) for diff
   const [original, setOriginal] = useState({});
 
-  // Editable fields
-  const [title, setTitle] = useState('');
+  // Editable fields — simplified to just price
   const [price, setPrice] = useState('');
-  const [condition, setCondition] = useState('NEW');
-  const [color, setColor] = useState('');
-  const [brand, setBrand] = useState('');
-  const [department, setDepartment] = useState('Men');
-  const [styleCode, setStyleCode] = useState('');
-  const [silhouette, setSilhouette] = useState('');
-  const [description, setDescription] = useState('');
-  const [photos, setPhotos] = useState([]);
-// Quantity
-  const [qty, setQty] = useState(items.length || 1);
 
-  // Promoted listing
-  const [promotedOn, setPromotedOn] = useState(false);
-  const [adRate, setAdRate] = useState('4');
+  // Sold Elsewhere UI
+  const [showSoldConfirm, setShowSoldConfirm] = useState(false);
+  const [soldCount, setSoldCount] = useState(1);
 
   // Offer IDs for this size group
-  const offerIds = items.map(i => i.ebayOfferId).filter(Boolean);
+  const offerIds = [...new Set(items.map(i => i.ebayOfferId).filter(Boolean))];
   const listingCount = offerIds.length;
 
-  const input = {
-    width: '100%', padding: '10px 12px',
-    background: 'rgba(255,255,255,0.05)',
-    border: `1px solid ${c.border}`, borderRadius: 8,
-    color: c.text, fontSize: 14
-  };
+  // Get live eBay qty from ebayListings
+  const ebayItem = ebayListings.find(e => e.offerId === offerIds[0]);
+  const ebayQty = ebayItem?.quantity || items.length;
 
   // ============================================
   // FETCH FULL OFFER DATA ON MOUNT
@@ -85,12 +46,7 @@ export default function EbayInlineEdit({
     if (offerIds.length > 0 && ebayToken) {
       fetchOfferDetails();
     } else {
-      // No offer IDs — use product-level data as fallback
-      setTitle(`${product.name || ''} Size ${size}`);
-      setPrice(String(items[0]?.yourAsk || ''));
-      setBrand(product.brand || '');
-      setStyleCode(product.styleId || product.sku || '');
-      setLoading(false);
+      populateFromAvailable();
     }
   }, []);
 
@@ -99,22 +55,21 @@ export default function EbayInlineEdit({
     setError(null);
 
     try {
-      // Fetch first offer's full details (all in group share same data)
       const offerId = offerIds[0];
       const res = await fetch(`/api/ebay-update?offerId=${offerId}`, {
         headers: { 'Authorization': `Bearer ${ebayToken}` }
       });
 
-      // If the dedicated endpoint isn't ready yet, use offer data from inventory API
-      // Fall back to building from what we have
       if (!res.ok) {
-        console.log('[EbayInlineEdit] Could not fetch full offer, using available data');
         populateFromAvailable();
         return;
       }
 
       const data = await res.json();
-      populateFromOffer(data);
+      const p = data.price || String(items[0]?.yourAsk || '');
+      setPrice(p);
+      setOriginal({ price: p });
+      setLoading(false);
 
     } catch (e) {
       console.error('[EbayInlineEdit] Fetch error:', e);
@@ -122,78 +77,45 @@ export default function EbayInlineEdit({
     }
   };
 
-  const populateFromOffer = (offerData) => {
-    const t = offerData.title || `${product.name || ''} Size ${size}`;
-    const p = offerData.price || String(items[0]?.yourAsk || '');
-    const d = offerData.description || '';
-    const co = offerData.condition || 'NEW';
-    const cl = offerData.color || '';
-    const br = offerData.brand || product.brand || '';
-    const dp = offerData.department || 'Men';
-    const sc = offerData.styleCode || product.styleId || product.sku || '';
-    const sl = offerData.silhouette || '';
-    const ph = offerData.photos || (product.image ? [product.image] : []);
-    const promo = offerData.promoted || false;
-    const ar = offerData.adRate || '4';
-    const q = offerData.availableQuantity || offerData.quantity || offerData.qty || items.length;
-
-    setTitle(t); setPrice(p); setDescription(d); setCondition(co);
-    setColor(cl); setBrand(br); setDepartment(dp); setStyleCode(sc);
-    setSilhouette(sl); setPhotos(ph); setPromotedOn(promo); setAdRate(ar);
-    setQty(q);
-
-    setOriginal({ title: t, price: p, description: d, condition: co, color: cl, brand: br, department: dp, styleCode: sc, silhouette: sl, promoted: promo, adRate: ar, qty: q });
-    setLoading(false);
-  };
-
   const populateFromAvailable = () => {
-    const t = `${product.name || ''} Size ${size}`;
     const p = String(items[0]?.yourAsk || '');
-    const br = product.brand || '';
-    const sc = product.styleId || product.sku || '';
-    const ph = product.image ? [product.image] : [];
-
-    setTitle(t); setPrice(p); setBrand(br); setStyleCode(sc); setPhotos(ph);
-   setOriginal({ title: t, price: p, description: '', condition: 'NEW', color: '', brand: br, department: 'Men', styleCode: sc, silhouette: '', promoted: false, adRate: '4', qty: items.length });
+    setPrice(p);
+    setOriginal({ price: p });
     setLoading(false);
   };
 
   // ============================================
-  // SAVE CHANGES
+  // SAVE CHANGES (price only)
   // ============================================
   const handleSave = async () => {
     if (!dirty || saving) return;
     setSaving(true);
 
-    // Build changes diff
     const changes = {};
-    if (title !== original.title) changes.title = title;
     if (price !== original.price) changes.price = price;
-    if (description !== original.description) changes.description = description;
-    if (condition !== original.condition) changes.condition = condition;
-    if (color !== original.color) changes.color = color;
-    if (brand !== original.brand) changes.brand = brand;
-    if (department !== original.department) changes.department = department;
-    if (styleCode !== original.styleCode) changes.styleCode = styleCode;
-    if (silhouette !== original.silhouette) changes.silhouette = silhouette;
-    changes.qty = qty;
-
-    // Promoted changes
-    const promoChanged = promotedOn !== original.promoted || adRate !== original.adRate;
 
     if (onSave) {
       await onSave({
         offerIds,
         skus: items.map(i => i.expectedEbaySku).filter(Boolean),
         changes,
-        promoted: promoChanged ? { enabled: promotedOn, adRate } : null,
+        promoted: null,
       });
     }
 
-    // Update originals
- setOriginal({ title, price, description, condition, color, brand, department, styleCode, silhouette, promoted: promotedOn, adRate, qty });
+    setOriginal({ price });
     setDirty(false);
     setSaving(false);
+  };
+
+  // Sold Elsewhere handler
+  const handleSoldElsewhere = async () => {
+    if (!onSoldElsewhere) return;
+    const offerId = offerIds[0];
+    const sku = items[0]?.expectedEbaySku || '';
+    await onSoldElsewhere({ offerId, sku, size, count: soldCount });
+    setShowSoldConfirm(false);
+    setSoldCount(1);
   };
 
   const markDirty = () => { if (!dirty) setDirty(true); };
@@ -211,217 +133,104 @@ export default function EbayInlineEdit({
 
   return (
     <div style={{ borderTop: `1px solid ${c.border}`, padding: '16px 16px 16px 46px', background: 'rgba(255,255,255,0.02)' }}>
-      {/* Header */}
-      <div style={{ fontSize: 12, fontWeight: 700, color: c.green, marginBottom: 12 }}>
-        Editing Size {size} — {listingCount} listing{listingCount !== 1 ? 's' : ''} · Changes apply to all
-      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: marketData ? '1fr 310px' : '1fr', gap: 16 }}>
-        {/* ═══ LEFT: EDIT FORM ═══ */}
+        {/* ═══ LEFT: SIMPLIFIED EDIT ═══ */}
         <div>
-          {/* Photos */}
+          {/* Product header — read only */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, paddingBottom: 12, borderBottom: `1px solid ${c.border}` }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>{product.name || 'Unknown Product'}</div>
+              <div style={{ fontSize: 11, color: c.textMuted, marginTop: 4 }}>
+                Size {size} · {product.styleId || product.sku} · {product.brand || ''} · New with Box
+              </div>
+            </div>
+            <div style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, background: 'rgba(34,197,94,0.12)', color: c.green, fontWeight: 600 }}>
+              Live on eBay
+            </div>
+          </div>
+
+          {/* eBay Quantity display */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, marginBottom: 12 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>eBay Quantity</div>
+              <div style={{ fontSize: 10, color: c.textMuted, marginTop: 2 }}>Add more from the "Not on eBay" tab</div>
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 800 }}>{ebayQty}</div>
+          </div>
+
+          {/* Sold Elsewhere */}
+          {!showSoldConfirm ? (
+            <button onClick={() => setShowSoldConfirm(true)}
+              style={{ width: '100%', padding: '10px 0', borderRadius: 8, border: '1px solid rgba(251,146,60,0.3)', background: 'rgba(251,146,60,0.08)', color: '#fb923c', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <span style={{ fontSize: 16 }}>−</span> Sold Elsewhere
+            </button>
+          ) : (
+            <div style={{ padding: 14, borderRadius: 8, marginBottom: 16, background: 'rgba(251,146,60,0.08)', border: '1px solid rgba(251,146,60,0.3)' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#fb923c', marginBottom: 10 }}>How many sold outside eBay?</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <button onClick={() => setSoldCount(Math.max(1, soldCount - 1))}
+                    style={{ width: 34, height: 36, fontSize: 16, fontWeight: 800, background: c.card || '#1a1a1a', border: `1px solid ${c.border}`, color: c.text, cursor: 'pointer', borderRadius: '6px 0 0 6px' }}>−</button>
+                  <div style={{ width: 40, textAlign: 'center', fontSize: 18, fontWeight: 800, color: c.text, background: 'rgba(255,255,255,0.03)', padding: '6px 0', borderTop: `1px solid ${c.border}`, borderBottom: `1px solid ${c.border}` }}>{soldCount}</div>
+                  <button onClick={() => setSoldCount(Math.min(ebayQty, soldCount + 1))}
+                    style={{ width: 34, height: 36, fontSize: 16, fontWeight: 800, background: c.card || '#1a1a1a', border: `1px solid ${c.border}`, color: c.text, cursor: 'pointer', borderRadius: '0 6px 6px 0' }}>+</button>
+                </div>
+                <span style={{ fontSize: 11, color: c.textMuted }}>of {ebayQty} available</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: c.textMuted, marginBottom: 12 }}>
+                <span>eBay qty:</span>
+                <span style={{ fontWeight: 700, color: c.text }}>{ebayQty}</span>
+                <span style={{ color: '#fb923c' }}>→</span>
+                <span style={{ fontWeight: 800, fontSize: 15, color: (ebayQty - soldCount) === 0 ? '#ef4444' : '#fb923c' }}>{ebayQty - soldCount}</span>
+                {(ebayQty - soldCount) === 0 && <span style={{ fontSize: 10, color: '#ef4444', fontWeight: 600 }}>(listing will be removed)</span>}
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={handleSoldElsewhere}
+                  style={{ flex: 1, padding: '9px 0', borderRadius: 6, border: 'none', cursor: 'pointer', background: '#fb923c', color: '#000', fontSize: 12, fontWeight: 700 }}>
+                  Confirm: Remove {soldCount}
+                </button>
+                <button onClick={() => { setShowSoldConfirm(false); setSoldCount(1); }}
+                  style={{ padding: '9px 14px', borderRadius: 6, border: `1px solid ${c.border}`, cursor: 'pointer', background: c.card || '#1a1a1a', color: c.textMuted, fontSize: 12, fontWeight: 600 }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Divider */}
+          <div style={{ borderTop: `1px solid ${c.border}`, marginBottom: 16 }} />
+
+          {/* Price — the main thing */}
           <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 8 }}>
-              PHOTOS ({photos.length}/12)
-            </label>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {photos.map((photo, i) => (
-                <div key={i} style={{ position: 'relative' }}>
-                  <img src={photo} alt="" style={{
-                    width: 80, height: 80, objectFit: 'cover', borderRadius: 8,
-                    border: `1px solid ${c.border}`
-                  }} onError={e => { e.target.style.display = 'none'; }} />
-                  {i === 0 && (
-                    <div style={{ position: 'absolute', bottom: 4, left: 4, fontSize: 8, background: 'rgba(0,0,0,0.7)', padding: '2px 4px', borderRadius: 4 }}>Main</div>
-                  )}
-                </div>
-              ))}
-              {photos.length < 12 && (
-                <label style={{
-                  width: 80, height: 80, border: `2px dashed ${c.border}`, borderRadius: 8,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', color: c.textMuted, fontSize: 24
-                }}>
-                  +
-                  <input type="file" accept="image/*" multiple
-                    onChange={e => {
-                      const files = Array.from(e.target.files);
-                      files.forEach(file => {
-                        const reader = new FileReader();
-                        reader.onload = ev => {
-                          setPhotos(prev => [...prev, ev.target.result].slice(0, 12));
-                          markDirty();
-                        };
-                        reader.readAsDataURL(file);
-                      });
-                    }}
-                    style={{ display: 'none' }} />
-                </label>
-              )}
+            <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 6, fontWeight: 600 }}>PRICE</label>
+            <div style={{ position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 18, color: c.textMuted, fontWeight: 600 }}>$</span>
+              <input type="text" inputMode="decimal" value={price}
+                onChange={e => {
+                  const val = e.target.value;
+                  if (val === '' || /^\d*\.?\d{0,2}$/.test(val)) {
+                    setPrice(val); markDirty();
+                  }
+                }}
+                style={{ width: '100%', height: 52, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, color: c.text, fontSize: 24, fontWeight: 800, paddingLeft: 36, outline: 'none', boxSizing: 'border-box' }} />
             </div>
-          </div>
-
-          {/* Form Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
-            {/* Title */}
-            <div style={{ gridColumn: 'span 2' }}>
-              <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 6 }}>TITLE</label>
-              <input type="text" value={title} maxLength={80}
-                onChange={e => { setTitle(e.target.value.slice(0, 80)); markDirty(); }}
-                style={input} />
-              <div style={{ fontSize: 10, color: c.textMuted, marginTop: 4 }}>{title.length}/80</div>
-            </div>
-
-            {/* Price */}
-            <div>
-              <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 6 }}>PRICE</label>
-              <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: c.textMuted }}>$</span>
-                <input type="text" inputMode="decimal" value={price}
-                  onChange={e => {
-                    const val = e.target.value;
-                    if (val === '' || /^\d*\.?\d{0,2}$/.test(val)) {
-                      setPrice(val); markDirty();
-                    }
-                  }}
-                  style={{ ...input, paddingLeft: 28 }} />
-              </div>
-            </div>
-
-           {/* Size (read-only) */}
-            <div>
-              <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 6 }}>SIZE</label>
-              <input type="text" value={size} readOnly style={{ ...input, opacity: 0.6 }} />
-            </div>
-
-            {/* Quantity */}
-            <div>
-              <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 6 }}>QTY</label>
-              <input type="number" min="1" value={qty}
-                onChange={e => { setQty(Math.max(1, parseInt(e.target.value) || 1)); markDirty(); }}
-                style={input} />
-            </div>
-
-            {/* Condition */}
-            <div>
-              <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 6 }}>CONDITION</label>
-              <select value={condition} onChange={e => { setCondition(e.target.value); markDirty(); }}
-                style={{ ...input, cursor: 'pointer' }}>
-                {CONDITIONS.map(co => <option key={co.value} value={co.value}>{co.label}</option>)}
-              </select>
-            </div>
-
-            {/* Color */}
-            <div>
-              <label style={{ fontSize: 11, color: color ? c.textMuted : c.gold, display: 'block', marginBottom: 6 }}>
-                COLOR {!color && '⚠️ REQUIRED'}
-              </label>
-              <select value={color} onChange={e => { setColor(e.target.value); markDirty(); }}
-                style={{ ...input, borderColor: color ? c.border : c.gold, cursor: 'pointer' }}>
-                <option value="">Select Color...</option>
-                {COLORS.map(co => <option key={co} value={co}>{co}</option>)}
-              </select>
-            </div>
-
-            {/* Brand */}
-            <div>
-              <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 6 }}>BRAND</label>
-              <input type="text" value={brand} onChange={e => { setBrand(e.target.value); markDirty(); }} style={input} />
-            </div>
-
-            {/* Department */}
-            <div>
-              <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 6 }}>DEPARTMENT</label>
-              <select value={department} onChange={e => { setDepartment(e.target.value); markDirty(); }}
-                style={{ ...input, cursor: 'pointer' }}>
-                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </div>
-
-            {/* Style Code */}
-            <div>
-              <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 6 }}>STYLE CODE</label>
-              <input type="text" value={styleCode} onChange={e => { setStyleCode(e.target.value); markDirty(); }} style={input} />
-            </div>
-
-            {/* Silhouette */}
-            <div>
-              <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 6 }}>SILHOUETTE</label>
-              <input type="text" value={silhouette} onChange={e => { setSilhouette(e.target.value); markDirty(); }}
-                style={input} placeholder="e.g., Air Jordan 1" />
-            </div>
-
-            {/* Description */}
-            <div style={{ gridColumn: 'span 2' }}>
-              <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 6 }}>DESCRIPTION</label>
-              <textarea value={description} onChange={e => { setDescription(e.target.value); markDirty(); }}
-                rows={4} style={{ ...input, resize: 'vertical', fontFamily: 'inherit' }} />
-              <div style={{ fontSize: 10, color: c.textMuted, marginTop: 4 }}>{description.length}/4000</div>
-            </div>
-          </div>
-
-          {/* Promoted Listing Toggle */}
-          <div style={{ marginTop: 16, padding: 14, background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: `1px solid ${c.border}` }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700 }}>Promoted Listing</div>
-                <div style={{ fontSize: 10, color: c.textMuted, marginTop: 2 }}>Only pay when it sells</div>
-              </div>
-              <div onClick={() => { setPromotedOn(!promotedOn); markDirty(); }}
-                style={{ width: 42, height: 22, borderRadius: 11, background: promotedOn ? c.green : '#333', cursor: 'pointer', position: 'relative' }}>
-                <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#fff', position: 'absolute', top: 2, left: promotedOn ? 22 : 2, transition: 'left 0.2s' }} />
-              </div>
-            </div>
-            {promotedOn && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
-                <span style={{ fontSize: 11, color: c.textMuted, fontWeight: 600 }}>Ad Rate</span>
-                <div style={{ position: 'relative', width: 60 }}>
-                  <input type="text" inputMode="decimal" value={adRate}
-                    onChange={e => {
-                      const val = e.target.value;
-                      if (val === '' || /^\d*\.?\d{0,1}$/.test(val)) {
-                        setAdRate(val); markDirty();
-                      }
-                    }}
-                    style={{ width: '100%', padding: '7px 22px 7px 8px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 6, color: c.text, fontSize: 13, fontWeight: 700 }} />
-                  <span style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: c.textMuted }}>%</span>
-                </div>
-                {['2', '4', '5', '8'].map(r => (
-                  <button key={r} onClick={() => { setAdRate(r); markDirty(); }}
-                    style={{
-                      padding: '5px 8px', borderRadius: 6, fontSize: 10, fontWeight: 600, cursor: 'pointer',
-                      border: adRate === r ? `1px solid ${c.green}` : `1px solid ${c.border}`,
-                      background: adRate === r ? 'rgba(34,197,94,0.1)' : 'transparent',
-                      color: adRate === r ? c.green : c.textMuted
-                    }}>{r}%</button>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* Action row */}
-          <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <button onClick={onClose}
               style={{ padding: '8px 16px', background: 'rgba(255,255,255,0.05)', border: 'none', borderRadius: 6, color: c.textMuted, fontSize: 12, cursor: 'pointer' }}>
               ▲ Collapse
             </button>
-
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              {dirty && (
-                <button onClick={() => { populateFromOffer(original); setDirty(false); }}
-                  style={{ padding: '8px 14px', background: 'rgba(239,68,68,0.1)', border: `1px solid rgba(239,68,68,0.3)`, borderRadius: 6, color: c.red, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>
-                  ✕ Discard
-                </button>
-              )}
-              <button onClick={handleSave} disabled={!dirty || saving}
-                style={{
-                  padding: '8px 18px', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: dirty ? 'pointer' : 'default',
-                  background: dirty ? c.gold : 'rgba(255,255,255,0.05)',
-                  border: 'none', color: dirty ? '#000' : c.textMuted
-                }}>
-                {saving ? '⏳ Saving...' : `💾 Save ${listingCount} Listing${listingCount !== 1 ? 's' : ''}`}
-              </button>
-            </div>
+            <button onClick={handleSave} disabled={!dirty || saving}
+              style={{
+                padding: '10px 20px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: dirty ? 'pointer' : 'default',
+                background: dirty ? (c.gold || '#d4a843') : 'rgba(255,255,255,0.05)',
+                border: 'none', color: dirty ? '#000' : c.textMuted
+              }}>
+              {saving ? '⏳ Saving...' : 'Save Price'}
+            </button>
           </div>
         </div>
 
@@ -430,8 +239,8 @@ export default function EbayInlineEdit({
           <PricingIntelligence
             price={price}
             setPrice={v => { setPrice(v); markDirty(); }}
-            promotedOn={promotedOn}
-            adRate={adRate}
+            promotedOn={false}
+            adRate={'0'}
             stockxAsk={stockxAsk}
             marketData={marketData}
             size={size}
