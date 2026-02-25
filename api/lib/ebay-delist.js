@@ -118,38 +118,54 @@ export async function deleteEbayOffer(accessToken, offerId) {
 // ═══════════════════════════════════════════════════════════════════════
 // QTY SUPPORT: Reduce eBay listing quantity instead of deleting
 // ═══════════════════════════════════════════════════════════════════════
-export async function reduceEbayQuantity(accessToken, sku, newQuantity) {
+export async function reduceEbayQuantity(accessToken, sku, newQuantity, offerId) {
   const headers = buildHeaders(accessToken);
   
   try {
-    // Get current inventory item
-    const getUrl = `${EBAY_API_BASE}/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`;
-    const getRes = await fetch(getUrl, { method: 'GET', headers });
-    
-    if (!getRes.ok) {
-      return { success: false, error: `Failed to get inventory item: ${getRes.status}` };
+    if (!offerId) {
+      return { success: false, error: 'offerId is required to update live listing quantity' };
     }
-    
-    const inventoryItem = await getRes.json();
-    
-    // Update the quantity
-    inventoryItem.availability = inventoryItem.availability || {};
-    inventoryItem.availability.shipToLocationAvailability = inventoryItem.availability.shipToLocationAvailability || {};
-    inventoryItem.availability.shipToLocationAvailability.quantity = newQuantity;
-    
-    // Put back the updated inventory item
-    const putRes = await fetch(getUrl, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(inventoryItem)
-    });
-    
-    if (putRes.ok || putRes.status === 204) {
+
+    // Build the request for bulkUpdatePriceQuantity
+    // This updates BOTH the inventory record AND the live eBay listing
+    const requestBody = {
+      requests: [{
+        sku: sku,
+        shipToLocationAvailability: {
+          quantity: newQuantity
+        },
+        offers: [{
+          offerId: offerId,
+          availableQuantity: newQuantity
+        }]
+      }]
+    };
+
+    const res = await fetch(
+      `${EBAY_API_BASE}/sell/inventory/v1/bulk_update_price_quantity`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody)
+      }
+    );
+
+    if (!res.ok) {
+      const errText = await res.text();
+      return { success: false, error: `bulkUpdatePriceQuantity failed: ${res.status} - ${errText}` };
+    }
+
+    const data = await res.json();
+    const responses = data.responses || [];
+    const result = responses[0] || {};
+
+    if (result.statusCode === 200) {
+      console.log(`[eBay:Delist] ✓ Reduced quantity for ${sku} to ${newQuantity} (offer ${offerId})`);
       return { success: true, newQuantity };
     }
-    
-    const errText = await putRes.text();
-    return { success: false, error: `Failed to update quantity: ${putRes.status} - ${errText}` };
+
+    const errorMsg = result.errors?.[0]?.message || `statusCode ${result.statusCode}`;
+    return { success: false, error: `Quantity update failed: ${errorMsg}` };
   } catch (err) {
     return { success: false, error: err.message };
   }
