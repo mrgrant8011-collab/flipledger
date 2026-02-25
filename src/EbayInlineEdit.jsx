@@ -150,19 +150,34 @@ export default function EbayInlineEdit({
             </div>
           </div>
 
-          {/* eBay Quantity display */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, marginBottom: 12 }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>eBay Quantity</div>
-              <div style={{ fontSize: 10, color: c.textMuted, marginTop: 2 }}>Add more from the "Not on eBay" tab</div>
+          {/* Price + Qty row */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+            {/* Price */}
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 6, fontWeight: 600 }}>PRICE</label>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 18, color: c.textMuted, fontWeight: 600 }}>$</span>
+                <input type="text" inputMode="decimal" value={price}
+                  onChange={e => {
+                    const val = e.target.value;
+                    if (val === '' || /^\d*\.?\d{0,2}$/.test(val)) {
+                      setPrice(val); markDirty();
+                    }
+                  }}
+                  style={{ width: '100%', height: 52, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, color: c.text, fontSize: 24, fontWeight: 800, paddingLeft: 36, outline: 'none', boxSizing: 'border-box' }} />
+              </div>
             </div>
-            <div style={{ fontSize: 24, fontWeight: 800 }}>{ebayQty}</div>
+            {/* eBay Qty */}
+            <div style={{ width: 140 }}>
+              <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 6, fontWeight: 600 }}>EBAY QTY</label>
+              <div style={{ height: 52, borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 800 }}>{ebayQty}</div>
+            </div>
           </div>
 
           {/* Sold Elsewhere */}
           {!showSoldConfirm ? (
             <button onClick={() => setShowSoldConfirm(true)}
-              style={{ width: '100%', padding: '10px 0', borderRadius: 8, border: '1px solid rgba(251,146,60,0.3)', background: 'rgba(251,146,60,0.08)', color: '#fb923c', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              style={{ width: '100%', padding: '10px 0', borderRadius: 8, border: '1px solid rgba(251,146,60,0.3)', background: 'rgba(251,146,60,0.08)', color: '#fb923c', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
               <span style={{ fontSize: 16 }}>−</span> Sold Elsewhere
             </button>
           ) : (
@@ -198,24 +213,7 @@ export default function EbayInlineEdit({
             </div>
           )}
 
-          {/* Divider */}
-          <div style={{ borderTop: `1px solid ${c.border}`, marginBottom: 16 }} />
-
-          {/* Price — the main thing */}
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 11, color: c.textMuted, display: 'block', marginBottom: 6, fontWeight: 600 }}>PRICE</label>
-            <div style={{ position: 'relative' }}>
-              <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 18, color: c.textMuted, fontWeight: 600 }}>$</span>
-              <input type="text" inputMode="decimal" value={price}
-                onChange={e => {
-                  const val = e.target.value;
-                  if (val === '' || /^\d*\.?\d{0,2}$/.test(val)) {
-                    setPrice(val); markDirty();
-                  }
-                }}
-                style={{ width: '100%', height: 52, borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, color: c.text, fontSize: 24, fontWeight: 800, paddingLeft: 36, outline: 'none', boxSizing: 'border-box' }} />
-            </div>
-          </div>
+          
 
           {/* Action row */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
