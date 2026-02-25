@@ -1841,6 +1841,21 @@ async function createOffer(headers, sku, offerData, policies, merchantLocationKe
 /**
  * Find existing offer by SKU
  */
+/**
+ * Get current quantity from an existing offer
+ */
+async function getCurrentOfferQty(headers, offerId) {
+  try {
+    const res = await fetch(`${EBAY_API_BASE}/sell/inventory/v1/offer/${offerId}`, { headers });
+    if (res.ok) {
+      const data = await res.json();
+      return data.availableQuantity || 1;
+    }
+  } catch (e) {
+    console.warn('[eBay:Offer] Could not get current qty:', e.message);
+  }
+  return 1;
+}
 async function findOfferBySku(headers, sku) {
   try {
     const url = `${EBAY_API_BASE}/sell/inventory/v1/offer?sku=${encodeURIComponent(sku)}&marketplace_id=${EBAY_MARKETPLACE_ID}`;
@@ -2587,10 +2602,67 @@ async function handlePost(headers, body, res) {
       catalogAspects: prod.catalogAspects
     };
 
-      console.log(`[eBay:POST] Processing: ${item.name} Size ${item.size} @ $${item.price}`);
+     console.log(`[eBay:POST] Processing: ${item.name} Size ${item.size} @ $${item.price}`);
 
-      const result = await createSingleListing(headers, item, config);
+      // ═══ CREATE vs INCREMENT: Check if offer already exists for this SKU+size ═══
+      const candidateSku = makeEbaySku(item.sku || item.styleId || 'ITEM', item.size || '');
+      const existingOffer = await findOfferBySku(headers, candidateSku);
+      let result;
 
+      if (existingOffer && existingOffer.offerId) {
+        // Offer exists — increment quantity instead of creating duplicate
+        const currentQty = await getCurrentOfferQty(headers, existingOffer.offerId);
+        const addQty = parseInt(item.qty) || 1;
+        const newQty = currentQty + addQty;
+
+        console.log(`[eBay:POST] ⚡ EXISTING offer found: ${existingOffer.offerId} (qty ${currentQty} → ${newQty})`);
+
+        const patchRes = await fetch(
+          `${EBAY_API_BASE}/sell/inventory/v1/bulk_update_price_quantity`,
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              requests: [{
+                sku: candidateSku,
+                shipToLocationAvailability: { quantity: newQty },
+                offers: [{
+                  offerId: existingOffer.offerId,
+                  availableQuantity: newQty,
+                  price: { value: String(item.price), currency: 'USD' }
+                }]
+              }]
+            })
+          }
+        );
+
+        const patchData = await patchRes.json().catch(() => ({}));
+        const patchOk = (patchData.responses || [])[0]?.statusCode === 200;
+
+        if (patchOk) {
+          console.log(`[eBay:POST] ✓ Incremented ${candidateSku} qty to ${newQty}`);
+          result = {
+            success: true,
+            sku: candidateSku,
+            baseSku: (item.sku || item.styleId || 'ITEM').toUpperCase().replace(/[^A-Z0-9]/g, ''),
+            size: item.size,
+            offerId: existingOffer.offerId,
+            listingId: existingOffer.listingId,
+            ebayUrl: existingOffer.listingId ? `https://www.ebay.com/itm/${existingOffer.listingId}` : null,
+            price: item.price,
+            isDraft: false,
+            incremented: true,
+            previousQty: currentQty,
+            newQty: newQty
+          };
+        } else {
+          console.error(`[eBay:POST] ✗ Increment failed, falling back to create`);
+          result = await createSingleListing(headers, item, config);
+        }
+      } else {
+        // No existing offer — normal create flow
+        result = await createSingleListing(headers, item, config);
+      }
       if (result.success) {
         results.created++;
         results.createdOffers.push({
