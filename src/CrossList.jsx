@@ -1108,6 +1108,23 @@ if (eb.length === 0) {
         const qpData = await qpRes.json();
         if (qpData.updated > 0) showToast(`✓ Listing updated`);
         if (qpData.failed > 0) showToast(`Update failed`, 'error');
+
+        // Clean up excess cross_list_links when qty is reduced
+        if (qty !== undefined && qpData.updated > 0) {
+          const offerId = offerIds[0];
+          const activeLinks = mappings.filter(m => m.ebay_offer_id === offerId && m.status === 'active');
+          if (activeLinks.length > qty) {
+            const excessCount = activeLinks.length - qty;
+            const toRemove = activeLinks.slice(-excessCount); // Remove most recent first
+            for (const link of toRemove) {
+              await supabase.from('cross_list_links')
+                .update({ status: 'removed', updated_at: new Date().toISOString() })
+                .eq('id', link.id);
+            }
+            console.log(`[CrossList] Cleaned up ${excessCount} excess mapping(s)`);
+            await loadMappings();
+          }
+        }
       }
 
       // Send remaining field changes (title, description, color, etc.) to ebay-update
