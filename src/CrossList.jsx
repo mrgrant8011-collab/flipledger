@@ -481,7 +481,7 @@ if (eb.length === 0) {
   return;
 }
       const ebOfferIds = new Set(eb.map(e => String(e.offerId)));
-      const activeMappings = mappings.filter(m => m.status === 'active');
+      const activeMappings = currentMappings.filter(m => m.status === 'active');
       let delistedCount = 0;
       
       for (const mapping of activeMappings) {
