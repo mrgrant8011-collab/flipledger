@@ -62,7 +62,7 @@ export async function processDelistForSale(sale, tokens) {
       if (activeCount > 1) {
         // Reduce quantity instead of deleting
         const newQty = activeCount - 1;
-        delistResult = await reduceEbayQuantity(tokens.ebayToken, crossListMatch.link.ebay_sku, newQty);
+        delistResult = await reduceEbayQuantity(tokens.ebayToken, crossListMatch.link.ebay_sku, newQty, listingIdDelisted);
         if (delistResult.success) {
           delistResult.quantityReduced = true;
         }
