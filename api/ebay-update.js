@@ -188,10 +188,11 @@ function mergeOfferUpdates(offer, update) {
     merged.listingDescription = update.description;
   }
 
- /// Quantity — handled ONLY at inventory item level (Step 5)
-  // MUST delete availableQuantity from offer so the PUT doesn't send the stale value back
-  delete merged.availableQuantity;
-
+ // If qty is being updated, set it on the offer so the PUT doesn't reset it
+  const newQty = update.qty !== undefined ? update.qty : update.quantity;
+  if (newQty !== undefined) {
+    merged.availableQuantity = parseInt(newQty);
+  }
   // Condition - maps to offer-level condition
   if (update.condition !== undefined) {
     // eBay condition enum: NEW, LIKE_NEW, NEW_OTHER, etc.
