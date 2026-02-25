@@ -176,7 +176,7 @@ export default function EbayInlineEdit({
     if (department !== original.department) changes.department = department;
     if (styleCode !== original.styleCode) changes.styleCode = styleCode;
     if (silhouette !== original.silhouette) changes.silhouette = silhouette;
-    if (qty !== (original.qty || items.length)) changes.qty = qty;
+    changes.qty = qty;
 
     // Promoted changes
     const promoChanged = promotedOn !== original.promoted || adRate !== original.adRate;
