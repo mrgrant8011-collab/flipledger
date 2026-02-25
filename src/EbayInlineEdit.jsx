@@ -135,12 +135,14 @@ export default function EbayInlineEdit({
     const ph = offerData.photos || (product.image ? [product.image] : []);
     const promo = offerData.promoted || false;
     const ar = offerData.adRate || '4';
+    const q = offerData.availableQuantity || offerData.quantity || offerData.qty || items.length;
 
     setTitle(t); setPrice(p); setDescription(d); setCondition(co);
     setColor(cl); setBrand(br); setDepartment(dp); setStyleCode(sc);
     setSilhouette(sl); setPhotos(ph); setPromotedOn(promo); setAdRate(ar);
+    setQty(q);
 
-    setOriginal({ title: t, price: p, description: d, condition: co, color: cl, brand: br, department: dp, styleCode: sc, silhouette: sl, promoted: promo, adRate: ar });
+    setOriginal({ title: t, price: p, description: d, condition: co, color: cl, brand: br, department: dp, styleCode: sc, silhouette: sl, promoted: promo, adRate: ar, qty: q });
     setLoading(false);
   };
 
@@ -152,7 +154,7 @@ export default function EbayInlineEdit({
     const ph = product.image ? [product.image] : [];
 
     setTitle(t); setPrice(p); setBrand(br); setStyleCode(sc); setPhotos(ph);
-    setOriginal({ title: t, price: p, description: '', condition: 'NEW', color: '', brand: br, department: 'Men', styleCode: sc, silhouette: '', promoted: false, adRate: '4' });
+   setOriginal({ title: t, price: p, description: '', condition: 'NEW', color: '', brand: br, department: 'Men', styleCode: sc, silhouette: '', promoted: false, adRate: '4', qty: items.length });
     setLoading(false);
   };
 
@@ -189,7 +191,7 @@ export default function EbayInlineEdit({
     }
 
     // Update originals
-    setOriginal({ title, price, description, condition, color, brand, department, styleCode, silhouette, promoted: promotedOn, adRate });
+ setOriginal({ title, price, description, condition, color, brand, department, styleCode, silhouette, promoted: promotedOn, adRate, qty });
     setDirty(false);
     setSaving(false);
   };
