@@ -432,8 +432,10 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
       localStorage.setItem(CACHE_KEYS.SX, JSON.stringify(sx));
       localStorage.setItem(CACHE_KEYS.EB, JSON.stringify(eb));
       
-      // Reload mappings from Supabase
-      await loadMappings();
+    // Reload mappings from Supabase
+      const { data: freshMappingData } = await supabase.from('cross_list_links').select('*').order('created_at', { ascending: false });
+      const currentMappings = freshMappingData || [];
+      setMappings(currentMappings);
       
       // Auto-detect new mappings from eBay SKUs
       // Format: CZ0790400S14 (alphanumeric, S separates SKU from size)
@@ -453,7 +455,7 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
         
         const baseSku = sxMatch?.sku || baseSkuClean; // Use original StockX SKU if found
         
-        const existingMapping = mappings.find(m => 
+        const existingMapping = currentMappings.find(m => 
           m.ebay_offer_id === ebItem.offerId || 
           (m.ebay_sku === ebSku && m.status === 'active')
         );
