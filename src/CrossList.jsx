@@ -711,7 +711,7 @@ if (eb.length === 0) {
   // ============================================
   // PREPARE ITEMS FOR REVIEW SCREEN
   // ============================================
-  const handlePrepareForReview = () => {
+  const handlePrepareForReview = async () => {
     if (!selectedItems.size || !ebayToken) {
       if (!ebayToken) showToast('Connect eBay in Settings first', 'error');
       return;
@@ -751,16 +751,106 @@ if (eb.length === 0) {
       });
     });
     
-    const items = Object.values(itemGroups);
+    const allItems = Object.values(itemGroups);
     
-    if (items.length === 0) {
+    if (allItems.length === 0) {
       showToast('No valid items to list', 'error');
       return;
     }
-    
-    console.log('[CrossList] Opening Review Screen with', items.length, 'items (grouped by SKU+size, total qty:', items.reduce((sum, i) => sum + i.qty, 0), ')');
-    setItemsToReview(items);
-    setShowReview(true);
+
+    // ═══ SPLIT: New listings vs Add to existing ═══
+    const newItems = [];
+    const existingItems = [];
+
+    for (const item of allItems) {
+      const candidateSku = makeEbaySku(item.sku || item.styleId || 'ITEM', item.size || '');
+      const match = ebayListings.find(e => e.sku === candidateSku);
+      
+      if (match) {
+        existingItems.push({ ...item, existingOffer: match, candidateSku });
+      } else {
+        newItems.push(item);
+      }
+    }
+
+    // Handle existing listings — increment qty directly, no review needed
+    if (existingItems.length > 0) {
+      const summaryLines = existingItems.map(item => 
+        `${item.name} Size ${item.size}: qty ${item.existingOffer.quantity} → ${item.existingOffer.quantity + item.qty}`
+      );
+      const confirmed = confirm(
+        `${existingItems.length} size(s) already on eBay — add inventory?\n\n${summaryLines.join('\n')}`
+      );
+      
+      if (confirmed) {
+        setCreating(true);
+        try {
+          const updates = existingItems.map(item => ({
+            sku: item.candidateSku,
+            offerId: item.existingOffer.offerId,
+            quantity: item.existingOffer.quantity + item.qty
+          }));
+          
+          const res = await fetch('/api/ebay-listings', {
+            method: 'PATCH',
+            headers: { 'Authorization': `Bearer ${ebayToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ updates })
+          });
+          const data = await res.json();
+          
+          if (data.updated > 0) {
+            // Create cross_list_links for each incremented item
+            for (const item of existingItems) {
+              const sxIds = item.stockxListingIds || [];
+              if (sxIds.length > 0) {
+                for (const stockxId of sxIds) {
+                  const exists = mappings.find(m => m.stockx_listing_id === stockxId && m.status === 'active');
+                  if (!exists) {
+                    await insertMapping({
+                      sku: item.sku,
+                      size: item.size,
+                      stockx_listing_id: stockxId,
+                      ebay_offer_id: item.existingOffer.offerId,
+                      ebay_listing_id: item.existingOffer.listingId || null,
+                      ebay_sku: item.candidateSku
+                    });
+                  }
+                }
+              } else {
+                // Inventory-sourced item — create mapping without StockX ID
+                await insertMapping({
+                  sku: item.sku,
+                  size: item.size,
+                  stockx_listing_id: null,
+                  ebay_offer_id: item.existingOffer.offerId,
+                  ebay_listing_id: item.existingOffer.listingId || null,
+                  ebay_sku: item.candidateSku
+                });
+              }
+            }
+            showToast(`Added inventory to ${data.updated} existing listing(s)`);
+            await loadMappings();
+          } else {
+            showToast('Failed to update quantities', 'error');
+          }
+        } catch (e) {
+          console.error('[CrossList] Bulk increment error:', e);
+          showToast('Failed: ' + e.message, 'error');
+        }
+        setCreating(false);
+        await syncAll();
+      }
+    }
+
+    // Handle new listings — open review screen as normal
+    if (newItems.length > 0) {
+      console.log('[CrossList] Opening Review Screen with', newItems.length, 'NEW items (total qty:', newItems.reduce((sum, i) => sum + i.qty, 0), ')');
+      setItemsToReview(newItems);
+      setShowReview(true);
+    } else if (existingItems.length > 0) {
+      // All items were existing, clear selection
+      setSelectedItems(new Set());
+    }
   };
 
   const handleReviewComplete = async (data) => {
