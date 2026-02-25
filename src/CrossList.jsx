@@ -1050,6 +1050,50 @@ if (eb.length === 0) {
       showToast('Save failed: ' + e.message, 'error');
     }
   };
+  const handleSoldElsewhere = async ({ offerId, sku, size, count = 1 }) => {
+    if (!ebayToken) return;
+    try {
+      const ebayItem = ebayListings.find(e => e.offerId === offerId);
+      const currentQty = ebayItem?.quantity || 0;
+      const newQty = Math.max(0, currentQty - count);
+
+      if (newQty === 0) {
+        await handleDelistFromEbay([offerId]);
+        showToast(`Listing removed (qty hit 0)`);
+      } else {
+        const res = await fetch('/api/ebay-listings', {
+          method: 'PATCH',
+          headers: { 'Authorization': `Bearer ${ebayToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ updates: [{ offerId, sku, quantity: newQty }] })
+        });
+        const data = await res.json();
+        if (data.updated > 0) {
+          showToast(`Sold elsewhere — eBay qty ${currentQty} → ${newQty}`);
+        } else {
+          showToast('Failed to update eBay qty', 'error');
+          return;
+        }
+      }
+
+      const activeLinks = mappings.filter(m => 
+        m.ebay_offer_id === offerId && m.status === 'active'
+      );
+      if (activeLinks.length > 0) {
+        const linkToRemove = activeLinks[activeLinks.length - 1];
+        await supabase
+          .from('cross_list_links')
+          .update({ status: 'sold_elsewhere', updated_at: new Date().toISOString() })
+          .eq('id', linkToRemove.id);
+      }
+
+      await loadMappings();
+      await syncAll();
+    } catch (e) {
+      console.error('[CrossList] Sold elsewhere error:', e);
+      showToast('Failed: ' + e.message, 'error');
+    }
+  };
+
   const handleOversellSync = async () => {
     showToast('Checking for oversells...');
     
@@ -1396,14 +1440,16 @@ if (eb.length === 0) {
                     </div>
 
                     {viewFilter === 'listed' && editingSize && sizeGroups[editingSize] && (
-                      <EbayInlineEdit
+                    <EbayInlineEdit
                         size={editingSize}
                         items={sizeGroups[editingSize]}
                         product={p}
                         ebayToken={ebayToken}
+                        ebayListings={ebayListings}
                         stockxAsk={sizeGroups[editingSize][0]?.yourAsk}
                         marketData={marketDataCache[p.sku] || null}
                         onSave={handleInlineEditSave}
+                        onSoldElsewhere={handleSoldElsewhere}
                         onClose={() => setEditingSize(null)}
                         ebaySellerLevel={ebaySellerLevel}
                         ebayStoreType={ebayStoreType}
