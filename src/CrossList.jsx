@@ -999,6 +999,7 @@ if (eb.length === 0) {
     try {
     // Split qty and price out — route through bulk_update_price_quantity (ebay-listings PATCH)
       const { qty, price, ...otherChanges } = changes;
+      console.log('[DEBUG] changes:', JSON.stringify(changes), 'qty:', qty, 'price:', price);
 
 // Price and/or Qty → fast bulk endpoint (bulkUpdatePriceQuantity updates the live listing)
       if (price !== undefined || qty !== undefined) {
