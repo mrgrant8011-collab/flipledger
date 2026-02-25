@@ -153,7 +153,7 @@ async function handleUpdateOffers(headers, body, res) {
       // Step 5: If qty changed, also update inventory item quantity
       const qtyVal = update.qty !== undefined ? update.qty : update.quantity;
       if (qtyVal !== undefined && sku) {
-        await updateInventoryItemQty(headers, sku, parseInt(qtyVal));
+        await updateInventoryItemQty(headers, sku, parseInt(qtyVal), offerId);
       }
 
     } catch (e) {
@@ -241,25 +241,50 @@ async function updateInventoryItemTitle(headers, sku, title) {
  * Update inventory item quantity
  * Uses: PUT /sell/inventory/v1/inventory_item/{sku}
  */
-async function updateInventoryItemQty(headers, sku, newQty) {
-  try {
-    const getRes = await fetch(`${EBAY_API_BASE}/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`, {
-      headers
-    });
-    if (!getRes.ok) return;
+async function updateInventoryItemQty(headers, sku, newQty, offerId) {
+ try {
+    if (!offerId) {
+      console.warn(`[eBay:Update] No offerId provided, cannot update live listing qty for ${sku}`);
+      return;
+    }
 
-    const item = await getRes.json();
-    item.availability = item.availability || {};
-    item.availability.shipToLocationAvailability = item.availability.shipToLocationAvailability || {};
-    item.availability.shipToLocationAvailability.quantity = newQty;
+    const requestBody = {
+      requests: [{
+        sku: sku,
+        shipToLocationAvailability: {
+          quantity: newQty
+        },
+        offers: [{
+          offerId: offerId,
+          availableQuantity: newQty
+        }]
+      }]
+    };
 
-    await fetch(`${EBAY_API_BASE}/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(item)
-    });
+    const res = await fetch(
+      `${EBAY_API_BASE}/sell/inventory/v1/bulk_update_price_quantity`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(requestBody)
+      }
+    );
 
-    console.log(`[eBay:Update] ✓ Updated inventory item qty for ${sku} → ${newQty}`);
+    if (!res.ok) {
+      const errText = await res.text();
+      console.warn(`[eBay:Update] Qty update failed for ${sku}: ${res.status} - ${errText}`);
+      return;
+    }
+
+    const data = await res.json();
+    const result = (data.responses || [])[0] || {};
+
+    if (result.statusCode === 200) {
+      console.log(`[eBay:Update] ✓ Updated qty for ${sku} → ${newQty} (offer ${offerId})`);
+    } else {
+      const errorMsg = result.errors?.[0]?.message || `statusCode ${result.statusCode}`;
+      console.warn(`[eBay:Update] Qty update issue for ${sku}: ${errorMsg}`);
+    }
   } catch (e) {
     console.warn(`[eBay:Update] Could not update inventory qty ${sku}:`, e.message);
   }
