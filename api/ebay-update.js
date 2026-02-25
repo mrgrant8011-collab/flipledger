@@ -402,9 +402,10 @@ async function getOrCreateCampaign(headers) {
     body: JSON.stringify({
       campaignName: FLIPLEDGER_CAMPAIGN_NAME,
       marketplaceId: EBAY_MARKETPLACE_ID,
+      startDate: new Date().toISOString(),
       fundingStrategy: {
         fundingModel: 'COST_PER_SALE',
-        bidPercentage: '4.0', // Default campaign rate, individual ads override
+        bidPercentage: '4.0',
       },
     }),
   });
