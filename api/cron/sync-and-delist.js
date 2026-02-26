@@ -102,11 +102,25 @@ async function processUser(userId, platforms) {
         const orderSize = (variant.variantValue || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
         console.log(`[Cron] StockX order: ${order.orderNumber} | styleId: ${product.styleId} | size: ${variant.variantValue} | normalized: ${orderSku} / ${orderSize}`);
 
-        const match = activeMappings.find(m => {
-          const mSku = (m.sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-          const mSize = (m.size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-          return (mSku === orderSku || mSku.includes(orderSku) || orderSku.includes(mSku)) && mSize === orderSize;
-        });
+        const orderListingId = order.listingId || null;
+        const orderAskId = order.askId || null;
+
+        // Primary: match by listingId/askId (direct ID match)
+        let match =
+          (orderListingId && activeMappings.find(m => m.stockx_listing_id === orderListingId)) ||
+          (orderAskId && activeMappings.find(m => m.stockx_listing_id === orderAskId)) ||
+          null;
+
+        // Fallback: styleId + size matching
+        if (!match) {
+          match = activeMappings.find(m => {
+            const mSku = (m.sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            const mSize = (m.size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            return (mSku === orderSku || mSku.includes(orderSku) || orderSku.includes(mSku)) && mSize === orderSize;
+          });
+        }
+
+        console.log(`[Cron] Order ${order.orderNumber} listingId=${orderListingId} askId=${orderAskId} -> match=${match ? match.id : 'NONE'}`);
 
       // Extra debug for AR3565
         if (orderSku.includes('AR3565')) {
