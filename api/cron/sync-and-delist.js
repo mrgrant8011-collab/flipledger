@@ -108,7 +108,17 @@ async function processUser(userId, platforms) {
           return (mSku === orderSku || mSku.includes(orderSku) || orderSku.includes(mSku)) && mSize === orderSize;
         });
 
-       console.log(`[Cron] Match result for ${orderSku}/${orderSize}: ${match ? `FOUND (id=${match.id}, ebay_offer_id=${match.ebay_offer_id})` : 'NO MATCH'}`);
+      // Extra debug for AR3565
+        if (orderSku.includes('AR3565')) {
+          const ar3565 = activeMappings.filter(m => (m.sku || '').includes('AR3565'));
+          console.log(`[Cron] AR3565 debug: found ${ar3565.length} mappings in array`);
+          ar3565.forEach(m => {
+            const mSku = (m.sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            const mSize = (m.size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            console.log(`[Cron]   mapping: sku=${m.sku} normalized=${mSku} size=${m.size} normalized=${mSize} | vs order: ${orderSku}/${orderSize} | skuMatch=${mSku === orderSku || mSku.includes(orderSku) || orderSku.includes(mSku)} sizeMatch=${mSize === orderSize}`);
+          });
+        }
+        console.log(`[Cron] Match result for ${orderSku}/${orderSize}: ${match ? `FOUND (id=${match.id}, ebay_offer_id=${match.ebay_offer_id})` : 'NO MATCH'}`);
 
        if (match && match.ebay_offer_id) {
           try {
