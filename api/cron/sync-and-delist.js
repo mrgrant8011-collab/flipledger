@@ -106,6 +106,8 @@ async function processUser(userId, platforms) {
           return (mSku === orderSku || mSku.includes(orderSku) || orderSku.includes(mSku)) && mSize === orderSize;
         });
 
+       console.log(`[Cron] Match result for ${orderSku}/${orderSize}: ${match ? `FOUND (id=${match.id}, ebay_offer_id=${match.ebay_offer_id})` : 'NO MATCH'}`);
+
        if (match && match.ebay_offer_id) {
           try {
             // QTY SUPPORT: Check how many active links share this eBay listing
