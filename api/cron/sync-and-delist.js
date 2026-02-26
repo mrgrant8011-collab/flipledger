@@ -69,8 +69,10 @@ async function processUser(userId, platforms) {
       .eq('user_id', userId)
       .eq('status', 'active');
 
-    if (!activeMappings || activeMappings.length === 0) return result;
+   if (!activeMappings || activeMappings.length === 0) return result;
     result.activeMappings = activeMappings.length;
+    const sampleMappings = activeMappings.slice(0, 5).map(m => `${m.sku}/${m.size}`);
+    console.log(`[Cron] Active mappings: ${activeMappings.length} | samples: ${sampleMappings.join(', ')}`);
 
     // ═══════════════════════════════════════════════════════
     // DIRECTION 1: StockX confirmed sale → delist from eBay
