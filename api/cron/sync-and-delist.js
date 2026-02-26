@@ -87,9 +87,10 @@ async function processUser(userId, platforms) {
         .not('order_number', 'is', null);
       const processedOrderNumbers = new Set((processedOrders || []).map(o => o.order_number));
 
-      for (const order of sxOrders) {
+     for (const order of sxOrders) {
         // Skip if already processed
         if (processedOrderNumbers.has(order.orderNumber)) {
+          console.log(`[Cron] Skipping already-processed order: ${order.orderNumber}`);
           continue;
         }
 
@@ -97,6 +98,7 @@ async function processUser(userId, platforms) {
         const product = order.product || {};
         const orderSku = (product.styleId || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
         const orderSize = (variant.variantValue || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        console.log(`[Cron] StockX order: ${order.orderNumber} | styleId: ${product.styleId} | size: ${variant.variantValue} | normalized: ${orderSku} / ${orderSize}`);
 
         const match = activeMappings.find(m => {
           const mSku = (m.sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
