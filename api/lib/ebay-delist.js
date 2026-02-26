@@ -126,6 +126,24 @@ export async function reduceEbayQuantity(accessToken, sku, newQuantity, offerId)
       return { success: false, error: 'offerId is required to update live listing quantity' };
     }
 
+    // Fetch current offer to get price (required by bulkUpdatePriceQuantity)
+    const offerRes = await fetch(
+      `${EBAY_API_BASE}/sell/inventory/v1/offer/${offerId}`,
+      { method: 'GET', headers }
+    );
+
+    if (!offerRes.ok) {
+      return { success: false, error: `Failed to fetch offer ${offerId}: ${offerRes.status}` };
+    }
+
+    const offerData = await offerRes.json();
+    const currentPrice = offerData.pricingSummary?.price?.value;
+    const currency = offerData.pricingSummary?.price?.currency || 'USD';
+
+    if (!currentPrice) {
+      return { success: false, error: 'Could not determine current price for offer' };
+    }
+
     // Build the request for bulkUpdatePriceQuantity
     // This updates BOTH the inventory record AND the live eBay listing
     const requestBody = {
@@ -136,7 +154,11 @@ export async function reduceEbayQuantity(accessToken, sku, newQuantity, offerId)
         },
         offers: [{
           offerId: offerId,
-          availableQuantity: newQuantity
+          availableQuantity: newQuantity,
+          price: {
+            value: currentPrice,
+            currency: currency
+          }
         }]
       }]
     };
