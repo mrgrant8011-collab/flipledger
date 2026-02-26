@@ -494,6 +494,27 @@ if (eb.length === 0) {
       
      await loadMappings();
 
+     // ═══ REACTIVATE: If eBay reinstated a listing, flip delisted mappings back to active ═══
+      const { data: delistedLinks } = await supabase
+        .from('cross_list_links')
+        .select('id, ebay_offer_id')
+        .eq('user_id', userId)
+        .in('status', ['delisted', 'removed']);
+      
+      const liveOfferIds = new Set(eb.map(e => String(e.offerId)));
+      const toReactivate = (delistedLinks || [])
+        .filter(l => l.ebay_offer_id && liveOfferIds.has(String(l.ebay_offer_id)))
+        .map(l => l.id);
+      
+      if (toReactivate.length > 0) {
+        await supabase
+          .from('cross_list_links')
+          .update({ status: 'active', updated_at: new Date().toISOString() })
+          .in('id', toReactivate);
+        console.log(`[CrossList] Reactivated ${toReactivate.length} mapping(s) for reinstated eBay listings`);
+        await loadMappings();
+      }
+
       // ═══ RECONCILE: Ensure active links match eBay live qty ═══
       const freshMappings = (await supabase.from('cross_list_links').select('*').eq('status', 'active')).data || [];
       const linksByOffer = {};
