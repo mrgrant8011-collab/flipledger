@@ -79,7 +79,20 @@ async function processUser(userId, platforms) {
       const sxOrders = await fetchStockXActiveOrders(tokens.stockxToken);
       result.stockxSales = sxOrders.length;
 
+      // Fetch already-processed order numbers to avoid double-processing
+      const { data: processedOrders } = await supabaseAdmin
+        .from('delist_log')
+        .select('order_number')
+        .eq('user_id', userId)
+        .not('order_number', 'is', null);
+      const processedOrderNumbers = new Set((processedOrders || []).map(o => o.order_number));
+
       for (const order of sxOrders) {
+        // Skip if already processed
+        if (processedOrderNumbers.has(order.orderNumber)) {
+          continue;
+        }
+
         const variant = order.variant || {};
         const product = order.product || {};
         const orderSku = (product.styleId || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -122,7 +135,8 @@ async function processUser(userId, platforms) {
                 user_id: userId, sold_on: 'stockx', delisted_from: 'ebay',
                 item_sku: match.sku, item_size: match.size,
                 listing_id_delisted: match.ebay_offer_id,
-                cross_list_link_id: match.id, status: 'success'
+                cross_list_link_id: match.id, status: 'success',
+                order_number: order.orderNumber
               });
 
               result.delisted++;
@@ -154,7 +168,21 @@ async function processUser(userId, platforms) {
         const ebaySales = salesData.sales || [];
         result.ebaySales = ebaySales.length;
 
+        // Fetch already-processed eBay order numbers
+        const { data: processedEbayOrders } = await supabaseAdmin
+          .from('delist_log')
+          .select('order_number')
+          .eq('user_id', userId)
+          .eq('sold_on', 'ebay')
+          .not('order_number', 'is', null);
+        const processedEbayOrderNumbers = new Set((processedEbayOrders || []).map(o => o.order_number));
+
         for (const sale of ebaySales) {
+          // Skip if already processed
+          if (sale.orderId && processedEbayOrderNumbers.has(sale.orderId)) {
+            continue;
+          }
+
           const saleSku = (sale.sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
           const saleSize = (sale.size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
@@ -177,7 +205,8 @@ async function processUser(userId, platforms) {
                   user_id: userId, sold_on: 'ebay', delisted_from: 'stockx',
                   item_sku: match.sku, item_size: match.size,
                   listing_id_delisted: match.stockx_listing_id,
-                  cross_list_link_id: match.id, status: 'success'
+                  cross_list_link_id: match.id, status: 'success',
+                  order_number: sale.orderId || null
                 });
 
                 result.delisted++;
