@@ -133,7 +133,9 @@ export async function reduceEbayQuantity(accessToken, sku, newQuantity, offerId)
     );
 
     if (!offerRes.ok) {
-      return { success: false, error: `Failed to fetch offer ${offerId}: ${offerRes.status}` };
+      const errText = await offerRes.text();
+      console.error(`[eBay:Delist] GET offer ${offerId} failed: ${offerRes.status} - ${errText}`);
+      return { success: false, error: `Failed to fetch offer ${offerId}: ${offerRes.status} - ${errText}` };
     }
 
     const offerData = await offerRes.json();
