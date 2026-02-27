@@ -144,20 +144,34 @@ async function processUser(userId, platforms) {
               .eq('ebay_offer_id', match.ebay_offer_id)
               .eq('status', 'active');
 
-            const activeCount = sharedLinks ? sharedLinks.length : 0;
+           const activeCount = sharedLinks ? sharedLinks.length : 0;
             let delistResult;
 
-          console.log(`[Cron] eBay action: offer=${match.ebay_offer_id} activeCount=${activeCount} newQty=${activeCount - 1}`);
+            // Fetch actual eBay qty to make the right decision
+            let ebayQty = activeCount;
+            try {
+              const offerCheck = await fetch(
+                `https://api.ebay.com/sell/inventory/v1/offer/${match.ebay_offer_id}`,
+                { method: 'GET', headers: { 'Authorization': `Bearer ${tokens.ebayToken}`, 'Content-Type': 'application/json', 'Accept': 'application/json' } }
+              );
+              if (offerCheck.ok) {
+                const offerData = await offerCheck.json();
+                ebayQty = offerData.availableQuantity || activeCount;
+              }
+            } catch (e) {
+              console.error(`[Cron] Failed to fetch eBay offer qty: ${e.message}`);
+            }
 
-            if (activeCount > 1) {
-              // Multiple sizes share this listing — reduce quantity
-              const newQty = activeCount - 1;
+            console.log(`[Cron] eBay action: offer=${match.ebay_offer_id} activeCount=${activeCount} ebayQty=${ebayQty} newQty=${ebayQty - 1}`);
+
+            if (ebayQty > 1) {
+              // Multiple qty on eBay — reduce by 1
+              const newQty = ebayQty - 1;
               delistResult = await reduceEbayQuantity(tokens.ebayToken, match.ebay_sku, newQty, match.ebay_offer_id);
             } else {
               // Last one — delete the listing entirely
               delistResult = await delistEbayOffer(tokens.ebayToken, match.ebay_offer_id);
             }
-
             if (delistResult.success || delistResult.alreadyRemoved) {
               await supabaseAdmin.from('cross_list_links').update({
                 status: 'sold', sold_on: 'stockx', sold_at: new Date().toISOString(), updated_at: new Date().toISOString()
