@@ -147,6 +147,8 @@ async function processUser(userId, platforms) {
             const activeCount = sharedLinks ? sharedLinks.length : 0;
             let delistResult;
 
+          console.log(`[Cron] eBay action: offer=${match.ebay_offer_id} activeCount=${activeCount} newQty=${activeCount - 1}`);
+
             if (activeCount > 1) {
               // Multiple sizes share this listing — reduce quantity
               const newQty = activeCount - 1;
@@ -173,6 +175,11 @@ async function processUser(userId, platforms) {
               console.log(`[Cron] StockX sale → Delisted from eBay: ${match.sku} size ${match.size}`);
             } else {
               result.failed++;
+              console.error(
+                `[Cron] Delist FAILED user=${userId} sku=${match.sku} size=${match.size} ` +
+                `offerId=${match.ebay_offer_id} ebay_sku=${match.ebay_sku} activeCount=${activeCount} -> ${JSON.stringify(delistResult)}`
+              );
+            
             }
           } catch (err) {
             result.failed++;
