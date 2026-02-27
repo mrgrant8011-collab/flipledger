@@ -152,6 +152,34 @@ export async function reduceEbayQuantity(accessToken, sku, newQuantity, offerId)
       return { success: false, error: `Offer ${offerId} returned no SKU` };
     }
 
+    // Detect real live quantity from eBay (check multiple possible fields)
+    const liveQty = offerData.availableQuantity 
+      ?? offerData.listing?.availableQuantity 
+      ?? offerData.listing?.quantity 
+      ?? null;
+
+    if (liveQty === null) {
+      return { success: false, error: `Could not determine live eBay quantity for offer ${offerId}` };
+    }
+
+    // Calculate new quantity (reduce by 1 from live)
+    newQuantity = liveQty - 1;
+    console.log(`[eBay:Delist] Offer ${offerId}: liveQty=${liveQty} reducing to ${newQuantity}`);
+
+    // If qty would hit 0, withdraw instead of reducing
+    if (newQuantity <= 0) {
+      console.log(`[eBay:Delist] Qty would be 0 — withdrawing offer ${offerId}`);
+      const withdrawRes = await fetch(
+        `${EBAY_API_BASE}/sell/inventory/v1/offer/${offerId}/withdraw`,
+        { method: 'POST', headers }
+      );
+      if (withdrawRes.ok || withdrawRes.status === 204) {
+        return { success: true, newQuantity: 0, withdrawn: true };
+      }
+      const wErr = await withdrawRes.text();
+      return { success: false, error: `Withdraw failed: ${withdrawRes.status} - ${wErr}` };
+    }
+
     // Build the request for bulkUpdatePriceQuantity
     // This updates BOTH the inventory record AND the live eBay listing
     const requestBody = {
