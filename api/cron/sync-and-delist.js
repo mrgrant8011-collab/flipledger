@@ -147,29 +147,14 @@ async function processUser(userId, platforms) {
            const activeCount = sharedLinks ? sharedLinks.length : 0;
             let delistResult;
 
-            // Fetch actual eBay qty to make the right decision
-            let ebayQty = activeCount;
-            try {
-              const offerCheck = await fetch(
-                `https://api.ebay.com/sell/inventory/v1/offer/${match.ebay_offer_id}`,
-                { method: 'GET', headers: { 'Authorization': `Bearer ${tokens.ebayToken}`, 'Content-Type': 'application/json', 'Accept': 'application/json' } }
-              );
-              if (offerCheck.ok) {
-                const offerData = await offerCheck.json();
-                ebayQty = offerData.availableQuantity || activeCount;
-              }
-            } catch (e) {
-              console.error(`[Cron] Failed to fetch eBay offer qty: ${e.message}`);
-            }
+            console.log(`[Cron] eBay action: offer=${match.ebay_offer_id} activeCount=${activeCount}`);
 
-            console.log(`[Cron] eBay action: offer=${match.ebay_offer_id} activeCount=${activeCount} ebayQty=${ebayQty} newQty=${ebayQty - 1}`);
+            // Always attempt reduce — reduceEbayQuantity fetches real qty and decides
+            delistResult = await reduceEbayQuantity(tokens.ebayToken, match.ebay_sku, 0, match.ebay_offer_id);
 
-            if (ebayQty > 1) {
-              // Multiple qty on eBay — reduce by 1
-              const newQty = ebayQty - 1;
-              delistResult = await reduceEbayQuantity(tokens.ebayToken, match.ebay_sku, newQty, match.ebay_offer_id);
-            } else {
-              // Last one — delete the listing entirely
+            // If reduce failed (e.g. qty was 1 and couldn't reduce), try withdraw
+            if (!delistResult.success && !delistResult.alreadyRemoved) {
+              console.log(`[Cron] Reduce failed, attempting withdraw for offer=${match.ebay_offer_id}`);
               delistResult = await delistEbayOffer(tokens.ebayToken, match.ebay_offer_id);
             }
             if (delistResult.success || delistResult.alreadyRemoved) {
