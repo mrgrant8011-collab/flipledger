@@ -5,6 +5,7 @@ function buildHeaders(accessToken) {
     'Authorization': `Bearer ${accessToken}`,
     'Content-Type': 'application/json',
     'Accept': 'application/json',
+    'Accept-Language': 'en-US',
     'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
   };
 }
