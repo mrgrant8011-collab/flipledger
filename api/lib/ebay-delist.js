@@ -146,11 +146,18 @@ export async function reduceEbayQuantity(accessToken, sku, newQuantity, offerId)
       return { success: false, error: 'Could not determine current price for offer' };
     }
 
+    // Use eBay's own SKU from the offer (source of truth)
+    const ebaySku = offerData.sku || sku;
+    if (!ebaySku) {
+      return { success: false, error: `Offer ${offerId} returned no SKU` };
+    }
+
     // Build the request for bulkUpdatePriceQuantity
     // This updates BOTH the inventory record AND the live eBay listing
     const requestBody = {
       requests: [{
-        sku: sku,
+        sku: ebaySku,
+        
         shipToLocationAvailability: {
           quantity: newQuantity
         },
