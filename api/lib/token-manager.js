@@ -219,12 +219,16 @@ export async function storeTokens(userId, platform, tokens) {
  * Get all users who have tokens stored
  * @returns {array} List of user_ids with at least one platform token
  */
-export async function getUsersWithTokens() {
+export async function getUsersWithTokens(batchSize = 25) {
   try {
+    const now = new Date().toISOString();
+
     const { data, error } = await supabaseAdmin
       .from('user_tokens')
-      .select('user_id, platform')
-      .order('user_id').range(0, 999999);
+      .select('user_id, platform, next_check_at')
+      .lte('next_check_at', now)
+      .order('next_check_at', { ascending: true })
+      .limit(batchSize * 2);
 
     if (error) {
       console.error('[TokenManager] Failed to get users with tokens:', error);
@@ -240,15 +244,27 @@ export async function getUsersWithTokens() {
       userMap.get(row.user_id).push(row.platform);
     }
 
-    // Return array of { userId, platforms }
-    return Array.from(userMap.entries()).map(([userId, platforms]) => ({
-      userId,
-      platforms
-    }));
+    // Return array of { userId, platforms }, capped at batchSize
+    return Array.from(userMap.entries())
+      .slice(0, batchSize)
+      .map(([userId, platforms]) => ({
+        userId,
+        platforms
+      }));
   } catch (err) {
     console.error('[TokenManager] Error getting users:', err);
     return [];
   }
+}
+
+export async function updateNextCheck(userId, hadActivity) {
+  const delayMs = hadActivity ? 2 * 60 * 1000 : 30 * 60 * 1000;
+  const nextCheck = new Date(Date.now() + delayMs).toISOString();
+
+  await supabaseAdmin
+    .from('user_tokens')
+    .update({ next_check_at: nextCheck })
+    .eq('user_id', userId);
 }
 
 export { supabaseAdmin };
