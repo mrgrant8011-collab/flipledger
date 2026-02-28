@@ -1,4 +1,4 @@
-import { getValidToken, getUsersWithTokens, supabaseAdmin } from '../lib/token-manager.js';
+import { getValidToken, getUsersWithTokens, updateNextCheck, supabaseAdmin } from '../lib/token-manager.js';
 import { acquireLock, releaseLock } from '../lib/delist-processor.js';
 import { delistEbayOffer, reduceEbayQuantity } from '../lib/ebay-delist.js';
 import { delistStockXListing } from '../lib/stockx-delist.js';
@@ -65,7 +65,7 @@ async function processUser(userId, platforms) {
 
     const { data: activeMappings } = await supabaseAdmin
       .from('cross_list_links')
-      .select('*')
+     .select('id, user_id, sku, size, status, stockx_listing_id, ebay_offer_id, ebay_sku')
       .eq('user_id', userId)
       .eq('status', 'active');
 
@@ -86,7 +86,8 @@ async function processUser(userId, platforms) {
         .from('delist_log')
         .select('order_number')
         .eq('user_id', userId)
-        .not('order_number', 'is', null);
+        .not('order_number', 'is', null)
+        .limit(1000);
       const processedOrderNumbers = new Set((processedOrders || []).map(o => o.order_number));
 
      for (const order of sxOrders) {
@@ -162,13 +163,13 @@ async function processUser(userId, platforms) {
                 status: 'sold', sold_on: 'stockx', sold_at: new Date().toISOString(), updated_at: new Date().toISOString()
               }).eq('id', match.id);
 
-              await supabaseAdmin.from('delist_log').insert({
+              await supabaseAdmin.from('delist_log').upsert({
                 user_id: userId, sold_on: 'stockx', delisted_from: 'ebay',
                 item_sku: match.sku, item_size: match.size,
                 listing_id_delisted: match.ebay_offer_id,
                 cross_list_link_id: match.id, status: 'success',
                 order_number: order.orderNumber
-              });
+              }, { onConflict: 'user_id,order_number', ignoreDuplicates: true });
 
               result.delisted++;
               console.log(`[Cron] StockX sale → Delisted from eBay: ${match.sku} size ${match.size}`);
@@ -237,13 +238,13 @@ async function processUser(userId, platforms) {
                   status: 'sold', sold_on: 'ebay', sold_at: new Date().toISOString(), updated_at: new Date().toISOString()
                 }).eq('id', match.id);
 
-                await supabaseAdmin.from('delist_log').insert({
+                await supabaseAdmin.from('delist_log').upsert({
                   user_id: userId, sold_on: 'ebay', delisted_from: 'stockx',
                   item_sku: match.sku, item_size: match.size,
                   listing_id_delisted: match.stockx_listing_id,
                   cross_list_link_id: match.id, status: 'success',
                   order_number: sale.orderId || null
-                });
+                }, { onConflict: 'user_id,order_number', ignoreDuplicates: true });
 
                 result.delisted++;
                 console.log(`[Cron] eBay sale → Delisted from StockX: ${match.sku} size ${match.size}`);
@@ -278,13 +279,15 @@ export default async function handler(req, res) {
       return res.status(200).json({ success: true, message: 'No users with tokens', timestamp: new Date().toISOString() });
     }
 
-    const results = [];
+   const results = [];
     for (const user of users) {
       try {
         const result = await processUser(user.userId, user.platforms);
         results.push(result);
+        await updateNextCheck(user.userId, result.delisted > 0 || result.failed > 0);
       } catch (err) {
         results.push({ userId: user.userId, error: err.message });
+        await updateNextCheck(user.userId, false);
       }
     }
 
