@@ -1582,23 +1582,7 @@ if (eb.length === 0) {
                                   {onEbayCount}/{items.length} eBay
                                 </div>
                               )}
-                              {onEbayCount > 0 && (
-                                <div
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const offerIds = [...new Set(items.filter(s => s.ebayOfferId).map(s => s.ebayOfferId))];
-                                    if (offerIds.length > 0 && confirm(`Remove size ${size} from eBay?`)) {
-                                      handleDelistFromEbay(offerIds);
-                                    }
-                                  }}
-                                  style={{
-                                    marginTop: 4, fontSize: 9, color: c.red, cursor: 'pointer',
-                                    padding: '2px 6px', borderRadius: 4, background: 'rgba(239,68,68,0.1)',
-                                    fontWeight: 600
-                                  }}>
-                                  🗑️ Remove
-                                </div>
-                              )}
+                              
                             </div>
                             
                           );
