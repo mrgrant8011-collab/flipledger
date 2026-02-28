@@ -36,6 +36,16 @@ import { AutoMatchButton } from './autoMatch.jsx';
 import { syncStockXSales, syncEbaySales, transformPendingForDisplay } from './syncModule';
 import { storeEbayTokens, getValidEbayToken, clearEbayTokens } from './ebayTokenHelper';
 // ═══════════════════════════════════════════════════════════════════════
+// FETCH WITH TIMEOUT: Prevents app from hanging on slow/dead endpoints
+// ═══════════════════════════════════════════════════════════════════════
+function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(timer));
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // AUTO-DELIST: Store tokens server-side for 24/7 automatic delisting
 // ═══════════════════════════════════════════════════════════════════════
 async function linkTokensToServer(platform, accessToken, refreshToken, expiresIn) {
@@ -1056,28 +1066,27 @@ const loadedUserRef = useRef(null);
         const savedGoals = localStorage.getItem(`flipledger_goals_${user.id}`);
         if (savedGoals) setGoals(JSON.parse(savedGoals));
 
-        // Load tokens from localStorage
+       // Load tokens from localStorage
         const stockxTok = localStorage.getItem('flipledger_stockx_token');
         if (stockxTok) {
           setStockxToken(stockxTok);
           setStockxConnected(true);
         }
 
-        const ebayTok = await getValidEbayToken((newToken) => {
-          setEbayToken(newToken);
-        });
-       if (ebayTok) {
-          setEbayToken(ebayTok);
+        // eBay: use cached token immediately so app never blocks on refresh
+        const cachedEbayToken = localStorage.getItem('flipledger_ebay_token');
+        if (cachedEbayToken) {
+          setEbayToken(cachedEbayToken);
           setEbayConnected(true);
         }
 
-        // Fetch eBay business policies
+        // Fetch eBay business policies (with timeout)
         async function loadEbayPolicies(token) {
           setPoliciesLoading(true);
           try {
-            const res = await fetch('/api/ebay-policies', {
+            const res = await fetchWithTimeout('/api/ebay-policies', {
               headers: { 'Authorization': `Bearer ${token}` }
-            });
+            }, 10000);
             if (res.ok) {
               const data = await res.json();
               if (data.policies) {
@@ -1091,7 +1100,22 @@ const loadedUserRef = useRef(null);
           }
         }
 
-       if (ebayTok) loadEbayPolicies(ebayTok);
+        if (cachedEbayToken) loadEbayPolicies(cachedEbayToken);
+
+        // Background refresh — never blocks loadData or app render
+        if (cachedEbayToken) {
+          getValidEbayToken((newToken) => {
+            setEbayToken(newToken);
+          }).then(freshToken => {
+            if (freshToken && freshToken !== cachedEbayToken) {
+              setEbayToken(freshToken);
+              setEbayConnected(true);
+              loadEbayPolicies(freshToken);
+            }
+          }).catch(err => {
+            console.warn('[eBay] Background refresh failed, using cached token:', err.message);
+          });
+        }
 
         // Load saved eBay policy selections
         const { data: policySettings } = await supabase
