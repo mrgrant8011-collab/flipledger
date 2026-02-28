@@ -1235,15 +1235,22 @@ if (eb.length === 0) {
         }
       }
 
-      const activeLinks = mappings.filter(m => 
+     const activeLinks = mappings.filter(m => 
         m.ebay_offer_id === offerId && m.status === 'active'
       );
       if (activeLinks.length > 0) {
         const linkToRemove = activeLinks[activeLinks.length - 1];
         await supabase
           .from('cross_list_links')
-          .update({ status: 'sold_elsewhere', updated_at: new Date().toISOString() })
+          .update({ status: 'sold', sold_on: 'other', sold_at: new Date().toISOString(), updated_at: new Date().toISOString() })
           .eq('id', linkToRemove.id);
+
+        await supabase.from('delist_log').insert({
+          user_id: userId, sold_on: 'other', delisted_from: 'ebay',
+          item_sku: sku || '', item_size: size || '',
+          listing_id_delisted: offerId,
+          cross_list_link_id: linkToRemove.id, status: 'success'
+        });
       }
 
       await loadMappings();
