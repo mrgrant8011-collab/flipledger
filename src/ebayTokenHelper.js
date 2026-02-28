@@ -5,6 +5,14 @@
  * Access tokens expire after 2 hours, refresh tokens last 18 months.
  */
 
+// Fetch with timeout to prevent hanging on dead endpoints
+function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(timer));
+}
+
 const STORAGE_KEYS = {
   ACCESS_TOKEN: 'flipledger_ebay_token',
   REFRESH_TOKEN: 'flipledger_ebay_refresh',
@@ -64,11 +72,11 @@ export async function getValidEbayToken(onTokenRefresh) {
   }
   
   try {
-    const response = await fetch('/api/ebay-refresh', {
+   const response = await fetchWithTimeout('/api/ebay-refresh', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: refreshToken })
-    });
+    }, 10000);
     
     const data = await response.json();
     
@@ -96,14 +104,17 @@ export async function getValidEbayToken(onTokenRefresh) {
       return null;
     }
     
+    // Refresh failed but not permanent — return cached token
+    // If it's truly expired, API calls will fail and user sees clear error
     console.error('[eBay:Token] Refresh failed:', data.error);
-    return null;
+    return accessToken;
     
   } catch (err) {
-    console.error('[eBay:Token] Refresh error:', err);
-    return null;
+    // Network error, timeout, server down — use cached token
+    console.error('[eBay:Token] Refresh error:', err.message);
+    return accessToken;
   }
-}
+  }
 
 /**
  * Clear all eBay tokens (disconnect)
