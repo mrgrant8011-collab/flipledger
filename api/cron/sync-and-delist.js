@@ -216,7 +216,7 @@ async function processUser(userId, platforms) {
 
         for (const sale of ebaySales) {
           // Skip if already processed
-          if (sale.orderId && processedEbayOrderNumbers.has(sale.orderId)) {
+          if (sale.order_id && processedEbayOrderNumbers.has(sale.order_id)) {
             continue;
           }
 
