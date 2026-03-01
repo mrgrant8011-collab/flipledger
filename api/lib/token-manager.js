@@ -36,7 +36,7 @@ export async function getValidToken(userId, platform) {
     // Check if token is expired (with 5 min buffer)
     const now = new Date();
     const expiresAt = new Date(tokenData.expires_at);
-    const bufferMs = 5 * 60 * 1000; // 5 minutes
+    const bufferMs = 12 * 60 * 60 * 1000; // 12 hours
 
     if (expiresAt.getTime() - bufferMs > now.getTime()) {
       // Token still valid
