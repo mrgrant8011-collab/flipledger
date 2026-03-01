@@ -210,23 +210,24 @@ export async function reduceEbayQuantity(accessToken, sku, newQuantity, offerId)
       }
     );
 
-    if (!res.ok) {
+  if (!res.ok) {
       const errText = await res.text();
-      return { success: false, error: `bulkUpdatePriceQuantity failed: ${res.status} - ${errText}` };
+      console.error(`[eBay:Delist] bulkUpdate HTTP failed: ${res.status} - ${errText}`);
+      return { success: false, error: `bulkUpdatePriceQuantity failed: ${res.status} - ${errText}`, liveQty };
     }
 
     const data = await res.json();
+    console.log(`[eBay:Delist] bulkUpdate response: ${JSON.stringify(data)}`);
     const responses = data.responses || [];
     const result = responses[0] || {};
 
     if (result.statusCode === 200) {
       console.log(`[eBay:Delist] ✓ Reduced quantity for ${sku} to ${newQuantity} (offer ${offerId})`);
-      return { success: true, newQuantity };
+      return { success: true, newQuantity, liveQty };
     }
 
     const errorMsg = result.errors?.[0]?.message || `statusCode ${result.statusCode}`;
-    return { success: false, error: `Quantity update failed: ${errorMsg}` };
-  } catch (err) {
-    return { success: false, error: err.message };
+    console.error(`[eBay:Delist] bulkUpdate item error: ${JSON.stringify(result)}`);
+    return { success: false, error: `Quantity update failed: ${errorMsg}`, liveQty };
   }
 }
