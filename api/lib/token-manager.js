@@ -142,7 +142,8 @@ async function refreshStockXToken(userId, refreshToken) {
         grant_type: 'refresh_token',
         client_id: process.env.STOCKX_CLIENT_ID,
         client_secret: process.env.STOCKX_CLIENT_SECRET,
-        refresh_token: refreshToken
+        refresh_token: refreshToken,
+        audience: 'gateway.stockx.com'
       })
     });
 
