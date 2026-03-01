@@ -172,10 +172,14 @@ async function processUser(userId, platforms) {
             // Always attempt reduce — reduceEbayQuantity fetches real qty and decides
             delistResult = await reduceEbayQuantity(tokens.ebayToken, match.ebay_sku, 0, match.ebay_offer_id);
 
-            // If reduce failed (e.g. qty was 1 and couldn't reduce), try withdraw
+            // If reduce failed, only withdraw if last unit
             if (!delistResult.success && !delistResult.alreadyRemoved) {
-              console.log(`[Cron] Reduce failed, attempting withdraw for offer=${match.ebay_offer_id}`);
-              delistResult = await delistEbayOffer(tokens.ebayToken, match.ebay_offer_id);
+              if (delistResult.liveQty <= 1) {
+                console.log(`[Cron] Reduce failed, last unit — withdrawing offer=${match.ebay_offer_id}`);
+                delistResult = await delistEbayOffer(tokens.ebayToken, match.ebay_offer_id);
+              } else {
+                console.error(`[Cron] Reduce failed but liveQty=${delistResult.liveQty} — NOT withdrawing to protect remaining inventory`);
+              }
             }
             if (delistResult.success || delistResult.alreadyRemoved) {
               await supabaseAdmin.from('cross_list_links').update({
