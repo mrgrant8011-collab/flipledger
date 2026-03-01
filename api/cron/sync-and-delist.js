@@ -137,6 +137,24 @@ async function processUser(userId, platforms) {
 
        if (match && match.ebay_offer_id) {
           try {
+            // CLAIM this order before doing anything — prevents double-processing
+            const claim = await supabaseAdmin
+              .from('delist_log')
+              .upsert({
+                user_id: userId, sold_on: 'stockx', delisted_from: 'ebay',
+                order_number: order.orderNumber, status: 'processing',
+                item_sku: match.sku, item_size: match.size,
+                listing_id_delisted: match.ebay_offer_id,
+                cross_list_link_id: match.id
+              }, { onConflict: 'user_id,order_number', ignoreDuplicates: true })
+              .select('status');
+
+            const claimedRow = claim.data?.[0];
+            if (!claimedRow || claimedRow.status !== 'processing') {
+              console.log(`[Cron] Skipping already-claimed order: ${order.orderNumber}`);
+              continue;
+            }
+
             // QTY SUPPORT: Check how many active links share this eBay listing
             const { data: sharedLinks } = await supabaseAdmin
               .from('cross_list_links')
@@ -163,18 +181,17 @@ async function processUser(userId, platforms) {
                 status: 'sold', sold_on: 'stockx', sold_at: new Date().toISOString(), updated_at: new Date().toISOString()
               }).eq('id', match.id);
 
-              await supabaseAdmin.from('delist_log').upsert({
-                user_id: userId, sold_on: 'stockx', delisted_from: 'ebay',
-                item_sku: match.sku, item_size: match.size,
-                listing_id_delisted: match.ebay_offer_id,
-                cross_list_link_id: match.id, status: 'success',
-                order_number: order.orderNumber
-              }, { onConflict: 'user_id,order_number', ignoreDuplicates: true });
+              await supabaseAdmin.from('delist_log').update({
+                status: 'success', item_sku: match.sku, item_size: match.size,
+                listing_id_delisted: match.ebay_offer_id, cross_list_link_id: match.id
+              }).eq('user_id', userId).eq('order_number', order.orderNumber);
 
               result.delisted++;
               console.log(`[Cron] StockX sale → Delisted from eBay: ${match.sku} size ${match.size}`);
-            } else {
+         } else {
               result.failed++;
+              await supabaseAdmin.from('delist_log').update({ status: 'failed' })
+                .eq('user_id', userId).eq('order_number', order.orderNumber);
               console.error(
                 `[Cron] Delist FAILED user=${userId} sku=${match.sku} size=${match.size} ` +
                 `offerId=${match.ebay_offer_id} ebay_sku=${match.ebay_sku} activeCount=${activeCount} -> ${JSON.stringify(delistResult)}`
@@ -243,7 +260,7 @@ async function processUser(userId, platforms) {
                   item_sku: match.sku, item_size: match.size,
                   listing_id_delisted: match.stockx_listing_id,
                   cross_list_link_id: match.id, status: 'success',
-                  order_number: sale.orderId || null
+                  order_number: sale.order_id || null
                 }, { onConflict: 'user_id,order_number', ignoreDuplicates: true });
 
                 result.delisted++;
