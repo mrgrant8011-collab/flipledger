@@ -259,7 +259,7 @@ export async function getUsersWithTokens(batchSize = 25) {
 }
 
 export async function updateNextCheck(userId, hadActivity) {
-  const delayMs = hadActivity ? 2 * 60 * 1000 : 30 * 60 * 1000;
+  const delayMs = hadActivity ? 2 * 60 * 1000 : 5 * 60 * 1000;
   const nextCheck = new Date(Date.now() + delayMs).toISOString();
 
   await supabaseAdmin
