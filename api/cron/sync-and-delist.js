@@ -149,6 +149,7 @@ async function processUser(userId, platforms) {
               }, { onConflict: 'user_id,order_number', ignoreDuplicates: true })
               .select('status');
 
+            if (claim.error) console.error('[Cron] D1 Claim error:', JSON.stringify(claim.error));
             const inserted = Array.isArray(claim.data) && claim.data.length === 1;
                 if (!inserted) {
                   console.log(`[Cron] Skipping already-claimed order: ${order.orderNumber}`);
@@ -265,6 +266,7 @@ async function processUser(userId, platforms) {
                   }, { onConflict: 'user_id,order_number', ignoreDuplicates: true })
                   .select('status');
 
+               if (claim.error) console.error('[Cron] D2 Claim error:', JSON.stringify(claim.error));
                 const inserted = Array.isArray(claim.data) && claim.data.length === 1;
                 if (!inserted) {
                   console.log(`[Cron] Skipping already-claimed eBay order: ${sale.order_id}`);
