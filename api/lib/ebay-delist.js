@@ -229,5 +229,7 @@ export async function reduceEbayQuantity(accessToken, sku, newQuantity, offerId)
     const errorMsg = result.errors?.[0]?.message || `statusCode ${result.statusCode}`;
     console.error(`[eBay:Delist] bulkUpdate item error: ${JSON.stringify(result)}`);
     return { success: false, error: `Quantity update failed: ${errorMsg}`, liveQty };
+  } catch (err) {
+    return { success: false, error: err.message };
   }
 }
