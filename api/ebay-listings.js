@@ -2434,7 +2434,8 @@ async function handleGet(headers, query, res) {
     console.log(`[eBay:GET] ═══════════════════════════════════════════════`);
 
     // Enrich with listing URLs
-    const enriched = allOffers.map(o => ({
+   const publishedOffers = allOffers.filter(o => o.status === 'PUBLISHED');
+    const enriched = publishedOffers.map(o => ({
       offerId: o.offerId,
       sku: o.sku,
       status: o.status,
