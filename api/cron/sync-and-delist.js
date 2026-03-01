@@ -229,7 +229,8 @@ async function processUser(userId, platforms) {
           .eq('user_id', userId)
           .eq('sold_on', 'ebay')
           .not('order_number', 'is', null);
-     for (const sale of ebaySales) {
+    const processedEbayOrderNumbers = new Set((processedEbayOrders || []).map(o => o.order_number));
+        for (const sale of ebaySales) {
           console.log(`[Cron] eBay sale: ${sale.order_id} | sku=${sale.sku} | size=${sale.size}`);
 
           // Skip if already processed
