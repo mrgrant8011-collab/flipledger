@@ -236,10 +236,11 @@ async function processUser(userId, platforms) {
           .not('order_number', 'is', null);
     const processedEbayOrderNumbers = new Set((processedEbayOrders || []).map(o => o.order_number));
         for (const sale of ebaySales) {
-          console.log(`[Cron] eBay sale: ${sale.order_id} | sku=${sale.sku} | size=${sale.size}`);
+          const saleQty = sale.quantity || 1;
+          console.log(`[Cron] eBay sale: ${sale.order_id} | sku=${sale.sku} | size=${sale.size} | qty=${saleQty}`);
 
-          // Skip if already processed
-          if (sale.order_id && processedEbayOrderNumbers.has(sale.order_id)) {
+          // For single qty, quick skip if already processed
+          if (saleQty === 1 && sale.order_id && processedEbayOrderNumbers.has(sale.order_id)) {
             console.log(`[Cron] Skipping already-processed eBay order: ${sale.order_id}`);
             continue;
           }
@@ -247,35 +248,51 @@ async function processUser(userId, platforms) {
           const saleSku = (sale.sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
           const saleSize = (sale.size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-          const match = activeMappings.find(m => {
+          // Find ALL matching mappings for this SKU/size (not just the first)
+          const allMatches = activeMappings.filter(m => {
             const mSku = (m.ebay_sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
             const mSize = (m.size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-            return (mSku === saleSku || mSku.includes(saleSku) || saleSku.includes(mSku)) && mSize === saleSize;
+            return m.stockx_listing_id && (mSku === saleSku || mSku.includes(saleSku) || saleSku.includes(mSku)) && mSize === saleSize;
           });
 
-          console.log(`[Cron] eBay sale ${sale.order_id} match: ${match ? `FOUND (id=${match.id}, stockx_listing_id=${match.stockx_listing_id})` : 'NO MATCH'} | saleSku=${saleSku} saleSize=${saleSize}`);
+          if (allMatches.length === 0) {
+            console.log(`[Cron] eBay sale ${sale.order_id} match: NO MATCH | saleSku=${saleSku} saleSize=${saleSize}`);
+            continue;
+          }
 
-          if (match && match.stockx_listing_id) {
+          console.log(`[Cron] eBay sale ${sale.order_id} matches: ${allMatches.length} for ${saleSku}/${saleSize} (qty=${saleQty})`);
+
+          // Process each unit in the order
+          const unitsToProcess = Math.min(saleQty, allMatches.length);
+          for (let unitIdx = 0; unitIdx < unitsToProcess; unitIdx++) {
+            const match = allMatches[unitIdx];
+
+            // Claim key: base order_id for first unit, _u2/_u3 for additional
+            const claimKey = unitIdx === 0 ? sale.order_id : `${sale.order_id}_u${unitIdx + 1}`;
+
+            // Skip if this specific unit already processed
+            if (processedEbayOrderNumbers.has(claimKey)) {
+              console.log(`[Cron] Skipping already-processed eBay unit: ${claimKey}`);
+              continue;
+            }
+
             try {
-              // CLAIM this sale before doing anything — prevents double-processing
-              if (sale.order_id) {
-                const claim = await supabaseAdmin
-                  .from('delist_log')
-                  .upsert({
-                    user_id: userId, sold_on: 'ebay', delisted_from: 'stockx',
-                    order_number: sale.order_id, status: 'processing',
-                    item_sku: match.sku, item_size: match.size,
-                    listing_id_delisted: match.stockx_listing_id,
-                    cross_list_link_id: match.id
-                  }, { onConflict: 'user_id,order_number', ignoreDuplicates: true })
-                  .select('status');
+              const claim = await supabaseAdmin
+                .from('delist_log')
+                .upsert({
+                  user_id: userId, sold_on: 'ebay', delisted_from: 'stockx',
+                  order_number: claimKey, status: 'processing',
+                  item_sku: match.sku, item_size: match.size,
+                  listing_id_delisted: match.stockx_listing_id,
+                  cross_list_link_id: match.id
+                }, { onConflict: 'user_id,order_number', ignoreDuplicates: true })
+                .select('status');
 
-               if (claim.error) console.error('[Cron] D2 Claim error:', JSON.stringify(claim.error));
-                const inserted = Array.isArray(claim.data) && claim.data.length === 1;
-                if (!inserted) {
-                  console.log(`[Cron] Skipping already-claimed eBay order: ${sale.order_id}`);
-                  continue;
-                }
+              if (claim.error) console.error('[Cron] D2 Claim error:', JSON.stringify(claim.error));
+              const inserted = Array.isArray(claim.data) && claim.data.length === 1;
+              if (!inserted) {
+                console.log(`[Cron] Skipping already-claimed eBay unit: ${claimKey}`);
+                continue;
               }
 
               const delistResult = await delistStockXListing(tokens.stockxToken, match.stockx_listing_id);
@@ -287,24 +304,22 @@ async function processUser(userId, platforms) {
 
                 await supabaseAdmin.from('delist_log').update({
                   status: 'success'
-                }).eq('user_id', userId).eq('order_number', sale.order_id);
+                }).eq('user_id', userId).eq('order_number', claimKey);
 
                 result.delisted++;
-                console.log(`[Cron] eBay sale → Delisted from StockX: ${match.sku} size ${match.size}`);
+                console.log(`[Cron] eBay sale → Delisted from StockX: ${match.sku} size ${match.size} (unit ${unitIdx + 1}/${saleQty})`);
               } else {
                 result.failed++;
                 await supabaseAdmin.from('delist_log').update({
                   status: 'failed', error_message: delistResult.error || 'Unknown error'
-                }).eq('user_id', userId).eq('order_number', sale.order_id);
+                }).eq('user_id', userId).eq('order_number', claimKey);
                 console.error(`[Cron] StockX delist FAILED: ${match.sku} size ${match.size} -> ${JSON.stringify(delistResult)}`);
               }
             } catch (err) {
               result.failed++;
-              if (sale.order_id) {
-                await supabaseAdmin.from('delist_log').update({
-                  status: 'failed', error_message: err.message
-                }).eq('user_id', userId).eq('order_number', sale.order_id);
-              }
+              await supabaseAdmin.from('delist_log').update({
+                status: 'failed', error_message: err.message
+              }).eq('user_id', userId).eq('order_number', claimKey);
               console.error('[Cron] StockX delist failed:', err.message);
             }
           }
