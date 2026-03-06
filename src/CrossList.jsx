@@ -515,34 +515,6 @@ if (eb.length === 0) {
         await loadMappings();
       }
 
-      // ═══ RECONCILE: Ensure active links match eBay live qty ═══
-      const freshMappings = (await supabase.from('cross_list_links').select('*').eq('status', 'active')).data || [];
-      const linksByOffer = {};
-      freshMappings.forEach(m => {
-        if (m.ebay_offer_id) {
-          if (!linksByOffer[m.ebay_offer_id]) linksByOffer[m.ebay_offer_id] = [];
-          linksByOffer[m.ebay_offer_id].push(m);
-        }
-      });
-      let reconciled = 0;
-      for (const [offerId, links] of Object.entries(linksByOffer)) {
-        const ebOffer = eb.find(e => e.offerId === offerId);
-        const liveQty = ebOffer?.quantity || 0;
-        if (links.length > liveQty && liveQty > 0) {
-          const excess = links.length - liveQty;
-          const toRemove = links.slice(-excess);
-          for (const link of toRemove) {
-            await supabase.from('cross_list_links')
-              .update({ status: 'removed', updated_at: new Date().toISOString() })
-              .eq('id', link.id);
-          }
-          reconciled += excess;
-        }
-      }
-      if (reconciled > 0) {
-        console.log(`[CrossList] Reconciled ${reconciled} excess mapping(s)`);
-        await loadMappings();
-      }
 
       const msg = `Synced ${sx.length} StockX + ${eb.length} eBay`;
       showToast(delistedCount > 0 ? `${msg} (${delistedCount} removed)` : msg);
