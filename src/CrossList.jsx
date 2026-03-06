@@ -456,7 +456,7 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
         const baseSku = sxMatch?.sku || baseSkuClean; // Use original StockX SKU if found
         
         const existingMapping = currentMappings.find(m => 
-          m.ebay_offer_id === ebItem.offerId || 
+          (m.ebay_offer_id === ebItem.offerId && m.status === 'active') || 
           (m.ebay_sku === ebSku && m.status === 'active')
         );
         
