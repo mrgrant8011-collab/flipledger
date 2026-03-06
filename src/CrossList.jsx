@@ -460,6 +460,10 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
           (m.ebay_sku === ebSku && m.status === 'active')
         );
         
+        console.log(`[CrossList:AutoDetect] ${ebSku} offerId=${ebItem.offerId} existingMapping=${!!existingMapping}`);
+        if (!existingMapping && ebItem.offerId) {
+          console.log(`[CrossList:AutoDetect] INSERTING mapping for ${ebSku}`);
+          await insertMapping({
         if (!existingMapping && ebItem.offerId) {
           await insertMapping({
             sku: baseSku,
