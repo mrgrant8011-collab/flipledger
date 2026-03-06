@@ -260,10 +260,12 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
 
   const loadMappings = async () => {
     try {
-      const { data, error } = await supabase
+            const { data, error } = await supabase
         .from('cross_list_links')
         .select('*')
-        .order('created_at', { ascending: false }).range(0, 999999);
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .range(0, 999999);
       
       if (error) {
         console.error('[CrossList] Load mappings error:', error);
@@ -433,44 +435,75 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
       localStorage.setItem(CACHE_KEYS.EB, JSON.stringify(eb));
       
     // Reload mappings from Supabase
-      const { data: freshMappingData } = await supabase.from('cross_list_links').select('*').order('created_at', { ascending: false });
+           const { data: freshMappingData } = await supabase
+        .from('cross_list_links')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
       const currentMappings = freshMappingData || [];
       setMappings(currentMappings);
       
-      // Auto-detect new mappings from eBay SKUs
-      // Format: CZ0790400S14 (alphanumeric, S separates SKU from size)
+         // Rebuild missing ACTIVE mappings from live eBay + live StockX
+      const activeMappingsOnly = (currentMappings || []).filter(m => m.status === 'active');
+
       for (const ebItem of eb) {
         const ebSku = ebItem.sku || '';
+        const offerId = String(ebItem.offerId || '');
+        const liveQty = Number(ebItem.quantity || 0);
         const { baseSku: baseSkuClean, size } = parseEbaySku(ebSku);
-        
-        // Match to StockX by comparing cleaned base SKUs
-        const sxMatch = sx.find(s => {
+
+        // Find ALL live StockX listings matching this eBay SKU/size
+        const sxMatches = sx.filter(s => {
           const sxBaseClean = (s.sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
           const sxSizeClean = (s.size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
           if (sxSizeClean !== size) return false;
-          if (sxBaseClean === baseSkuClean) return true;
-          if (sxBaseClean.includes(baseSkuClean) || baseSkuClean.includes(sxBaseClean)) return true;
-          return false;
+          return (
+            sxBaseClean === baseSkuClean ||
+            sxBaseClean.includes(baseSkuClean) ||
+            baseSkuClean.includes(sxBaseClean)
+          );
         });
-        
-        const baseSku = sxMatch?.sku || baseSkuClean; // Use original StockX SKU if found
-        
-        const existingMapping = currentMappings.find(m => 
-          (m.ebay_offer_id === ebItem.offerId && m.status === 'active') || 
-          (m.ebay_sku === ebSku && m.status === 'active')
+
+        const baseSku = sxMatches[0]?.sku || baseSkuClean;
+
+        const activeForOffer = activeMappingsOnly.filter(m =>
+          (String(m.ebay_offer_id || '') === offerId || m.ebay_sku === ebSku) &&
+          m.status === 'active'
         );
-        
-        console.log(`[CrossList:AutoDetect] ${ebSku} offerId=${ebItem.offerId} existingMapping=${!!existingMapping}`);
-        if (!existingMapping && ebItem.offerId) {
-          console.log(`[CrossList:AutoDetect] INSERTING mapping for ${ebSku}`);
-          await insertMapping({
+
+        const activeStockxIds = new Set(
+          activeForOffer.map(m => m.stockx_listing_id).filter(Boolean)
+        );
+
+        // StockX is the source of truth. eBay qty is only the cap.
+        const desiredCount = sxMatches.length > 0
+          ? Math.min(liveQty || sxMatches.length, sxMatches.length)
+          : 0;
+
+        const missingStockxMatches = sxMatches
+          .filter(s => !activeStockxIds.has(s.listingId))
+          .slice(0, Math.max(0, desiredCount - activeForOffer.length));
+
+        console.log(
+          `[CrossList:Rebuild] ${ebSku} offerId=${offerId} liveQty=${liveQty} sxMatches=${sxMatches.length} active=${activeForOffer.length} missing=${missingStockxMatches.length}`
+        );
+
+        for (const sxItem of missingStockxMatches) {
+          const inserted = await insertMapping({
             sku: baseSku,
-            size: sxMatch?.size || size,
-            stockx_listing_id: sxMatch?.listingId || null,
-            ebay_offer_id: ebItem.offerId,
+            size: sxItem.size || size,
+            stockx_listing_id: sxItem.listingId || null,
+            ebay_offer_id: offerId,
             ebay_listing_id: ebItem.listingId || null,
             ebay_sku: ebSku
           });
+
+          if (inserted) {
+            activeMappingsOnly.push(inserted);
+            console.log(
+              `[CrossList:Rebuild] INSERTED mapping ${baseSku} size ${sxItem.size} stockx=${sxItem.listingId} -> ebay=${offerId}`
+            );
+          }
         }
       }
       
@@ -603,7 +636,8 @@ if (eb.length === 0) {
     // Only mark as on eBay up to the eBay listing's available qty
       const ebayQty = ebayMatch?.quantity || 0;
       const alreadyMatched = matchedCounts[expectedEbaySku] || 0;
-      const isOnEbay = !!(mapping || (ebayMatch && alreadyMatched < ebayQty));
+      const isOnEbay = !!mapping || !!(ebayMatch && alreadyMatched < ebayQty);
+      const isProtected = !!mapping;
       if (isOnEbay && !mapping && ebayMatch) {
         matchedCounts[expectedEbaySku] = alreadyMatched + 1;
       }
