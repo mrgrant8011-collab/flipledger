@@ -1330,10 +1330,7 @@ if (eb.length === 0) {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={handleOversellSync} disabled={syncing || !ebayToken}
-            style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 8, color: c.textMuted, fontWeight: 600, cursor: 'pointer', opacity: !ebayToken ? 0.5 : 1 }}>
-            🔍 Check Oversells
-          </button>
+          
           <button onClick={syncAll} disabled={syncing || (!stockxToken && !ebayToken)}
             style={{ padding: '10px 16px', background: c.gold, border: 'none', borderRadius: 8, color: '#000', fontWeight: 700, cursor: syncing ? 'wait' : 'pointer', opacity: (!stockxToken && !ebayToken) ? 0.5 : 1 }}>
             {syncing ? '⏳ Syncing...' : '🔄 Sync'}
