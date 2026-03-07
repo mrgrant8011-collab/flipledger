@@ -487,7 +487,8 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
 
         const activeForOffer = activeMappingsOnly.filter(m =>
           (String(m.ebay_offer_id || '') === offerId || m.ebay_sku === ebSku) &&
-          m.status === 'active'
+          m.status === 'active' &&
+          !!m.stockx_listing_id
         );
 
         const activeStockxIds = new Set(
