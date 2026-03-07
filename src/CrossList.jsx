@@ -407,6 +407,10 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
 
   const syncAll = async () => {
     if (syncing) return;
+    if (!userId) {
+      showToast('User not loaded yet — try again in a second', 'error');
+      return;
+    }
     
     console.log('[CrossList:Sync] ═══════════════════════════════════════════════');
     console.log('[CrossList:Sync] Starting full sync');
@@ -453,10 +457,25 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
         const { baseSku: baseSkuClean, size } = parseEbaySku(ebSku);
 
         // Find ALL live StockX listings matching this eBay SKU/size
+        const normalizeSize = (v) =>
+          String(v || '')
+            .toUpperCase()
+            .replace(/\s+/g, '')
+            .replace(/\.0$/, '')
+            .replace(/[^A-Z0-9.]/g, '');
+
+        const ebaySizeNorm = normalizeSize(size);
+
         const sxMatches = sx.filter(s => {
           const sxBaseClean = (s.sku || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-          const sxSizeClean = (s.size || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-          if (sxSizeClean !== size) return false;
+          const sxSizeNorm = normalizeSize(s.size);
+
+          const sameSize =
+            sxSizeNorm === ebaySizeNorm ||
+            sxSizeNorm.replace('.', '') === ebaySizeNorm.replace('.', '');
+
+          if (!sameSize) return false;
+
           return (
             sxBaseClean === baseSkuClean ||
             sxBaseClean.includes(baseSkuClean) ||
@@ -476,9 +495,7 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
         );
 
         // StockX is the source of truth. eBay qty is only the cap.
-        const desiredCount = sxMatches.length > 0
-          ? Math.min(liveQty || sxMatches.length, sxMatches.length)
-          : 0;
+        const desiredCount = sxMatches.length;
 
         const missingStockxMatches = sxMatches
           .filter(s => !activeStockxIds.has(s.listingId))
