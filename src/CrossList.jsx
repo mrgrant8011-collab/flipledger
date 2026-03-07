@@ -506,19 +506,64 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
         );
 
         for (const sxItem of missingStockxMatches) {
-          const inserted = await insertMapping({
-            sku: baseSku,
-            size: sxItem.size || size,
-            stockx_listing_id: sxItem.listingId || null,
-            ebay_offer_id: offerId,
-            ebay_listing_id: ebItem.listingId || null,
-            ebay_sku: ebSku
-          });
+          let result = null;
 
-          if (inserted) {
-            activeMappingsOnly.push(inserted);
+          // Check if ANY old row exists for this StockX listing ID for this user
+          const { data: existingRow, error: existingRowError } = await supabase
+            .from('cross_list_links')
+            .select('id, status')
+            .eq('user_id', userId)
+            .eq('stockx_listing_id', sxItem.listingId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (existingRowError) {
+            console.error('[CrossList:Rebuild] Existing row lookup error:', existingRowError);
+            continue;
+          }
+
+          if (existingRow) {
+            // Reactivate old row with NEW live eBay info
+            const { data, error } = await supabase
+              .from('cross_list_links')
+              .update({
+                status: 'active',
+                ebay_offer_id: offerId,
+                ebay_listing_id: ebItem.listingId || null,
+                ebay_sku: ebSku,
+                sku: baseSku,
+                size: sxItem.size || size,
+                sold_on: null,
+                sold_at: null,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', existingRow.id)
+              .eq('user_id', userId)
+              .select()
+              .single();
+
+            if (error) {
+              console.error('[CrossList:Rebuild] Reactivate error:', error);
+            } else {
+              result = data;
+            }
+          } else {
+            // No existing row, insert new
+            result = await insertMapping({
+              sku: baseSku,
+              size: sxItem.size || size,
+              stockx_listing_id: sxItem.listingId || null,
+              ebay_offer_id: offerId,
+              ebay_listing_id: ebItem.listingId || null,
+              ebay_sku: ebSku
+            });
+          }
+
+          if (result) {
+            activeMappingsOnly.push(result);
             console.log(
-              `[CrossList:Rebuild] INSERTED mapping ${baseSku} size ${sxItem.size} stockx=${sxItem.listingId} -> ebay=${offerId}`
+              `[CrossList:Rebuild] ${existingRow ? 'REACTIVATED' : 'INSERTED'} mapping ${baseSku} size ${sxItem.size} stockx=${sxItem.listingId} -> ebay=${offerId}`
             );
           }
         }
