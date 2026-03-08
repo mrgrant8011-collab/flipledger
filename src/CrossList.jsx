@@ -312,7 +312,8 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
       const { error } = await supabase
         .from('cross_list_links')
         .update({ status, updated_at: new Date().toISOString(), ...extras })
-        .eq('ebay_offer_id', ebayOfferId);
+        .eq('ebay_offer_id', ebayOfferId)
+        .eq('user_id', userId);
       
       if (error) console.error('[CrossList] Update mapping error:', error);
     } catch (e) {
