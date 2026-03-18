@@ -1296,7 +1296,7 @@ if (eb.length === 0) {
         const res = await fetch('/api/ebay-listings', {
           method: 'PATCH',
           headers: { 'Authorization': `Bearer ${ebayToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ updates: [{ offerId, sku, quantity: newQty }] })
+          body: JSON.stringify({ updates: [{ offerId, sku: ebayItem?.sku || sku, quantity: newQty }] })
         });
         const data = await res.json();
         if (data.updated > 0) {
