@@ -1,4 +1,11 @@
 // Google Cloud Vision OCR API
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
+
 export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -14,6 +21,12 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // AUTH CHECK — FlipLedger users only
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+  if (authError || !user) return res.status(401).json({ error: 'Unauthorized' });
   try {
     const { image } = req.body;
     
