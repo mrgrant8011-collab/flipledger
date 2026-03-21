@@ -1577,7 +1577,7 @@ const loadedUserRef = useRef(null);
   const totalRevenue = filteredSales.reduce((s, x) => s + (x.salePrice || 0), 0);
   const totalCOGS = filteredSales.reduce((s, x) => s + (x.cost || 0), 0);
   const totalFees = filteredSales.reduce((s, x) => s + (x.fees || 0), 0);
-  const totalExp = filteredExpenses.reduce((s, x) => s + (x.amount || 0), 0);
+  const totalExp = filteredExpenses.filter(x => !['Tax Reimbursement', 'Gift Card Savings'].includes(x.category)).reduce((s, x) => s + (x.amount || 0), 0);
   const totalStor = filteredStorage.reduce((s, x) => s + (x.amount || 0), 0);
   const totalMiles = filteredMileage.reduce((s, x) => s + (x.miles || 0), 0);
   const totalMileageDeduction = totalMiles * settings.mileageRate;
@@ -1591,8 +1591,11 @@ const loadedUserRef = useRef(null);
   const totalTax = selfEmploymentTax + federalTax + stateTax;
   const fmt = n => (n < 0 ? '-$' + Math.abs(n).toLocaleString('en-US', {minimumFractionDigits: 2}) : '$' + (n || 0).toLocaleString('en-US', {minimumFractionDigits: 2}));
 
-  const expenseCategories = ['Shipping', 'Packaging & Supplies', 'Labels & Printing', 'Storage Unit', 'Software & Subscriptions', 'Authentication Fees', 'Office Supplies', 'Travel & Meals', 'Other'];
-
+  const expenseCategories = ['Shipping', 'Packaging & Supplies', 'Labels & Printing', 'Storage Unit', 'Software & Subscriptions', 'Authentication Fees', 'Office Supplies', 'Travel & Meals', 'Other', 'Tax Reimbursement', 'Gift Card Savings'];
+  const cogsReductionCategories = ['Tax Reimbursement', 'Gift Card Savings'];
+  const cogsReductions = filteredExpenses.filter(x => cogsReductionCategories.includes(x.category)).reduce((s, x) => s + (x.amount || 0), 0);
+  const cogsReductionCategories = ['Tax Reimbursement', 'Gift Card Savings'];
+  const cogsReductions = filteredExpenses.filter(x => cogsReductionCategories.includes(x.category)).reduce((s, x) => s + (x.amount || 0), 0);
   const platformBreakdown = filteredSales.reduce((acc, s) => {
     const p = s.platform || 'Other';
     if (!acc[p]) acc[p] = { sales: 0, revenue: 0, fees: 0, profit: 0 };
@@ -3814,8 +3817,8 @@ console.log('Found', items.length, 'items');
             });
 
             
-            const line5_grossProfit = line1_gross - totalCostOfGoods;
-            const line31_netProfit = line1_gross - totalCostOfGoods - line10_fees - totalExp;
+            const line5_grossProfit = line1_gross - (totalCostOfGoods - cogsReductions);
+            const line31_netProfit = line1_gross - (totalCostOfGoods - cogsReductions) - line10_fees - totalExp;
             
             return (
               <>
