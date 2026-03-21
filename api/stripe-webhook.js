@@ -31,12 +31,12 @@ export default async function handler(req, res) {
     const email = customer.email;
 
     if (email) {
-      const { error } = await supabase.auth.admin.inviteUserByEmail(email);
-      if (error) {
-        console.error('Supabase invite error:', error);
+      const { error } = await supabase.from('allowed_emails').insert({ email: email.toLowerCase() });
+      if (error && error.code !== '23505') {
+        console.error('Whitelist error:', error);
         return res.status(500).json({ error: error.message });
       }
-      console.log(`✓ Invited ${email} to FlipLedger`);
+      console.log(`✓ Added ${email} to FlipLedger whitelist`);
     }
   }
 
