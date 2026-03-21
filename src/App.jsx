@@ -931,9 +931,9 @@ const loadedUserRef = useRef(null);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
   setUser(session?.user ?? null);
-  if (_event === 'SIGNED_IN' && (window.location.hash.includes('type=invite') || window.location.hash.includes('type=recovery'))) {
-    setShowSetPassword(true);
-  }
+ if (typeof window !== 'undefined' && (window.location.hash.includes('type=invite') || window.location.hash.includes('type=recovery'))) {
+  sessionStorage.setItem('flipledger_invite_pending', 'true');
+}
 });
 
     return () => subscription.unsubscribe();
