@@ -931,9 +931,9 @@ const loadedUserRef = useRef(null);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
   setUser(session?.user ?? null);
- if (typeof window !== 'undefined' && (window.location.hash.includes('type=invite') || window.location.hash.includes('type=recovery'))) {
-  sessionStorage.setItem('flipledger_invite_pending', 'true');
-}
+  if (_event === 'SIGNED_IN' && (window.location.hash.includes('type=invite') || window.location.hash.includes('type=recovery'))) {
+    setShowSetPassword(true);
+  }
 });
 
     return () => subscription.unsubscribe();
@@ -1424,7 +1424,7 @@ const loadedUserRef = useRef(null);
   // Handle invite link from email
   useEffect(() => {
     const hash = window.location.hash;
-    if (hash && hash.includes('type=invite')) {
+    if (hash && (hash.includes('type=invite') || hash.includes('type=recovery'))) {
       setShowSetPassword(true);
     }
   }, []);
