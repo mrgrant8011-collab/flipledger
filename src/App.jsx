@@ -909,6 +909,8 @@ function App() {
   const [expandedInvProducts, setExpandedInvProducts] = useState(new Set());
   const [expandPages, setExpandPages] = useState({});
   const [mobileInvDrawer, setMobileInvDrawer] = useState(null);
+  const [showSetPassword, setShowSetPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
 
   const ITEMS_PER_PAGE = 50;
 const loadedUserRef = useRef(null);
@@ -920,8 +922,11 @@ const loadedUserRef = useRef(null);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
+  setUser(session?.user ?? null);
+  if (_event === 'SIGNED_IN' && window.location.hash.includes('type=invite')) {
+    setShowSetPassword(true);
+  }
+});
 
     return () => subscription.unsubscribe();
   }, []);
@@ -1408,6 +1413,14 @@ const loadedUserRef = useRef(null);
     }
   }, []);
 
+  // Handle invite link from email
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash && hash.includes('type=invite')) {
+      setShowSetPassword(true);
+    }
+  }, []);
+
   // Check for eBay OAuth callback on load
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1458,6 +1471,40 @@ const loadedUserRef = useRef(null);
             marginBottom: 16
           }}>FL</div>
           <p style={{ color: '#888' }}>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Handle invite password setup
+  if (showSetPassword) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Inter', sans-serif" }}>
+        <div style={{ width: '100%', maxWidth: 400, background: '#111', border: '1px solid #1a1a1a', borderRadius: 24, padding: 40 }}>
+          <div style={{ textAlign: 'center', marginBottom: 32 }}>
+            <div style={{ width: 64, height: 64, background: 'linear-gradient(135deg, #C9A962, #B8943F)', borderRadius: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 24, color: '#000', marginBottom: 16 }}>FL</div>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#C9A962' }}>Set Your Password</h1>
+            <p style={{ margin: '8px 0 0', color: '#888', fontSize: 14 }}>Welcome to FlipLedger! Create your password to get started.</p>
+          </div>
+          <input
+            type="password"
+            value={newPassword}
+            onChange={e => setNewPassword(e.target.value)}
+            placeholder="Choose a password (min 6 chars)"
+            style={{ width: '100%', padding: 14, background: 'rgba(255,255,255,0.03)', border: '1px solid #1a1a1a', borderRadius: 12, color: '#fff', fontSize: 14, boxSizing: 'border-box', marginBottom: 16, outline: 'none' }}
+          />
+          <button
+            onClick={async () => {
+              if (newPassword.length < 6) { alert('Password must be at least 6 characters'); return; }
+              const { error } = await supabase.auth.updateUser({ password: newPassword });
+              if (error) { alert('Error: ' + error.message); return; }
+              setShowSetPassword(false);
+              window.history.replaceState({}, document.title, window.location.pathname);
+            }}
+            style={{ width: '100%', padding: 14, background: 'linear-gradient(135deg, #C9A962, #B8943F)', border: 'none', borderRadius: 12, color: '#000', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}
+          >
+            Set Password & Enter FlipLedger
+          </button>
         </div>
       </div>
     );
