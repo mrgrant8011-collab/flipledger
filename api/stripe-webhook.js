@@ -11,11 +11,12 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
 
   const sig = req.headers['stripe-signature'];
-  let event;
+  const rawBody = await getRawBody(req);
 
+  let event;
   try {
     event = stripe.webhooks.constructEvent(
-      req.body,
+      rawBody,
       sig,
       process.env.STRIPE_WEBHOOK_SECRET
     );
@@ -26,13 +27,10 @@ export default async function handler(req, res) {
 
   if (event.type === 'customer.subscription.created') {
     const subscription = event.data.object;
-    
-    // Get customer email from Stripe
     const customer = await stripe.customers.retrieve(subscription.customer);
     const email = customer.email;
 
     if (email) {
-      // Invite user to Supabase
       const { error } = await supabase.auth.admin.inviteUserByEmail(email);
       if (error) {
         console.error('Supabase invite error:', error);
@@ -43,6 +41,15 @@ export default async function handler(req, res) {
   }
 
   res.status(200).json({ received: true });
+}
+
+async function getRawBody(req) {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.on('data', chunk => { data += chunk; });
+    req.on('end', () => resolve(data));
+    req.on('error', reject);
+  });
 }
 
 export const config = {
