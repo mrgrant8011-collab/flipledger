@@ -1594,8 +1594,6 @@ const loadedUserRef = useRef(null);
   const expenseCategories = ['Shipping', 'Packaging & Supplies', 'Labels & Printing', 'Storage Unit', 'Software & Subscriptions', 'Authentication Fees', 'Office Supplies', 'Travel & Meals', 'Other', 'Tax Reimbursement', 'Gift Card Savings'];
   const cogsReductionCategories = ['Tax Reimbursement', 'Gift Card Savings'];
   const cogsReductions = filteredExpenses.filter(x => cogsReductionCategories.includes(x.category)).reduce((s, x) => s + (x.amount || 0), 0);
-  const cogsReductionCategories = ['Tax Reimbursement', 'Gift Card Savings'];
-  const cogsReductions = filteredExpenses.filter(x => cogsReductionCategories.includes(x.category)).reduce((s, x) => s + (x.amount || 0), 0);
   const platformBreakdown = filteredSales.reduce((acc, s) => {
     const p = s.platform || 'Other';
     if (!acc[p]) acc[p] = { sales: 0, revenue: 0, fees: 0, profit: 0 };
