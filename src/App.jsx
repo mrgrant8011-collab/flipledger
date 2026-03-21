@@ -1865,11 +1865,15 @@ const loadedUserRef = useRef(null);
       
       // STEP 1: Google Vision OCR (accurate text extraction)
       console.log('Step 1: Google Vision OCR...');
+      const { data: { session } } = await supabase.auth.getSession();
       const ocrResponse = await fetch('/api/google-ocr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: imageBase64 })
-      });
+  method: 'POST',
+  headers: { 
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${session.access_token}`
+  },
+  body: JSON.stringify({ image: imageBase64 })
+});
       
       const ocrResult = await ocrResponse.json();
       
@@ -1887,11 +1891,14 @@ const loadedUserRef = useRef(null);
         throw new Error('Could not read text from image. Please try a clearer screenshot.');
       }
       
-      // STEP 2: Send text to Claude for structuring
+     // STEP 2: Send text to Claude for structuring
       console.log('Step 2: Claude structuring...');
       const response = await fetch('/api/scan-receipt', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
         body: JSON.stringify({ text: ocrText, mode: 'text' })
       });
       
