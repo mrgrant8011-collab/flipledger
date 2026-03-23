@@ -1586,9 +1586,15 @@ const loadedUserRef = useRef(null);
     
     try {
       const result = await syncStockXSales(user.id, stockxToken, {
-        year: stockxApiFilter.year,
-        month: stockxApiFilter.month
-      });
+  year: stockxApiFilter.year,
+  month: stockxApiFilter.month,
+  refreshToken: localStorage.getItem('flipledger_stockx_refresh'),
+  onTokenRefresh: (newToken, newRefresh) => {
+    localStorage.setItem('flipledger_stockx_token', newToken);
+    if (newRefresh) localStorage.setItem('flipledger_stockx_refresh', newRefresh);
+    setStockxToken(newToken);
+  }
+});
       
       if (result.success) {
         if (result.saved.length > 0) {
