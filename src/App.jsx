@@ -1087,7 +1087,7 @@ const loadedUserRef = useRef(null);
         }
 
         // eBay: use cached token immediately so app never blocks on refresh
-        const cachedEbayToken = localStorage.getItem('flipledger_ebay_token');
+       const cachedEbayToken = localStorage.getItem(`flipledger_ebay_token_${user.id}`);
         if (cachedEbayToken) {
           setEbayToken(cachedEbayToken);
           setEbayConnected(true);
@@ -1118,8 +1118,8 @@ const loadedUserRef = useRef(null);
         // Background refresh — never blocks loadData or app render
         if (cachedEbayToken) {
           getValidEbayToken((newToken) => {
-            setEbayToken(newToken);
-          }).then(freshToken => {
+        setEbayToken(newToken);
+         }, user.id).then(freshToken => {
             if (freshToken && freshToken !== cachedEbayToken) {
               setEbayToken(freshToken);
               setEbayConnected(true);
@@ -1439,7 +1439,7 @@ const loadedUserRef = useRef(null);
     
     if (ebayConnectedParam === 'true' && ebayTokenParam) {
     const expiresIn = parseInt(params.get('ebay_expires')) || 7200;
-      storeEbayTokens(ebayTokenParam, ebayRefreshParam, expiresIn);
+     storeEbayTokens(ebayTokenParam, ebayRefreshParam, expiresIn, user.id);
       setEbayToken(ebayTokenParam);
       setEbayConnected(true);
       linkTokensToServer('ebay', ebayTokenParam, ebayRefreshParam, expiresIn);
@@ -4724,7 +4724,7 @@ Let me know if you need anything else.`;
                         </button>
                         <button
                         onClick={() => {
-                      clearEbayTokens();
+                      clearEbayTokens(user.id);
                       setEbayToken(null);
                       setEbayConnected(false);
                     }}
@@ -5060,7 +5060,7 @@ Let me know if you need anything else.`;
                 {ebayConnected ? (
                   <button
                    onClick={() => {
-                      clearEbayTokens();
+                      clearEbayTokens(user.id);
                       setEbayToken(null);
                       setEbayConnected(false);
                     }}
