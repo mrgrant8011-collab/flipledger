@@ -31,8 +31,18 @@ export default function LandingPage({ onLogin }) {
     setLoading(true);
     setError('');
     try {
-      if (isSignUp) {
-        const { data, error } = await supabase.auth.signUp({ email, password });
+    if (isSignUp) {
+  const { data: whitelist, error: whitelistError } = await supabase
+    .from('allowed_emails')
+    .select('email')
+    .eq('email', email.toLowerCase())
+    .single();
+  if (whitelistError || !whitelist) {
+    setError('This email is not authorized. Please purchase a subscription at flipledgerhq.com first.');
+    setLoading(false);
+    return;
+  }
+  const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
         if (data.user) alert('Check your email for confirmation link!');
       } else {
