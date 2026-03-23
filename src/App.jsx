@@ -6299,7 +6299,7 @@ Let me know if you need anything else.`;
         }
       `}</style>
       
-      {page === 'analytics' && <Analytics sales={sales} purchases={purchases} year={year} c={c} fmt={fmt} />}
+     
       {page === 'copcheck' && <CopCheck />}
       {page === 'listings' && <Listings stockxToken={stockxToken} ebayToken={ebayToken} purchases={purchases} c={c} />}
       {/* NIKE EXAMPLE MODAL */}
