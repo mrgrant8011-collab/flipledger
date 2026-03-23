@@ -219,7 +219,7 @@ async function processUser(userId, platforms) {
     try {
       const now = new Date().toISOString();
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-      const salesUrl = `${getBaseUrl()}/api/ebay-sales?startDate=${weekAgo}&endDate=${now}`;
+     const salesUrl = `${getBaseUrl()}/api/ebay-sales?startDate=${weekAgo}&endDate=${now}&user_id=${userId}`;
       const salesRes = await fetch(salesUrl, { headers: { 'Authorization': `Bearer ${tokens.ebayToken}` } });
 
       if (salesRes.ok) {
