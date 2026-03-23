@@ -26,7 +26,23 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'No token provided' });
   }
   
-  const accessToken = authHeader.replace('Bearer ', '');
+  let accessToken = authHeader.replace('Bearer ', '');
+const userId = req.query.user_id;
+
+console.log('[ebay-sales] auth header present:', !!authHeader);
+console.log('[ebay-sales] user_id:', userId || 'none');
+
+if (userId) {
+  const { createClient } = await import('@supabase/supabase-js');
+  const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const { data: tokenRow, error: tokenError } = await supabase.from('user_tokens').select('access_token').eq('user_id', userId).eq('platform', 'ebay').single();
+  if (tokenError) {
+    console.error('[ebay-sales] token lookup failed:', tokenError.message);
+  } else if (tokenRow?.access_token) {
+    accessToken = tokenRow.access_token;
+    console.log('[ebay-sales] using freshest token from DB for user:', userId);
+  }
+}
   const { startDate, endDate } = req.query;
   
   // Default to last 90 days if no dates provided
