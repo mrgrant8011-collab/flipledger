@@ -425,7 +425,7 @@ export default function LandingPage({ onLogin }) {
           <div className="fl-hero-content">
             <h1>Reprice, track & sell.<br/><span className="fl-gold">Effortlessly.</span></h1>
             <p>The all-in-one wealth intelligence platform for resellers. Reprice on StockX, cross-list to eBay, track inventory, scan receipts, and run CPA reports — all from one dashboard.</p>
-            <button className="fl-hero-cta" onClick={() => openAuth(true)}>Start Your Free Trial</button>
+            <button className="fl-hero-cta" onClick={() => openAuth(true)}>Get Started</button>
           </div>
           <div className="fl-hero-img">
             <div className="fl-preview">
@@ -625,7 +625,7 @@ export default function LandingPage({ onLogin }) {
         </section>
 
         {/* BIG CTA */}
-        <div className="fl-bigcta"><button className="fl-bigcta-btn" onClick={() => openAuth(true)}>Start Your Free Trial</button></div>
+        <div className="fl-bigcta"><button className="fl-bigcta-btn" onClick={() => openAuth(true)}>Get Started</button></div>
 
         {/* AUDIENCE */}
         <section className="fl-section" style={{background:'#0a0a0a'}}>
@@ -656,10 +656,10 @@ export default function LandingPage({ onLogin }) {
           <div className="fl-price-card fl-anim">
             <div className="fl-price-name">FlipLedger</div>
             <div className="fl-price-sub">Everything. One price. No tiers.</div>
-            <div><span className="fl-price-amt">$79</span><span className="fl-price-per">per month</span></div>
-            <div className="fl-price-trial">7-day free trial — no credit card required</div>
+            <div><span className="fl-price-amt">$149</span><span className="fl-price-per">per month</span></div>
+            <div className="fl-price-trial">Everything included. No tiers.</div>
             <div className="fl-price-divider"></div>
-            <button className="fl-price-btn" onClick={() => openAuth(true)}>Start Your Free Trial</button>
+            <button className="fl-price-btn" onClick={() => openAuth(true)}>Get Started</button>
             <div className="fl-price-feats">
               <div className="fl-price-feat">Unlimited inventory</div>
               <div className="fl-price-feat">StockX repricer</div>
@@ -683,7 +683,7 @@ export default function LandingPage({ onLogin }) {
         {/* FINAL CTA */}
         <section className="fl-section" style={{textAlign:'center'}}>
           <div className="fl-title" style={{marginBottom:30}}>Ready to flip smarter?</div>
-          <button className="fl-bigcta-btn" onClick={() => openAuth(true)}>Start Your Free Trial</button>
+          <button className="fl-bigcta-btn" onClick={() => openAuth(true)}>Get Started</button>
         </section>
 
         {/* FOOTER */}
@@ -701,7 +701,7 @@ export default function LandingPage({ onLogin }) {
               <div style={{textAlign:'center',marginBottom:32}}>
                 <div style={{width:64,height:64,background:'linear-gradient(135deg,#C9A962,#B8943F)',borderRadius:16,display:'inline-flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:24,color:'#000',marginBottom:16}}>FL</div>
                 <h2 style={{fontSize:24,fontWeight:700,color:'#C9A962',fontFamily:'Outfit'}}>FLIPLEDGER</h2>
-                <p style={{color:'#555',fontSize:13,marginTop:4}}>{isSignUp ? 'Start your 7-day free trial' : 'Welcome back'}</p>
+                <p style={{color:'#555',fontSize:13,marginTop:4}}>{isSignUp ? 'Welcome to FlipLedger' : 'Welcome back'}</p>
               </div>
               <form onSubmit={handleAuth}>
                 <div style={{marginBottom:16}}>
@@ -714,7 +714,7 @@ export default function LandingPage({ onLogin }) {
                 </div>
                 {error && <div style={{padding:12,background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:10,color:'#ef4444',fontSize:13,marginBottom:16}}>{error}</div>}
                 <button type="submit" disabled={loading} className="fl-submit">
-                  {loading ? 'Please wait...' : (isSignUp ? 'Start Free Trial' : 'Sign In')}
+                  {loading ? 'Please wait...' : (isSignUp ? 'Get Started' : 'Sign In')}
                 </button>
               </form>
               <p style={{textAlign:'center',marginTop:24,color:'#555',fontSize:14}}>
