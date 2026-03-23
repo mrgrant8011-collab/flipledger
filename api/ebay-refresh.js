@@ -1,19 +1,15 @@
 // eBay Token Refresh - Get new access token using refresh token
+import { createClient } from '@supabase/supabase-js';
+
 export default async function handler(req, res) {
-  // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-  
-  const { refresh_token } = req.body;
+  const { refresh_token, user_id } = req.body;
   
   if (!refresh_token) {
     return res.status(400).json({ error: 'No refresh token provided' });
@@ -21,16 +17,7 @@ export default async function handler(req, res) {
   
   const clientId = process.env.EBAY_CLIENT_ID;
   const clientSecret = process.env.EBAY_CLIENT_SECRET;
-  
-  // Base64 encode credentials
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-  
-  // Scopes to request (must match what was requested in auth)
-  const scopes = [
-    'https://api.ebay.com/oauth/api_scope',
-    'https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly',
-    'https://api.ebay.com/oauth/api_scope/sell.finances'
-  ].join(' ');
   
   try {
     const tokenResponse = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
@@ -41,8 +28,7 @@ export default async function handler(req, res) {
       },
       body: new URLSearchParams({
         grant_type: 'refresh_token',
-        refresh_token: refresh_token,
-        scope: scopes
+        refresh_token: refresh_token
       })
     });
     
@@ -51,6 +37,15 @@ export default async function handler(req, res) {
     if (tokenData.error) {
       console.error('eBay refresh error:', tokenData);
       return res.status(400).json({ error: tokenData.error, description: tokenData.error_description });
+    }
+
+    // Save refreshed token back to Supabase
+    if (tokenData.access_token && user_id) {
+      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+      await supabase.from('user_tokens').update({
+        access_token: tokenData.access_token,
+        expires_at: new Date(Date.now() + (tokenData.expires_in || 7200) * 1000).toISOString()
+      }).eq('user_id', user_id).eq('platform', 'ebay');
     }
     
     res.status(200).json({
