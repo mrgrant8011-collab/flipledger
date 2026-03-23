@@ -77,10 +77,13 @@ if (userId) {
         const errorText = await ordersResponse.text();
         console.error('[ebay-sales] eBay orders fetch failed:', ordersResponse.status, errorText);
         return res.status(ordersResponse.status).json({ 
-        error: 'Failed to fetch orders', 
-        details: errorText,
-        url: ordersUrl 
-      });
+          error: 'Failed to fetch orders', 
+          details: errorText,
+          url: ordersUrl 
+        });
+      }
+      
+      const ordersData = await ordersResponse.json();
       
       const ordersData = await ordersResponse.json();
       const orders = ordersData.orders || [];
