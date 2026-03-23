@@ -1,6 +1,7 @@
 import LandingPage from './LandingPage';
 import Listings from './Listings';
 import CopCheck from './CopCheck';
+import Analytics from './Analytics';
 import { useState, useEffect, Component, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import Tesseract from 'tesseract.js';
@@ -3752,6 +3753,7 @@ console.log('Found', items.length, 'items');
           markSaleRefunded={markSaleRefunded} 
           isMobile={isMobile}                     
         />}
+        {page === 'analytics' && <Analytics sales={sales} purchases={purchases} year={year} c={c} fmt={fmt} />}
 
         {/* EXPENSES */}
         {page === 'expenses' && (() => {
@@ -6296,6 +6298,7 @@ Let me know if you need anything else.`;
         }
       `}</style>
       
+      {page === 'analytics' && <Analytics sales={sales} purchases={purchases} year={year} c={c} fmt={fmt} />}
       {page === 'copcheck' && <CopCheck />}
       {page === 'listings' && <Listings stockxToken={stockxToken} ebayToken={ebayToken} purchases={purchases} c={c} />}
       {/* NIKE EXAMPLE MODAL */}
