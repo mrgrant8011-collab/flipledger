@@ -109,7 +109,7 @@ export default function Analytics({ sales, purchases, year, c, fmt }) {
   return (
     <div>
       {/* Stats Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 28 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 20, marginBottom: 28 }}>
         {[
           { label: 'Total Profit', value: fmt(totalProfit), color: c.gold },
           { label: 'Unique SKUs', value: skuData.length, color: c.green },
@@ -162,8 +162,9 @@ export default function Analytics({ sales, purchases, year, c, fmt }) {
           </div>
         </div>
 
+        <div style={{ overflowX: 'auto' }}>
         {/* Column headers */}
-        <div style={{ display: 'grid', gridTemplateColumns: '2.5fr 0.5fr 0.8fr 0.8fr 0.8fr 1fr', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', gap: 8, alignItems: 'center' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '2.5fr 0.5fr 0.8fr 0.8fr 0.8fr 1fr', padding: '12px 20px', borderBottom: `1px solid ${c.border}`, background: 'rgba(255,255,255,0.02)', gap: 8, alignItems: 'center', minWidth: 700 }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>ITEM / SKU</span>
           <span onClick={() => { setSortBy('units'); setPage(1); }} style={{ fontSize: 10, fontWeight: 700, color: sortBy === 'units' ? c.green : c.textMuted, cursor: 'pointer', textAlign: 'center' }}>UNITS {sortBy === 'units' ? '▼' : ''}</span>
           <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted, textAlign: 'right' }}>AVG COST</span>
@@ -201,6 +202,7 @@ export default function Analytics({ sales, purchases, year, c, fmt }) {
           </div>
         )}
 
+        </div>
         {/* Pagination */}
         {totalPages > 1 && (
           <div style={{ padding: '16px 20px', borderTop: `1px solid ${c.border}`, display: 'flex', justifyContent: 'center', gap: 8 }}>
