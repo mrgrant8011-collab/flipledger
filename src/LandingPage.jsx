@@ -713,6 +713,18 @@ export default function LandingPage({ onLogin }) {
                   <input className="fl-input" type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} placeholder="••••••••" />
                 </div>
                 {error && <div style={{padding:12,background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:10,color:'#ef4444',fontSize:13,marginBottom:16}}>{error}</div>}
+                {isSignUp && (
+                  <div style={{display:'flex',alignItems:'flex-start',gap:10,marginBottom:16}}>
+                    <input type="checkbox" id="agree-terms" required style={{marginTop:3,accentColor:'#C9A962',width:15,height:15,flexShrink:0,cursor:'pointer'}} />
+                    <label htmlFor="agree-terms" style={{fontSize:12,color:'rgba(255,255,255,0.5)',lineHeight:1.6,cursor:'pointer'}}>
+                      I agree to the{' '}
+                      <a href="/terms" target="_blank" rel="noreferrer" style={{color:'#C9A962',textDecoration:'none'}}>Terms of Service</a>
+                      {' '}and{' '}
+                      <a href="/privacy" target="_blank" rel="noreferrer" style={{color:'#C9A962',textDecoration:'none'}}>Privacy Policy</a>
+                      , including the use of anonymized aggregated data to improve platform features.
+                    </label>
+                  </div>
+                )}
                 <button type="submit" disabled={loading} className="fl-submit">
                   {loading ? 'Please wait...' : (isSignUp ? 'Get Started' : 'Sign In')}
                 </button>
