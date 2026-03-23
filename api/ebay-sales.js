@@ -20,6 +20,9 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   
   if (req.method === 'OPTIONS') return res.status(200).end();
+  console.log('[ebay-sales] started');
+console.log('[ebay-sales] auth header present:', !!req.headers.authorization);
+console.log('[ebay-sales] user_id:', req.query.user_id || 'none');
   
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -72,12 +75,12 @@ if (userId) {
       
       if (!ordersResponse.ok) {
         const errorText = await ordersResponse.text();
+        console.error('[ebay-sales] eBay orders fetch failed:', ordersResponse.status, errorText);
         return res.status(ordersResponse.status).json({ 
-          error: 'Failed to fetch orders', 
-          details: errorText,
-          url: ordersUrl 
-        });
-      }
+        error: 'Failed to fetch orders', 
+        details: errorText,
+        url: ordersUrl 
+      });
       
       const ordersData = await ordersResponse.json();
       const orders = ordersData.orders || [];
