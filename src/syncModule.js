@@ -58,7 +58,7 @@ export const syncStockXSales = async (userId, token, options = {}) => {
       headers: {
         'Authorization': `Bearer ${currentToken}`
       }
-    }, 15000);
+     }, 30000);
     
     // If failed and we have a refresh token, try refreshing
     if (!response.ok && refreshToken) {
@@ -79,7 +79,7 @@ export const syncStockXSales = async (userId, token, options = {}) => {
           headers: {
             'Authorization': `Bearer ${currentToken}`
           }
-        }, 15000);
+        }, 30000);
       }
     }
     
