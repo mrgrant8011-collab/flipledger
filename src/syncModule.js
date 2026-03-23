@@ -19,6 +19,13 @@
 
 import { safeBulkSavePendingCosts } from './safeDatabase';
 
+function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(timer));
+}
+
 // ============================================================
 // STOCKX SYNC
 // ============================================================
@@ -36,7 +43,7 @@ import { safeBulkSavePendingCosts } from './safeDatabase';
  * @returns {Object} { success, saved, duplicates, errors, summary }
  */
 export const syncStockXSales = async (userId, token, options = {}) => {
-  const { year, month, onProgress } = options;
+  const { year, month, onProgress, refreshToken, onTokenRefresh } = options;
   
   if (!userId || !token) {
     return { success: false, error: 'User ID and token are required' };
@@ -46,11 +53,35 @@ export const syncStockXSales = async (userId, token, options = {}) => {
     onProgress?.({ status: 'fetching', message: 'Fetching sales from StockX...' });
     
     // 1. Fetch from StockX API
-    const response = await fetch('/api/stockx-sales', {
+    let currentToken = token;
+    let response = await fetchWithTimeout('/api/stockx-sales', {
       headers: {
-        'Authorization': `Bearer ${token}`
+        'Authorization': `Bearer ${currentToken}`
       }
-    });
+    }, 15000);
+    
+    // If failed and we have a refresh token, try refreshing
+    if (!response.ok && refreshToken) {
+      onProgress?.({ status: 'refreshing', message: 'Refreshing StockX token...' });
+      
+      const refreshRes = await fetch('/api/stockx-refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken })
+      });
+      
+      const refreshData = await refreshRes.json();
+      if (refreshData.access_token) {
+        currentToken = refreshData.access_token;
+        onTokenRefresh?.(currentToken, refreshData.refresh_token);
+        
+        response = await fetchWithTimeout('/api/stockx-sales', {
+          headers: {
+            'Authorization': `Bearer ${currentToken}`
+          }
+        }, 15000);
+      }
+    }
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -180,19 +211,20 @@ export const syncEbaySales = async (userId, token, options = {}) => {
     
     const now = new Date().toISOString();
 
-if (!month || month === 'all') {
-  startDate = `${yearInt}-01-01T00:00:00.000Z`;
-  endDate = `${yearInt}-12-31T23:59:59.000Z`;
-} else {
-  const monthInt = parseInt(month);
-  const lastDay = new Date(yearInt, monthInt, 0).getDate();
-  const monthStr = month.padStart(2, '0');
-  startDate = `${yearInt}-${monthStr}-01T00:00:00.000Z`;
-  endDate = `${yearInt}-${monthStr}-${lastDay}T23:59:59.000Z`;
-}
+    if (!month || month === 'all') {
+      startDate = `${yearInt}-01-01T00:00:00.000Z`;
+      endDate = `${yearInt}-12-31T23:59:59.000Z`;
+    } else {
+      const monthInt = parseInt(month);
+      const lastDay = new Date(yearInt, monthInt, 0).getDate();
+      const monthStr = month.padStart(2, '0');
+      startDate = `${yearInt}-${monthStr}-01T00:00:00.000Z`;
+      endDate = `${yearInt}-${monthStr}-${lastDay}T23:59:59.000Z`;
+    }
 
-// Cap endDate to now — eBay rejects future dates
-if (endDate > now) endDate = now;
+    // Cap endDate to now — eBay rejects future dates
+    if (endDate > now) endDate = now;
+    
     // 2. Fetch from eBay API
     let currentToken = token;
     let response = await fetch(
