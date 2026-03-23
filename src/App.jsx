@@ -1087,7 +1087,8 @@ const loadedUserRef = useRef(null);
         }
 
         // eBay: use cached token immediately so app never blocks on refresh
-       const cachedEbayToken = localStorage.getItem(`flipledger_ebay_token_${user.id}`);
+      const cachedEbayToken = localStorage.getItem(`flipledger_ebay_token_${user.id}`) || 
+                        localStorage.getItem('flipledger_ebay_token_default');
         if (cachedEbayToken) {
           setEbayToken(cachedEbayToken);
           setEbayConnected(true);
