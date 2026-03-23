@@ -2770,7 +2770,8 @@ console.log('Found', items.length, 'items');
     { id: 'reports', label: 'CPA Reports', icon: '📊' },
     { type: 'divider' },
     { id: 'import', label: 'Import', icon: '📥', badge: pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length || null },
-   { id: 'copcheck', label: 'Cop Check', icon: '🔍' },
+  { id: 'analytics', label: 'Analytics', icon: '📊' },
+    { id: 'copcheck', label: 'Cop Check', icon: '🔍' },
     { id: 'listings', label: 'Listings', icon: '🏷' },
     { id: 'settings', label: 'Settings', icon: '⚙' },
   ];
