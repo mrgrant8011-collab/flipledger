@@ -1,5 +1,11 @@
-{
-  "rewrites": [
+"redirects": [
+    {
+      "source": "/(.*)",
+      "has": [{ "type": "host", "value": "flipledger.vercel.app" }],
+      "destination": "https://flipledgerhq.com/$1",
+      "permanent": true
+    }
+  ],
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "crons": [
