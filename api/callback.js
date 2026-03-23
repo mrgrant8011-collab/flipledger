@@ -18,7 +18,7 @@ export default async function handler(req, res) {
         client_id: process.env.STOCKX_CLIENT_ID,
         client_secret: process.env.STOCKX_CLIENT_SECRET,
         code: code,
-        redirect_uri: 'https://flipledger.vercel.app/api/callback'
+        redirect_uri: 'https://flipledgerhq.com/api/callback'
       })
     });
     

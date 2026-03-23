@@ -99,7 +99,7 @@ const handleSubmit = async (e) => {
           .eq('email', email.toLowerCase())
           .single();
         if (whitelistError || !whitelist) {
-          setError('This email is not authorized. Please purchase a subscription at flipledger.vercel.app first.');
+          setError('This email is not authorized. Please purchase a subscription at flipledgerhq.com first.');
           setLoading(false);
           return;
         }

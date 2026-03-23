@@ -4,7 +4,7 @@ import { delistEbayOffer, reduceEbayQuantity } from '../lib/ebay-delist.js';
 import { delistStockXListing } from '../lib/stockx-delist.js';
 
 function getBaseUrl() {
-  return process.env.NEXT_PUBLIC_SITE_URL || 'https://flipledger.vercel.app';
+  return process.env.NEXT_PUBLIC_SITE_URL || 'https://flipledgerhq.com';
 }
 
 function verifyCronSecret(req) {
