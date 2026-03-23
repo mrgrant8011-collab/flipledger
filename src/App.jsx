@@ -1079,11 +1079,25 @@ const loadedUserRef = useRef(null);
         const savedGoals = localStorage.getItem(`flipledger_goals_${user.id}`);
         if (savedGoals) setGoals(JSON.parse(savedGoals));
 
-       // Load tokens from localStorage
-        const stockxTok = localStorage.getItem('flipledger_stockx_token');
+       const stockxTok = localStorage.getItem('flipledger_stockx_token');
         if (stockxTok) {
           setStockxToken(stockxTok);
           setStockxConnected(true);
+          // Refresh in background
+          const refreshToken = localStorage.getItem('flipledger_stockx_refresh');
+          if (refreshToken) {
+            fetch('/api/stockx-refresh', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ refresh_token: refreshToken })
+            }).then(r => r.json()).then(data => {
+              if (data.access_token) {
+                localStorage.setItem('flipledger_stockx_token', data.access_token);
+                if (data.refresh_token) localStorage.setItem('flipledger_stockx_refresh', data.refresh_token);
+                setStockxToken(data.access_token);
+              }
+            }).catch(() => {});
+          }
         }
 
         // eBay: use cached token immediately so app never blocks on refresh
@@ -1164,6 +1178,15 @@ const loadedUserRef = useRef(null);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Auto-refresh StockX token every 50 minutes
+  useEffect(() => {
+    if (!stockxConnected) return;
+    const interval = setInterval(() => {
+      getValidStockXToken();
+    }, 50 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [stockxConnected]);
 
   // ============ LEGACY FUNCTION WRAPPERS (now use safeDatabase.js) ============
   // These are kept for backward compatibility but delegate to safe functions
@@ -1595,6 +1618,28 @@ const loadedUserRef = useRef(null);
     setStockxConnected(false);
   };
 
+  // Auto-refresh StockX token
+  const getValidStockXToken = async () => {
+    const refreshToken = localStorage.getItem('flipledger_stockx_refresh');
+    if (!refreshToken) return stockxToken;
+    try {
+      const res = await fetch('/api/stockx-refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken })
+      });
+      const data = await res.json();
+      if (data.access_token) {
+        localStorage.setItem('flipledger_stockx_token', data.access_token);
+        if (data.refresh_token) localStorage.setItem('flipledger_stockx_refresh', data.refresh_token);
+        setStockxToken(data.access_token);
+        return data.access_token;
+      }
+    } catch (e) {
+      console.warn('[StockX] Token refresh failed:', e.message);
+    }
+    return stockxToken;
+  };
   const c = { 
     bg: '#0C0C0C', 
     card: '#141414', 
