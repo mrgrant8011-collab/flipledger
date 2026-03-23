@@ -2,7 +2,7 @@
  * EBAY SALES API v2.0
  * Returns order_id in format "ebay_{orderId}" for namespace safety
  */
-import { createClient } from '@supabase/supabase-js';
+
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -16,32 +16,29 @@ export default async function handler(req, res) {
   console.log('[ebay-sales] user_id:', req.query.user_id || 'none');
 
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'No token provided' });
-  }
+const userId = req.query.user_id;
 
-  let accessToken = authHeader.replace('Bearer ', '');
-  const userId = req.query.user_id;
+let accessToken = null;
 
-  if (userId) {
-    try {
-      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-      const { data: tokenRow, error: tokenError } = await supabase
-        .from('user_tokens')
-        .select('access_token')
-        .eq('user_id', userId)
-        .eq('platform', 'ebay')
-        .single();
-      if (tokenError) {
-        console.error('[ebay-sales] token lookup failed:', tokenError.message);
-      } else if (tokenRow?.access_token) {
-        accessToken = tokenRow.access_token;
-        console.log('[ebay-sales] using freshest token from DB for user:', userId);
-      }
-    } catch (e) {
-      console.error('[ebay-sales] DB error:', e.message);
-    }
+if (authHeader && authHeader.startsWith('Bearer ')) {
+  accessToken = authHeader.replace('Bearer ', '');
+}
+
+if (!accessToken && userId) {
+  const { createClient } = await import('@supabase/supabase-js');
+  const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+  const { data: tokenRow, error } = await supabase.from('user_tokens').select('access_token').eq('user_id', userId).eq('platform', 'ebay').single();
+  if (error || !tokenRow?.access_token) {
+    return res.status(401).json({ error: 'No valid eBay token found' });
   }
+  accessToken = tokenRow.access_token;
+}
+
+if (!accessToken) {
+  return res.status(401).json({ error: 'No token available' });
+}
+
+
 
   const { startDate, endDate } = req.query;
   const now = new Date();
