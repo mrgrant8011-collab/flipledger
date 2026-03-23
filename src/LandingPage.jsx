@@ -689,7 +689,7 @@ export default function LandingPage({ onLogin }) {
         {/* FOOTER */}
         <footer className="fl-footer">
           <div className="fl-footer-logo"><div className="fl-nav-icon" style={{width:28,height:28,fontSize:12,borderRadius:8}}>FL</div>FlipLedger</div>
-          <div className="fl-footer-links"><a href="#fl-features">Features</a><a href="#fl-pricing">Pricing</a><a href="#">Support</a><a href="#">Terms</a><a href="#">Privacy</a></div>
+          <div className="fl-footer-links"><a href="#fl-features">Features</a><a href="#fl-pricing">Pricing</a><a href="#">Support</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
           <div style={{fontSize:12,color:'#555'}}>© 2026 FlipLedger. All rights reserved.</div>
         </footer>
 
