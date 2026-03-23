@@ -1439,7 +1439,7 @@ const loadedUserRef = useRef(null);
     
     if (ebayConnectedParam === 'true' && ebayTokenParam) {
     const expiresIn = parseInt(params.get('ebay_expires')) || 7200;
-     storeEbayTokens(ebayTokenParam, ebayRefreshParam, expiresIn, user.id);
+     storeEbayTokens(ebayTokenParam, ebayRefreshParam, expiresIn, user?.id || 'default');
       setEbayToken(ebayTokenParam);
       setEbayConnected(true);
       linkTokensToServer('ebay', ebayTokenParam, ebayRefreshParam, expiresIn);
