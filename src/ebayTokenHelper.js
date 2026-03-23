@@ -82,7 +82,7 @@ export async function getValidEbayToken(onTokenRefresh, userId = 'default') {
     
     const data = await response.json();
     
-    if (data.success && data.access_token) {
+    if (data.access_token) {
       // Store new tokens
       storeEbayTokens(
         data.access_token, 
