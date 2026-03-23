@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 
 export default function Analytics({ sales, purchases, year, c, fmt }) {
-  const [platform, setPlatform] = useState('all');
+  const [platform, setPlatform] = useState('stockx');
   const [sortBy, setSortBy] = useState('totalProfit');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -10,7 +10,7 @@ export default function Analytics({ sales, purchases, year, c, fmt }) {
   const filteredSales = useMemo(() => {
     return sales.filter(s => {
       const matchesYear = year === 'all' || (s.saleDate && s.saleDate.startsWith(year));
-      const matchesPlatform = platform === 'all' || s.platform === platform;
+      const matchesPlatform = platform === 'all' || (platform === 'stockx' ? s.platform?.toLowerCase().includes('stockx') : s.platform === platform);
       return matchesYear && matchesPlatform;
     });
   }, [sales, year, platform]);
@@ -99,6 +99,7 @@ export default function Analytics({ sales, purchases, year, c, fmt }) {
           style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', fontSize: 13, cursor: 'pointer' }}
         >
           <option value="all">All Platforms</option>
+          <option value="stockx">All StockX</option>
           <option value="StockX Standard">StockX Standard</option>
           <option value="StockX Direct">StockX Direct</option>
           <option value="StockX Flex">StockX Flex</option>
