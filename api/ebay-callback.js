@@ -2,6 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 export default async function handler(req, res) {
   const { code, state, error, error_description } = req.query;
+  console.log('eBay callback query:', JSON.stringify(req.query));
   const userId = state ? decodeURIComponent(state) : null;
   
   // User declined or error occurred
