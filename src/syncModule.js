@@ -178,17 +178,21 @@ export const syncEbaySales = async (userId, token, options = {}) => {
     let startDate, endDate;
     const yearInt = parseInt(year);
     
-    if (!month || month === 'all') {
-      startDate = `${yearInt}-01-01T00:00:00.000Z`;
-      endDate = `${yearInt}-12-31T23:59:59.000Z`;
-    } else {
-      const monthInt = parseInt(month);
-      const lastDay = new Date(yearInt, monthInt, 0).getDate();
-      const monthStr = month.padStart(2, '0');
-      startDate = `${yearInt}-${monthStr}-01T00:00:00.000Z`;
-      endDate = `${yearInt}-${monthStr}-${lastDay}T23:59:59.000Z`;
-    }
-    
+    const now = new Date().toISOString();
+
+if (!month || month === 'all') {
+  startDate = `${yearInt}-01-01T00:00:00.000Z`;
+  endDate = `${yearInt}-12-31T23:59:59.000Z`;
+} else {
+  const monthInt = parseInt(month);
+  const lastDay = new Date(yearInt, monthInt, 0).getDate();
+  const monthStr = month.padStart(2, '0');
+  startDate = `${yearInt}-${monthStr}-01T00:00:00.000Z`;
+  endDate = `${yearInt}-${monthStr}-${lastDay}T23:59:59.000Z`;
+}
+
+// Cap endDate to now — eBay rejects future dates
+if (endDate > now) endDate = now;
     // 2. Fetch from eBay API
     let currentToken = token;
     let response = await fetch(
