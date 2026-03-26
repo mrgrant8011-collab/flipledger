@@ -17,6 +17,9 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
   // Delist History state
   const [delistHistory, setDelistHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyPage, setHistoryPage] = useState(0);
+  const [historyHasMore, setHistoryHasMore] = useState(true);
+  const PAGE_SIZE = 50;
 
 
   // Load delist history when tab is active
@@ -27,22 +30,24 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
   }, [activeTab]);
  
 
-  const loadDelistHistory = async () => {
+  const loadDelistHistory = async (page = 0, append = false) => {
     setLoadingHistory(true);
     try {
-     const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       const { data, error } = await supabase
         .from('delist_log')
         .select('*')
         .eq('user_id', user.id)
         .eq('status', 'success')
         .order('created_at', { ascending: false })
-        .limit(50);
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
       
       if (error) {
         console.error('[DelistHistory] Load error:', error);
       } else {
-        setDelistHistory(data || []);
+        setDelistHistory(prev => append ? [...prev, ...(data || [])] : (data || []));
+        setHistoryHasMore((data || []).length === PAGE_SIZE);
+        setHistoryPage(page);
       }
     } catch (e) {
       console.error('[DelistHistory] Load error:', e);
@@ -157,9 +162,9 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
           </div>
 
           {/* Refresh Button */}
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
             <button
-              onClick={loadDelistHistory}
+              onClick={() => loadDelistHistory(0, false)}
               disabled={loadingHistory}
               style={{
                 padding: '8px 16px',
@@ -268,6 +273,28 @@ export default function Listings({ stockxToken, ebayToken, purchases = [], c = {
               ))
             )}
           </div>
+
+          {/* Load More */}
+          {historyHasMore && (
+            <div style={{ padding: 16, textAlign: 'center' }}>
+              <button
+                onClick={() => loadDelistHistory(historyPage + 1, true)}
+                disabled={loadingHistory}
+                style={{
+                  padding: '10px 24px',
+                  background: c.card,
+                  border: `1px solid ${c.border}`,
+                  borderRadius: 6,
+                  color: c.text,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: loadingHistory ? 'wait' : 'pointer'
+                }}
+              >
+                {loadingHistory ? '⏳ Loading...' : 'Load More'}
+              </button>
+            </div>
+          )}
 
           {/* Stats Summary */}
           {delistHistory.length > 0 && (
