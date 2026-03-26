@@ -200,8 +200,23 @@ function mergeOfferUpdates(offer, update) {
 
   // Condition - maps to offer-level condition
   if (update.condition !== undefined) {
-    // eBay condition enum: NEW, LIKE_NEW, NEW_OTHER, etc.
-    merged.condition = update.condition;
+   // eBay condition enum: NEW, LIKE_NEW, NEW_OTHER, etc.
+    const conditionMap = {
+      'NEW': 'NEW',
+      'BRAND NEW': 'NEW',
+      'NEW WITH BOX': 'NEW',
+      'NEW WITH TAGS': 'NEW',
+      'NEW WITHOUT BOX': 'NEW_OTHER',
+      'NEW WITHOUT TAGS': 'NEW_OTHER',
+      'NEW_WITHOUT_BOX': 'NEW_OTHER',
+      'NEW_OTHER': 'NEW_OTHER',
+      'NEW_WITH_DEFECTS': 'NEW_WITH_DEFECTS',
+      'USED_EXCELLENT': 'USED_EXCELLENT',
+      'USED_GOOD': 'USED_GOOD',
+      'PRE-OWNED': 'USED_EXCELLENT'
+    };
+    const c = (update.condition || '').toUpperCase();
+    merged.condition = conditionMap[c] || update.condition;
   }
 
   // Item specifics that need updating on the inventory item 
