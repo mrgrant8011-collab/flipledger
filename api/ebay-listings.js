@@ -1554,6 +1554,7 @@ function mapCondition(condition) {
     'NEW WITH TAGS': 'NEW',
     'NEW WITHOUT BOX': 'NEW_OTHER',
     'NEW WITHOUT TAGS': 'NEW_OTHER',
+    'NEW_WITHOUT_BOX': 'NEW_OTHER',
     'NEW_OTHER': 'NEW_OTHER',
     'NEW_WITH_DEFECTS': 'NEW_WITH_DEFECTS',
     'USED': 'USED_EXCELLENT',
