@@ -758,15 +758,15 @@ if (eb.length === 0) {
       const ebayMatch = ebaySkuSet.skuToOffer.get(expectedEbaySku);
       
       g[sku].sizes.push({
-        ...l,
-        cost: l.cost || purchaseMatch?.cost || 0,
-        key: `sx_${l.listingId}`,
-        source: 'stockx',
-        isOnEbay,
-        ebayOfferId: mapping?.ebay_offer_id || ebayMatch?.offerId || null,
-        mappingId: mapping?.id || null,
-        expectedEbaySku,
-        ebayQty
+        key: `inv_${idx}_${sku}_${p.size}`,
+        source: 'inventory',
+        size: p.size || '',
+        yourAsk: p.askPrice || p.price || 100,
+        cost: p.cost || 0,
+        purchaseId: p.id || idx,
+        isOnEbay: !!ebayMatch,
+        ebayOfferId: ebayMatch?.offerId || null,
+        expectedEbaySku // Store for debugging
       });
     });
     
@@ -1648,7 +1648,7 @@ if (eb.length === 0) {
                               <div style={{ fontSize: 11, color: isSelected ? (viewFilter === 'listed' ? c.green : c.gold) : c.textMuted, marginTop: 2 }}>${price || '—'}</div>
                              {onEbayCount > 0 && (
                                 <div style={{ fontSize: 9, color: c.green, fontWeight: 600, marginTop: 3 }}>
-                                  {items[0]?.ebayQty || onEbayCount}/{items.length} eBay
+                                  {onEbayCount}/{items.length} eBay
                                 </div>
                               )}
                               
