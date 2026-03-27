@@ -719,7 +719,8 @@ if (eb.length === 0) {
         isOnEbay,
         ebayOfferId: mapping?.ebay_offer_id || ebayMatch?.offerId || null,
         mappingId: mapping?.id || null,
-        expectedEbaySku // Store for debugging
+       expectedEbaySku, // Store for debugging
+        ebayQty
       });
       });
     
@@ -1648,7 +1649,7 @@ if (eb.length === 0) {
                               <div style={{ fontSize: 11, color: isSelected ? (viewFilter === 'listed' ? c.green : c.gold) : c.textMuted, marginTop: 2 }}>${price || '—'}</div>
                              {onEbayCount > 0 && (
                                 <div style={{ fontSize: 9, color: c.green, fontWeight: 600, marginTop: 3 }}>
-                                  {onEbayCount}/{items.length} eBay
+                                  {items[0]?.ebayQty || onEbayCount}/{items.length} eBay
                                 </div>
                               )}
                               
