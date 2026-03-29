@@ -1615,6 +1615,11 @@ if (eb.length === 0) {
                           const isEditing = viewFilter === 'listed' && editingSize === size;
                           const isSelected = viewFilter === 'listed' ? isEditing : keys.every(k => selectedItems.has(k));
                           const onEbayCount = items.filter(s => s.isOnEbay).length;
+                          const linkedCount = mappings.filter(m =>
+                          m.sku === p.sku &&
+                         String(m.size) === String(size) &&
+                          m.status === 'active'
+                          ).length;
                           const price = items[0]?.yourAsk;
                           return (
                             <div key={size}
@@ -1649,7 +1654,7 @@ if (eb.length === 0) {
                               <div style={{ fontSize: 11, color: isSelected ? (viewFilter === 'listed' ? c.green : c.gold) : c.textMuted, marginTop: 2 }}>${price || '—'}</div>
                              {onEbayCount > 0 && (
                                 <div style={{ fontSize: 9, color: c.green, fontWeight: 600, marginTop: 3 }}>
-                                  {items[0]?.ebayQty || onEbayCount}/{items.length} eBay
+                                  {items[0]?.ebayQty || onEbayCount}/{linkedCount} eBay
                                 </div>
                               )}
                               
