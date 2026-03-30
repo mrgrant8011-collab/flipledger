@@ -1,6 +1,6 @@
 import LandingPage from './LandingPage';
 import Listings from './Listings';
-import CopCheck from './CopCheck';
+import HiveMind from './HiveMind';
 import Analytics from './Analytics';
 import { useState, useEffect, Component, useRef } from 'react';
 import * as XLSX from 'xlsx';
@@ -2771,7 +2771,7 @@ console.log('Found', items.length, 'items');
     { type: 'divider' },
     { id: 'import', label: 'Import', icon: '📥', badge: pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length || null },
   { id: 'analytics', label: 'Analytics', icon: '📊' },
-    { id: 'copcheck', label: 'Cop Check', icon: '🔍' },
+    { id: 'hivemind', label: 'Hive Mind', icon: '🧠' },
     { id: 'listings', label: 'Listings', icon: '🏷' },
     { id: 'settings', label: 'Settings', icon: '⚙' },
   ];
@@ -6300,7 +6300,7 @@ Let me know if you need anything else.`;
       `}</style>
       
      
-      {page === 'copcheck' && <CopCheck />}
+      {page === 'hivemind' && <HiveMind stockxToken={stockxToken} ebayToken={ebayToken} userId={user?.id} />}
       {page === 'listings' && <Listings stockxToken={stockxToken} ebayToken={ebayToken} purchases={purchases} c={c} />}
       {/* NIKE EXAMPLE MODAL */}
       {showNikeExample && (
