@@ -25,7 +25,7 @@ export default function HiveMind({ stockxToken, ebayToken, userId }) {
   const [error, setError] = useState(null);
 
   const allSizes = result?.stockx?.allVariants?.map(v => v.size) || [];
-  const { personal, community, stockx, ebay, netComparison, hotSizes, signals } = result || {};
+  const { personal, community, stockx, ebay, hotSizes, signals } = result || {};
 
   async function scan(overrideSku, overrideSize) {
     const scanSku = (overrideSku || sku).trim().toUpperCase();
@@ -76,29 +76,25 @@ export default function HiveMind({ stockxToken, ebayToken, userId }) {
   const sellRate = community?.sellRate || 0;
   const hotSize = hotSizes?.find(h => h.size === selectedSize)?.heat;
 
-  // Best net payout available — eBay first, StockX fallback
-  const bestNet = netComparison?.better === 'ebay' && netComparison?.ebayNet
-    ? netComparison.ebayNet
-    : netComparison?.stockxNet || netComparison?.ebayNet || null;
+  // StockX earnMore is the target sell price
+  const stockxEarnMore = stockx?.earnMore || null;
+  const STOCKX_FEE = 0.095;
+  const stockxNet = stockxEarnMore ? Math.round(stockxEarnMore * (1 - STOCKX_FEE)) : null;
 
-  const bestPlatform = netComparison?.better === 'ebay' ? 'eBay'
-    : netComparison?.better === 'stockx' ? 'StockX' : null;
-
-  // Real profit = best net - user's cost
+  // Real profit = stockx net - user's cost
   const costNum = cost ? parseFloat(cost) : null;
-  const estProfit = costNum && bestNet ? Math.round(bestNet - costNum) : null;
+  const estProfit = costNum && stockxNet ? Math.round(stockxNet - costNum) : null;
 
   function getVerdict() {
     if (!selectedSize) return null;
-    // If user entered cost — verdict based on their real profit
-    if (costNum && bestNet) {
-      const profit = Math.round(bestNet - costNum);
+    if (costNum && stockxNet) {
+      const profit = Math.round(stockxNet - costNum);
       if (profit >= 60 && sellRate >= 70) return { label: 'STRONG BUY', color: '#34D399', glow: 'rgba(52,211,153,0.3)', bg: 'rgba(52,211,153,0.08)', border: 'rgba(52,211,153,0.3)' };
       if (profit >= 30) return { label: 'WORTH IT', color: '#C9A962', glow: 'rgba(201,169,98,0.3)', bg: 'rgba(201,169,98,0.08)', border: 'rgba(201,169,98,0.3)' };
       if (profit >= 15) return { label: 'MAYBE', color: 'rgba(255,255,255,0.5)', glow: 'none', bg: 'rgba(255,255,255,0.04)', border: 'rgba(255,255,255,0.1)' };
       return { label: 'PASS', color: '#F87171', glow: 'rgba(248,113,113,0.3)', bg: 'rgba(248,113,113,0.06)', border: 'rgba(248,113,113,0.2)' };
     }
-    // No cost entered — verdict based on market signals only
+    // No cost yet — show market signal
     if (sellRate >= 80 && hotSize === 'hot') return { label: 'STRONG MARKET', color: '#34D399', glow: 'rgba(52,211,153,0.3)', bg: 'rgba(52,211,153,0.08)', border: 'rgba(52,211,153,0.3)' };
     if (sellRate >= 50) return { label: 'ACTIVE MARKET', color: '#C9A962', glow: 'rgba(201,169,98,0.3)', bg: 'rgba(201,169,98,0.08)', border: 'rgba(201,169,98,0.3)' };
     if (sellRate >= 20) return { label: 'SLOW MARKET', color: 'rgba(255,255,255,0.5)', glow: 'none', bg: 'rgba(255,255,255,0.04)', border: 'rgba(255,255,255,0.1)' };
@@ -215,16 +211,16 @@ export default function HiveMind({ stockxToken, ebayToken, userId }) {
                     <span style={{ color: verdict.color, textShadow: `0 0 30px ${verdict.glow}` }}>
                       {estProfit !== null
                         ? (estProfit >= 0 ? `+$${estProfit}` : `-$${Math.abs(estProfit)}`)
-                        : bestNet ? `$${bestNet}` : '—'}
+                        : stockxNet ? `$${stockxNet}` : '—'}
                     </span>
                     <span style={{ fontSize: 16, fontWeight: 500, color: 'rgba(255,255,255,0.3)', marginLeft: 8 }}>
                       {estProfit !== null ? 'profit' : 'net'}
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-                    {netComparison?.diff > 0 && netComparison?.better && (
+                    {stockxNet && (
                       <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>
-                        <span style={{ color: verdict.color, fontWeight: 700 }}>+${netComparison.diff}</span> more on {netComparison.better}
+                        <span style={{ color: 'rgba(255,255,255,0.8)', fontWeight: 700 }}>${stockxNet}</span> stockx net
                       </div>
                     )}
                     {community?.sellRate !== null && community?.sellRate !== undefined && (
@@ -239,7 +235,7 @@ export default function HiveMind({ stockxToken, ebayToken, userId }) {
                     )}
                     {personal?.avgProfit && (
                       <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>
-                        <span style={{ color: '#C9A962', fontWeight: 700 }}>${personal.avgProfit}</span> your avg reseller profit
+                        <span style={{ color: '#C9A962', fontWeight: 700 }}>${personal.avgProfit}</span> your avg profit
                       </div>
                     )}
                   </div>
@@ -247,24 +243,7 @@ export default function HiveMind({ stockxToken, ebayToken, userId }) {
               </div>
             )}
 
-            {/* NET COMPARISON */}
-            {(netComparison?.ebayNet || netComparison?.stockxNet) && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                {[
-                  { label: 'STOCKX NET', val: netComparison.stockxNet, better: netComparison.better === 'stockx', color: c.green, glow: c.greenGlow, fee: 'after 9.5% fee', empty: 'select size below' },
-                  { label: 'EBAY NET', val: netComparison.ebayNet, better: netComparison.better === 'ebay', color: c.gold, glow: c.goldGlow, fee: netComparison.diff && netComparison.better ? `+$${netComparison.diff} more on ${netComparison.better}` : 'after 8% fee', empty: '—' },
-                ].map(({ label, val, better, color, glow, fee, empty }) => (
-                  <div key={label} className="net-card" style={{ background: better ? `${color}14` : c.card, border: `1px solid ${better ? `${color}50` : c.border}`, borderRadius: 16, padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
-                    {better && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${color}, transparent)`, animation: 'shimmer-line 2s ease-in-out infinite' }} />}
-                    <div style={{ fontSize: 10, color: c.textDim, letterSpacing: '2px', marginBottom: 10 }}>{label}</div>
-                    <div style={{ fontSize: 34, fontWeight: 900, lineHeight: 1, color: val ? (better ? color : c.textMuted) : c.textDim, textShadow: val && better ? `0 0 20px ${glow}` : 'none' }}>
-                      {val ? `$${val}` : '—'}
-                    </div>
-                    <div style={{ fontSize: 10, color: c.textDim, marginTop: 6 }}>{val ? fee : empty}</div>
-                  </div>
-                ))}
-              </div>
-            )}
+
 
             {/* EBAY MARKET */}
             {ebay && (
@@ -387,16 +366,20 @@ export default function HiveMind({ stockxToken, ebayToken, userId }) {
             {/* COST CALCULATOR */}
             <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, padding: '18px 20px', marginBottom: 28, position: 'relative', overflow: 'hidden' }}>
               <div style={{ position: 'absolute', bottom: -30, left: -30, width: 120, height: 120, background: `radial-gradient(circle, ${c.greenGlow} 0%, transparent 70%)`, pointerEvents: 'none' }} />
-              <div style={{ fontSize: 9, color: c.textDim, letterSpacing: '2px', marginBottom: 8 }}>YOUR COST AT OUTLET</div>
-              {!bestNet && <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 10 }}>select a size to calculate profit</div>}
+              <div style={{ fontSize: 9, color: c.textDim, letterSpacing: '2px', marginBottom: 4 }}>YOUR COST AT OUTLET</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', marginBottom: 12 }}>
+                {stockxNet
+                  ? `StockX earn more: $${stockx?.earnMore} → net $${stockxNet} after 9.5% fee`
+                  : 'select a size to calculate profit'}
+              </div>
               <div style={{ display: 'flex', gap: 10, position: 'relative', zIndex: 1 }}>
                 <div style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
                   <span style={{ fontSize: 16, color: c.textDim, fontWeight: 800 }}>$</span>
-                  <input type="number" placeholder="outlet price" value={cost} onChange={e => setCost(e.target.value)}
+                  <input type="number" placeholder="what did you pay?" value={cost} onChange={e => setCost(e.target.value)}
                     style={{ background: 'transparent', border: 'none', outline: 'none', color: c.text, fontSize: 15, width: '100%', fontFamily: 'inherit', fontWeight: 600 }} />
                 </div>
                 <div style={{ background: estProfit === null ? 'rgba(255,255,255,0.03)' : estProfit >= 0 ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)', border: `1px solid ${estProfit === null ? c.border : estProfit >= 0 ? 'rgba(52,211,153,0.3)' : 'rgba(248,113,113,0.3)'}`, borderRadius: 12, padding: '12px 16px', textAlign: 'center', minWidth: 110 }}>
-                  <div style={{ fontSize: 9, color: c.textDim, marginBottom: 4 }}>EST. PROFIT</div>
+                  <div style={{ fontSize: 9, color: c.textDim, marginBottom: 4 }}>STOCKX PROFIT</div>
                   <div style={{ fontSize: 20, fontWeight: 900, color: estProfit === null ? c.textDim : estProfit >= 0 ? c.green : c.red, textShadow: estProfit !== null && estProfit >= 0 ? `0 0 15px ${c.greenGlow}` : 'none' }}>
                     {estProfit === null ? '—' : estProfit >= 0 ? `+$${estProfit}` : `-$${Math.abs(estProfit)}`}
                   </div>
