@@ -162,11 +162,11 @@ export default function HiveMind({ stockxToken, ebayToken, userId }) {
             value={sku}
             onChange={e => setSku(e.target.value.toUpperCase())}
             onKeyDown={e => e.key === 'Enter' && scan()}
-            placeholder="enter sku — e.g. CN8490-002"
-            style={{ background: 'transparent', border: 'none', outline: 'none', color: c.text, fontSize: 15, flex: 1, fontFamily: "'SF Mono', 'Courier New', monospace", letterSpacing: '0.5px' }}
+            placeholder="SKU — e.g. CN8490-002"
+            style={{ background: 'transparent', border: 'none', outline: 'none', color: c.text, fontSize: 14, flex: 1, minWidth: 0, fontFamily: "'SF Mono', 'Courier New', monospace", letterSpacing: '0.5px' }}
           />
           <button className="scan-btn" onClick={() => scan()} disabled={loading || !sku.trim()}
-            style={{ background: loading ? 'rgba(201,169,98,0.4)' : `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)`, color: '#000', fontSize: 11, fontWeight: 800, padding: '8px 18px', borderRadius: 10, border: 'none', cursor: 'pointer', letterSpacing: '1px', boxShadow: `0 4px 16px ${c.goldGlow}`, opacity: !sku.trim() ? 0.5 : 1 }}>
+            style={{ background: loading ? 'rgba(201,169,98,0.4)' : `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)`, color: '#000', fontSize: 11, fontWeight: 800, padding: '8px 16px', borderRadius: 10, border: 'none', cursor: 'pointer', letterSpacing: '1px', boxShadow: `0 4px 16px ${c.goldGlow}`, opacity: !sku.trim() ? 0.5 : 1, flexShrink: 0, whiteSpace: 'nowrap' }}>
             {loading ? '···' : 'SCAN'}
           </button>
         </div>
