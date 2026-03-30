@@ -60,7 +60,7 @@ async function resetStaleProcessingJobs() {
 
 async function retryFailedJobs(userId, tokens, activeMappings) {
   try {
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const oneHourAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: failedJobs, error } = await supabaseAdmin
       .from('delist_log')
       .select(`id, order_number, sold_on, delisted_from, cross_list_link_id,
