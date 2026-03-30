@@ -171,7 +171,7 @@ export default function HiveMind({ stockxToken, ebayToken, userId }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <div style={{ background: netComparison.better === 'stockx' ? 'rgba(16,185,129,0.08)' : 'rgba(255,255,255,0.02)', border: `0.5px solid ${netComparison.better === 'stockx' ? 'rgba(16,185,129,0.2)' : c.border}`, borderRadius: 12, padding: 14 }}>
                     <div style={{ fontSize: 10, color: c.muted, letterSpacing: 1, marginBottom: 6 }}>STOCKX NET</div>
-                    <div style={{ fontSize: 26, fontWeight: 800, color: netComparison.better === 'stockx' ? c.green : c.text, lineHeight: 1 }}>${netComparison.stockxNet}</div>
+                 <div style={{ fontSize: 26, fontWeight: 800, color: netComparison.better === 'stockx' ? c.green : c.text, lineHeight: 1 }}>{netComparison.stockxNet ? `$${netComparison.stockxNet}` : '—'}</div>
                     <div style={{ fontSize: 10, color: c.muted, marginTop: 4 }}>after 9.5% fee</div>
                   </div>
                   <div style={{ background: netComparison.better === 'ebay' ? 'rgba(201,169,98,0.08)' : 'rgba(255,255,255,0.02)', border: `0.5px solid ${netComparison.better === 'ebay' ? 'rgba(201,169,98,0.2)' : c.border}`, borderRadius: 12, padding: 14 }}>
