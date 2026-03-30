@@ -312,13 +312,13 @@ async function getStockXData(sku, size, userToken) {
     if (!variantsRes.ok) return null;
 
     const variantsData = await variantsRes.json();
-    const variants = variantsData?.variants || variantsData || [];
+    const variants = Array.isArray(variantsData) ? variantsData : variantsData?.variants || [];
 
     const sizeFilter = size ? size.toString().replace(/[^0-9.]/g, '') : null;
 
     const matchedVariant = sizeFilter
       ? variants.find(v => {
-          const vSize = (v.sizeChart?.baseSize || v.size || '').toString().replace(/[^0-9.]/g, '');
+          const vSize = (v.variantValue || '').toString().replace(/[^0-9.]/g, '');
           return vSize === sizeFilter;
         })
       : null;
@@ -378,7 +378,7 @@ async function getStockXData(sku, size, userToken) {
 function formatVariants(variants) {
   return (variants || [])
     .map(v => ({
-      size: (v.sizeChart?.baseSize || v.size || '').toString(),
+      size: (v.variantValue || '').toString(),
       variantId: v.variantId || v.id,
     }))
     .filter(v => v.size)
