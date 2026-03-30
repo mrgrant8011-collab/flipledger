@@ -13,6 +13,135 @@ function verifyCronSecret(req) {
   return req.headers.authorization === `Bearer ${cronSecret}`;
 }
 
+function isRetryableErrorMessage(errorMessage = '') {
+  const msg = (errorMessage || '').toLowerCase();
+  return (
+    msg.includes('timeout') ||
+    msg.includes('network') ||
+    msg.includes('fetch') ||
+    msg.includes('socket') ||
+    msg.includes('rate limit') ||
+    msg.includes('429') ||
+    msg.includes('500') ||
+    msg.includes('502') ||
+    msg.includes('503') ||
+    msg.includes('504') ||
+    msg.includes('temporar') ||
+    msg.includes('unavailable') ||
+    msg.includes('connection') ||
+    msg.includes('reset from stale processing state')
+  );
+}
+
+async function resetStaleProcessingJobs() {
+  try {
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    const { data, error } = await supabaseAdmin
+      .from('delist_log')
+      .update({
+        status: 'failed',
+        error_message: 'Reset from stale processing state',
+        updated_at: new Date().toISOString()
+      })
+      .eq('status', 'processing')
+      .lt('updated_at', fifteenMinutesAgo)
+      .select('id, order_number');
+    if (error) {
+      console.error('[Cron] Failed to reset stale jobs:', error.message);
+      return;
+    }
+    if (data?.length > 0) {
+      console.log(`[Cron] Reset ${data.length} stale processing job(s)`);
+    }
+  } catch (err) {
+    console.error('[Cron] Failed to reset stale jobs:', err.message);
+  }
+}
+
+async function retryFailedJobs(userId, tokens, activeMappings) {
+  try {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { data: failedJobs, error } = await supabaseAdmin
+      .from('delist_log')
+      .select(`id, order_number, sold_on, delisted_from, cross_list_link_id,
+        listing_id_delisted, item_sku, item_size, error_message, retry_count, updated_at`)
+      .eq('user_id', userId)
+      .eq('status', 'failed')
+      .lt('retry_count', 3)
+      .gt('updated_at', oneHourAgo)
+      .order('updated_at', { ascending: true })
+      .limit(10);
+    if (error) {
+      console.error('[Cron] Failed job lookup error:', error.message);
+      return;
+    }
+    if (!failedJobs || failedJobs.length === 0) return;
+    console.log(`[Cron] Found ${failedJobs.length} retryable failed job(s) for user ${userId}`);
+    for (const job of failedJobs) {
+      if (!isRetryableErrorMessage(job.error_message)) {
+        console.log(`[Cron] Non-retryable failed job ${job.order_number}, skipping`);
+        continue;
+      }
+      const match = activeMappings.find(m => m.id === job.cross_list_link_id);
+      if (!match) {
+        console.log(`[Cron] Retry skipped, mapping missing for ${job.order_number}`);
+        continue;
+      }
+      try {
+        const retryCount = (job.retry_count || 0) + 1;
+        const { error: markProcessingError } = await supabaseAdmin
+          .from('delist_log')
+          .update({
+            status: 'processing',
+            retry_count: retryCount,
+            error_message: `Retry attempt ${retryCount}`,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', job.id)
+          .eq('status', 'failed');
+        if (markProcessingError) {
+          console.error(`[Cron] Retry claim failed for ${job.order_number}:`, markProcessingError.message);
+          continue;
+        }
+        let delistResult = { success: false, error: 'Retry path did not run' };
+        if (job.sold_on === 'stockx' && job.delisted_from === 'ebay' && match.ebay_offer_id) {
+          delistResult = await reduceEbayQuantity(tokens.ebayToken, match.ebay_sku, 0, match.ebay_offer_id);
+          if (!delistResult.success && !delistResult.alreadyRemoved && delistResult.liveQty <= 1) {
+            delistResult = await delistEbayOffer(tokens.ebayToken, match.ebay_offer_id);
+          }
+        } else if (job.sold_on === 'ebay' && job.delisted_from === 'stockx' && match.stockx_listing_id) {
+          delistResult = await delistStockXListing(tokens.stockxToken, match.stockx_listing_id);
+        } else {
+          delistResult = { success: false, error: 'Missing listing id for retry' };
+        }
+        if (delistResult.success || delistResult.alreadyRemoved) {
+          await supabaseAdmin.from('cross_list_links').update({
+            status: 'sold', sold_on: job.sold_on,
+            sold_at: new Date().toISOString(), updated_at: new Date().toISOString()
+          }).eq('id', match.id);
+          await supabaseAdmin.from('delist_log').update({
+            status: 'success', error_message: null, updated_at: new Date().toISOString()
+          }).eq('id', job.id);
+          console.log(`[Cron] Retry success for ${job.order_number}`);
+        } else {
+          await supabaseAdmin.from('delist_log').update({
+            status: 'failed', error_message: delistResult.error || 'Retry failed',
+            updated_at: new Date().toISOString()
+          }).eq('id', job.id);
+          console.error(`[Cron] Retry failed for ${job.order_number}: ${delistResult.error || 'Unknown error'}`);
+        }
+      } catch (err) {
+        await supabaseAdmin.from('delist_log').update({
+          status: 'failed', error_message: err.message, updated_at: new Date().toISOString()
+        }).eq('id', job.id);
+        console.error(`[Cron] Retry execution error for ${job.order_number}:`, err.message);
+      }
+    }
+  } catch (err) {
+    console.error('[Cron] Retry failed jobs error:', err.message);
+  }
+}
+
 async function fetchStockXActiveOrders(accessToken) {
   try {
     let allOrders = [];
@@ -71,8 +200,11 @@ async function processUser(userId, platforms) {
 
    if (!activeMappings || activeMappings.length === 0) return result;
     result.activeMappings = activeMappings.length;
-    const sampleMappings = activeMappings.slice(0, 5).map(m => `${m.sku}/${m.size}`);
+   const sampleMappings = activeMappings.slice(0, 5).map(m => `${m.sku}/${m.size}`);
     console.log(`[Cron] Active mappings: ${activeMappings.length} | samples: ${sampleMappings.join(', ')}`);
+
+    // Retry recent transient failures before processing fresh sales
+    await retryFailedJobs(userId, tokens, activeMappings);
 
     // ═══════════════════════════════════════════════════════
     // DIRECTION 1: StockX confirmed sale → delist from eBay
@@ -341,6 +473,7 @@ export default async function handler(req, res) {
   if (!verifyCronSecret(req)) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
+    await resetStaleProcessingJobs();
     const users = await getUsersWithTokens();
     if (users.length === 0) {
       return res.status(200).json({ success: true, message: 'No users with tokens', timestamp: new Date().toISOString() });
