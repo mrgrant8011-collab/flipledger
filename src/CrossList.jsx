@@ -700,7 +700,7 @@ if (eb.length === 0) {
     // Only mark as on eBay up to the eBay listing's available qty
       const ebayQty = ebayMatch?.quantity || 0;
       const alreadyMatched = matchedCounts[expectedEbaySku] || 0;
-      const isOnEbay = !!mapping || !!(ebayMatch && alreadyMatched < ebayQty);
+      const isOnEbay = !!(ebayMatch && alreadyMatched < ebayQty);
       const isProtected = !!mapping;
       if (isOnEbay && !mapping && ebayMatch) {
         matchedCounts[expectedEbaySku] = alreadyMatched + 1;
