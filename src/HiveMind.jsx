@@ -235,7 +235,7 @@ export default function HiveMind({ stockxToken, ebayToken, userId }) {
                     )}
                     {personal?.avgProfit && (
                       <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>
-                        <span style={{ color: '#C9A962', fontWeight: 700 }}>${personal.avgProfit}</span> your avg profit
+                        <span style={{ color: '#C9A962', fontWeight: 700 }}>${personal.avgProfit}</span> reseller avg profit
                       </div>
                     )}
                   </div>
