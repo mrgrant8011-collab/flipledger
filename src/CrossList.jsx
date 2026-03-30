@@ -702,7 +702,7 @@ if (eb.length === 0) {
       const alreadyMatched = matchedCounts[expectedEbaySku] || 0;
       const isOnEbay = !!(ebayMatch && alreadyMatched < ebayQty);
       const isProtected = !!mapping;
-      if (isOnEbay && !mapping && ebayMatch) {
+      if (isOnEbay) {
         matchedCounts[expectedEbaySku] = alreadyMatched + 1;
       }
       
