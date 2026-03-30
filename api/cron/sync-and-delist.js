@@ -216,11 +216,15 @@ async function processUser(userId, platforms) {
       // Fetch already-processed order numbers to avoid double-processing
       const { data: processedOrders } = await supabaseAdmin
         .from('delist_log')
-        .select('order_number')
+       .select('order_number, status')
         .eq('user_id', userId)
         .not('order_number', 'is', null)
         .limit(1000);
-      const processedOrderNumbers = new Set((processedOrders || []).map(o => o.order_number));
+      const processedOrderNumbers = new Set(
+        (processedOrders || [])
+          .filter(o => o.status === 'success' || o.status === 'not_found')
+          .map(o => o.order_number)
+      );
 
      for (const order of sxOrders) {
         // Skip if already processed
@@ -362,11 +366,15 @@ async function processUser(userId, platforms) {
         // Fetch already-processed eBay order numbers
         const { data: processedEbayOrders } = await supabaseAdmin
           .from('delist_log')
-          .select('order_number')
+          .select('order_number, status')
           .eq('user_id', userId)
           .eq('sold_on', 'ebay')
           .not('order_number', 'is', null);
-    const processedEbayOrderNumbers = new Set((processedEbayOrders || []).map(o => o.order_number));
+    const processedEbayOrderNumbers = new Set(
+      (processedEbayOrders || [])
+        .filter(o => o.status === 'success' || o.status === 'not_found')
+        .map(o => o.order_number)
+    );
         for (const sale of ebaySales) {
           const saleQty = sale.quantity || 1;
           console.log(`[Cron] eBay sale: ${sale.order_id} | sku=${sale.sku} | size=${sale.size} | qty=${saleQty}`);
