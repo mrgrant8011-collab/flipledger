@@ -253,7 +253,7 @@ export default function HiveMind({ stockxToken, ebayToken, userId }) {
 
             {personal && (
               <Section>
-                <div style={{ fontSize: 9, color: c.muted, letterSpacing: 2, marginBottom: 4 }}>YOUR DATA</div>
+                
                 {personal.timesBought > 0 && <Row label="bought before" value={`${personal.timesBought}x`} />}
                 {personal.avgProfit !== null && <Row label="avg profit" value={`$${personal.avgProfit}`} color={c.gold} />}
                 {personal.avgSellTime !== null && <Row label="avg sell time" value={`${personal.avgSellTime} days`} />}
