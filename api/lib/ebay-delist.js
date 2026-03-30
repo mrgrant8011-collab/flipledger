@@ -133,9 +133,12 @@ export async function reduceEbayQuantity(accessToken, sku, newQuantity, offerId)
       { method: 'GET', headers }
     );
 
-    if (!offerRes.ok) {
+   if (!offerRes.ok) {
       const errText = await offerRes.text();
       console.error(`[eBay:Delist] GET offer ${offerId} failed: ${offerRes.status} - ${errText}`);
+      if (offerRes.status === 404 || offerRes.status === 410) {
+        return { success: false, alreadyRemoved: true, notFound: true };
+      }
       return { success: false, error: `Failed to fetch offer ${offerId}: ${offerRes.status} - ${errText}` };
     }
 
