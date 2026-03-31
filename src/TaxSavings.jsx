@@ -17,12 +17,14 @@ const c = {
 };
 
 const STATE_RATES = {
-  AL:5,AK:0,AZ:2.5,AR:4.7,CA:9.3,CO:4.4,CT:6.99,DE:6.6,FL:0,GA:5.49,
-  HI:8.25,ID:5.8,IL:4.95,IN:3.05,IA:6,KS:5.7,KY:4.5,LA:3,ME:7.15,MD:5.75,
-  MA:5,MI:4.25,MN:9.85,MS:5,MO:5.3,MT:6.75,NE:6.84,NV:0,NH:0,NJ:8.97,
-  NM:5.9,NY:10.9,NC:4.75,ND:2.9,OH:3.99,OK:4.75,OR:9.9,PA:3.07,RI:5.99,
-  SC:7,SD:0,TN:0,TX:0,UT:4.65,VT:8.75,VA:5.75,WA:0,WV:6.5,WI:7.65,WY:0,DC:10.75
+  AL:5,   AK:0,   AZ:2.5, AR:4.4, CA:9.3, CO:4.4, CT:6.99,DE:6.6, FL:0,   GA:5.49,
+  HI:8.25,ID:5.3, IL:4.95,IN:2.95,IA:3.8, KS:5.7, KY:4.5, LA:3,   ME:7.15,MD:5.75,
+  MA:5,   MI:4.25,MN:9.85,MS:5,   MO:5.2, MT:6.5, NE:6.64,NV:0,   NH:0,   NJ:8.97,
+  NM:5.9, NY:10.9,NC:4.25,ND:2.5, OH:3.99,OK:4.75,OR:9.9, PA:3.07,RI:5.99,
+  SC:6.2, SD:0,   TN:0,   TX:0,   UT:4.65,VT:8.75,VA:5.75,WA:0,   WV:6.5, WI:7.65,WY:0,DC:10.75
 };
+// Rates reflect 2025 top marginal rates. AR: 4.4 (2024 cut), IA: 3.8 flat (2025), ID: 5.3 (2025),
+// IN: 2.95 (2026), MO: 5.2 (2024), MT: 6.5 (2024), NE: 6.64 (2024), NC: 4.25 (2025), SC: 6.2 (2024)
 
 const STATE_NAMES = {
   AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',
@@ -37,11 +39,57 @@ const STATE_NAMES = {
 };
 
 const STATE_LLC_FEES = {
-  AL:100,AK:100,AZ:50,AR:150,CA:800,CO:10,CT:80,DE:300,FL:139,GA:50,
-  HI:15,ID:30,IL:75,IN:31,IA:30,KS:55,KY:15,LA:35,ME:85,MD:100,
-  MA:500,MI:25,MN:25,MS:25,MO:45,MT:20,NE:26,NV:350,NH:100,NJ:75,
-  NM:50,NY:9,NC:200,ND:50,OH:99,OK:25,OR:100,PA:70,RI:50,
-  SC:10,SD:50,TN:300,TX:0,UT:70,VT:35,VA:50,WA:60,WV:25,WI:130,WY:60,DC:300
+  AL:100,  // Business Privilege Tax min ~$100/yr
+  AK:100,  // $100 biennial report
+  AZ:0,    // No annual report required
+  AR:150,  // $150 min franchise tax
+  CA:800,  // $800 min franchise tax
+  CO:25,   // $25 periodic report
+  CT:80,   // $80 annual report
+  DE:300,  // $300 franchise tax
+  FL:139,  // $138.75 annual report
+  GA:50,   // $50 annual registration
+  HI:15,   // $15 annual report
+  ID:0,    // No annual fee required
+  IL:75,   // $75 annual report
+  IN:31,   // $31 biennial report
+  IA:30,   // $30 biennial report
+  KS:55,   // $55 annual report
+  KY:15,   // $15 annual report
+  LA:35,   // $35 annual report
+  ME:85,   // $85 annual report
+  MD:100,  // $100 annual report
+  MA:500,  // $500 annual report
+  MI:25,   // $25 annual statement
+  MN:25,   // $25 annual renewal
+  MS:0,    // No annual fee required
+  MO:0,    // No annual fee required
+  MT:20,   // $20 annual report
+  NE:26,   // $26 biennial report
+  NV:350,  // $350 annual list
+  NH:100,  // $100 annual report
+  NJ:75,   // $75 annual report
+  NM:0,    // No annual report required
+  NY:9,    // $9 biennial statement
+  NC:200,  // $200 annual report
+  ND:50,   // $50 annual report
+  OH:0,    // No annual fee required
+  OK:25,   // $25 annual certificate
+  OR:100,  // $100 annual report
+  PA:70,   // $70 decennial report (every 10 yrs)
+  RI:50,   // $50 annual report
+  SC:0,    // No annual fee required
+  SD:50,   // $50 annual report
+  TN:300,  // Franchise/excise tax min ~$300
+  TX:0,    // No fee under $2.47M revenue
+  UT:70,   // $70 annual renewal
+  VT:35,   // $35 annual report
+  VA:50,   // $50 annual registration
+  WA:60,   // $60 annual report
+  WV:25,   // $25 annual report
+  WI:130,  // $130 annual report
+  WY:60,   // $60 annual report
+  DC:300   // $300 biennial report
 };
 
 const STATE_529_PLANS = {
@@ -60,7 +108,7 @@ const STATE_529_PLANS = {
 
 const STATE_529_DEDUCTIONS = {
   AL:5000,AR:5000,CO:22000,CT:10000,DC:4000,GA:4000,ID:6000,IL:10000,
-  IN:1500,IA:3522,KS:3000,KY:4000,LA:4800,ME:1000,MD:2500,MA:1000,
+  IN:1500,IA:5800,KS:3000,KY:4000,LA:4800,ME:1000,MD:2500,MA:1000,
   MI:10000,MN:1500,MS:10000,MO:8000,MT:3000,NE:10000,NY:5000,
   ND:5000,OH:4000,OK:10000,OR:4660,PA:16000,RI:1000,
   UT:2290,VA:4000,WI:3560
@@ -105,7 +153,7 @@ export default function TaxSavings({ sales = [], expenses = [], settings = {}, u
   const [hasDental, setHasDental] = useState(false);
   const [dentalAmt, setDentalAmt] = useState(1200);
   const [hasKids, setHasKids] = useState(false);
-  const [kidsAmt, setKidsAmt] = useState(14600);
+  const [kidsAmt, setKidsAmt] = useState(15000);
   const [hasRoth, setHasRoth] = useState(false);
   const [compoundYears, setCompoundYears] = useState(20);
   const [compoundRate, setCompoundRate] = useState(10);
@@ -134,7 +182,7 @@ export default function TaxSavings({ sales = [], expenses = [], settings = {}, u
   const qbiDeduction = Math.round(netProfit * 0.20);
   const sepIraMax = Math.min(Math.round(netProfit * 0.25), 69000);
   const sepIraContrib = hasSepIra ? sepIraMax : 0;
-  const hsaContrib = hasHSA ? 4150 : 0;
+  const hsaContrib = hasHSA ? 4300 : 0;
   const healthInsDeduct = hasHealthIns ? Math.min(healthInsAmt, netProfit) : 0;
   const dentalDeduct = hasDental ? Math.min(dentalAmt, netProfit) : 0;
   const kidsDeduct = hasKids ? Math.min(kidsAmt, netProfit) : 0;
@@ -226,9 +274,9 @@ export default function TaxSavings({ sales = [], expenses = [], settings = {}, u
       id: 'hsa',
       title: 'HSA — and invest it in the market',
       badge: hasHSA ? 'ACTIVE' : '🔥 UNDERRATED',
-      desc: 'Health savings account — $4,150 pre-tax, grows tax-free, withdrawals tax-free for medical. Invest it in index funds, not cash.',
-      detail: `The HSA is the only triple tax advantage account that exists: 1) contributions are pre-tax (saves you ${Math.round(4150 * marginalRate).toLocaleString()} in taxes now), 2) growth is 100% tax-free, 3) withdrawals for medical expenses are tax-free. Most people make the mistake of leaving HSA funds in a cash account earning 0.1%. Wrong move. Many HSA providers like Fidelity and Lively allow you to invest your HSA balance in the market rather than leaving it as cash. If you contribute $4,150/year from age 30-65 and invest it, that's potentially $1M+ tax-free for medical expenses. After 65 you can withdraw for anything (like a Traditional IRA). Requires a high deductible health plan ($1,600+ deductible for individuals). This is one of the most powerful wealth-building tools available to self-employed people.`,
-      saving: Math.round(4150 * marginalRate),
+      desc: 'Health savings account — $4,300 pre-tax, grows tax-free, withdrawals tax-free for medical. Invest it in index funds, not cash.',
+      detail: `The HSA is the only triple tax advantage account that exists: 1) contributions are pre-tax (saves you ${Math.round(4300 * marginalRate).toLocaleString()} in taxes now), 2) growth is 100% tax-free, 3) withdrawals for medical expenses are tax-free. Most people make the mistake of leaving HSA funds in a cash account earning 0.1%. Wrong move. Many HSA providers like Fidelity and Lively allow you to invest your HSA balance in the market rather than leaving it as cash. If you contribute $4,300/year from age 30-65 and invest it, that's potentially $1M+ tax-free for medical expenses. After 65 you can withdraw for anything (like a Traditional IRA). Requires a high deductible health plan ($1,600+ deductible for individuals). This is one of the most powerful wealth-building tools available to self-employed people.`,
+      saving: Math.round(4300 * marginalRate),
       active: hasHSA,
       toggle: () => setHasHSA(!hasHSA),
       color: c.green,
@@ -301,9 +349,9 @@ export default function TaxSavings({ sales = [], expenses = [], settings = {}, u
       id: 'kids',
       title: 'Hire your children',
       badge: hasKids ? 'ACTIVE' : '🔥 MOST MISS THIS',
-      desc: 'Pay your kids up to $14,600/year for real work — packing orders, photographing shoes, labeling inventory. You deduct it, they pay zero federal tax.',
-      detail: `This is completely legal and one of the most powerful family tax strategies available. Pay your children for actual work they perform in your business: photographing shoes for listings, packing and labeling orders, sorting inventory, data entry. Their standard deduction is $14,600 — meaning they pay ZERO federal income tax on earnings up to that amount. You deduct the full amount as a business expense. That saves you ${Math.round(14600 * marginalRate).toLocaleString()} in taxes. Additionally, children under 18 working for a parent's sole proprietorship are exempt from FICA (Social Security and Medicare taxes). Must pay reasonable wages for real work and keep records. Put the money in a Roth IRA for them and it grows tax-free for 50+ years.`,
-      saving: hasKids ? Math.round(kidsDeduct * marginalRate) : Math.round(14600 * marginalRate),
+      desc: 'Pay your kids up to $15,000/year for real work — packing orders, photographing shoes, labeling inventory. You deduct it, they pay zero federal tax.',
+      detail: `This is completely legal and one of the most powerful family tax strategies available. Pay your children for actual work they perform in your business: photographing shoes for listings, packing and labeling orders, sorting inventory, data entry. Their standard deduction is $15,000 — meaning they pay ZERO federal income tax on earnings up to that amount. You deduct the full amount as a business expense. That saves you ${Math.round(15000 * marginalRate).toLocaleString()} in taxes. Additionally, children under 18 working for a parent's sole proprietorship are exempt from FICA (Social Security and Medicare taxes). Must pay reasonable wages for real work and keep records. Put the money in a Roth IRA for them and it grows tax-free for 50+ years.`,
+      saving: hasKids ? Math.round(kidsDeduct * marginalRate) : Math.round(15000 * marginalRate),
       active: hasKids,
       toggle: () => setHasKids(!hasKids),
       color: c.green,
@@ -312,8 +360,8 @@ export default function TaxSavings({ sales = [], expenses = [], settings = {}, u
       id: 'mileage',
       title: 'Mileage deduction',
       badge: mileage > 0 ? 'ACTIVE' : null,
-      desc: 'Every business mile = $0.67 deduction. Outlet runs, post office, UPS, storage — it adds up fast.',
-      detail: `IRS standard mileage rate 2024: $0.67/mile. Every trip for your business counts: outlet runs, post office, UPS/FedEx drop-offs, storage unit visits, business meetings. 5,000 miles = $3,350 deduction. 10,000 miles = $6,700. Use MileIQ, TripLog, or just log in your notes — date, destination, purpose, miles. Keep a log. IRS loves seeing documentation. At your ${bracket.label} bracket, 5,000 miles saves you $${Math.round(3350 * marginalRate).toLocaleString()} in taxes.`,
+      desc: 'Every business mile = $0.70 deduction. Outlet runs, post office, UPS, storage — it adds up fast.',
+      detail: `IRS standard mileage rate 2024: $0.70/mile. Every trip for your business counts: outlet runs, post office, UPS/FedEx drop-offs, storage unit visits, business meetings. 5,000 miles = $3,350 deduction. 10,000 miles = $6,700. Use MileIQ, TripLog, or just log in your notes — date, destination, purpose, miles. Keep a log. IRS loves seeing documentation. At your ${bracket.label} bracket, 5,000 miles saves you $${Math.round(3350 * marginalRate).toLocaleString()} in taxes.`,
       saving: mileage > 0 ? Math.round(mileageDeduct * marginalRate) : null,
       savingLabel: 'enter miles below',
       active: mileage > 0,
@@ -380,9 +428,12 @@ export default function TaxSavings({ sales = [], expenses = [], settings = {}, u
         const salary = Math.min(40000, netProfit);
         const seTaxOnSalary = Math.round(salary * 0.153);
         const seTaxSavings = Math.max(0, seTaxFull - seTaxOnSalary);
-        const llcFee = STATE_LLC_FEES[stateCode] || 100;
+        const llcFee = STATE_LLC_FEES[stateCode] || 0;
         const stateName = STATE_NAMES[stateCode] || 'Your state';
-        return `Currently every dollar of profit gets hit with 15.3% SE tax. With an S-Corp you pay yourself a "reasonable salary" and take the rest as distributions — SE tax only applies to the salary. At $${netProfit.toLocaleString()} net profit: salary $${salary.toLocaleString()} × 15.3% = $${seTaxOnSalary.toLocaleString()} SE tax. Distribution $${Math.max(0,netProfit-salary).toLocaleString()} × 0% = $0. Total SE tax: $${seTaxOnSalary.toLocaleString()} vs $${seTaxFull.toLocaleString()} now. Savings: $${seTaxSavings.toLocaleString()}. Cost: ~$1,800-2,200/year for payroll (Gusto) + CPA fees. Net benefit starts at $60k, strong at $80k+. File Form 2553 with the IRS (free). ${stateName} LLC annual fee: ~$${llcFee}/year.`;
+        const feeText = llcFee === 0
+          ? `${stateName} has no annual LLC fee — one less cost to worry about.`
+          : `${stateName} LLC annual fee: ~$${llcFee}/year.`;
+        return `Currently every dollar of profit gets hit with 15.3% SE tax. With an S-Corp you pay yourself a "reasonable salary" and take the rest as distributions — SE tax only applies to the salary. At $${netProfit.toLocaleString()} net profit: salary $${salary.toLocaleString()} × 15.3% = $${seTaxOnSalary.toLocaleString()} SE tax. Distribution $${Math.max(0,netProfit-salary).toLocaleString()} × 0% = $0. Total SE tax: $${seTaxOnSalary.toLocaleString()} vs $${seTaxFull.toLocaleString()} now. Savings: $${seTaxSavings.toLocaleString()}. Cost: ~$1,800-2,200/year for payroll (Gusto) + CPA fees. Net benefit starts at $60k, strong at $80k+. File Form 2553 with the IRS (free). ${feeText}`;
       })(),
       color: netProfit >= 60000 ? c.green : c.textDim,
       saving: netProfit >= 60000 ? Math.max(0, seTaxFull - Math.round(40000 * 0.153) - 2000) : null,
@@ -392,10 +443,10 @@ export default function TaxSavings({ sales = [], expenses = [], settings = {}, u
       id: 'solo401k',
       title: 'Solo 401(k)',
       badge: 'HIGHER LIMITS THAN SEP',
-      desc: 'Contribute as both employer AND employee — up to $69,000 total. More flexible than SEP-IRA.',
-      detail: 'A Solo 401(k) has the same tax benefits as a SEP-IRA but higher effective limits for some income levels. Employee contribution: up to $23,000 (or $30,500 if 50+). Employer contribution: up to 25% of net profit. Combined max: $69,000. You can also take loans against a Solo 401(k) — up to 50% of balance or $50,000. More paperwork to set up but Fidelity offers a free one. If you want to contribute more than the SEP-IRA allows at your income level, this is the move.',
+      desc: 'Contribute as both employer AND employee — up to $70,000 total. More flexible than SEP-IRA.',
+      detail: 'A Solo 401(k) has the same tax benefits as a SEP-IRA but higher effective limits for some income levels. Employee contribution: up to $23,000 (or $30,500 if 50+). Employer contribution: up to 25% of net profit. Combined max: $70,000. You can also take loans against a Solo 401(k) — up to 50% of balance or $50,000. More paperwork to set up but Fidelity offers a free one. If you want to contribute more than the SEP-IRA allows at your income level, this is the move.',
       color: c.gold,
-      savingLabel: 'up to $69k/yr',
+      savingLabel: 'up to $70k/yr',
     },
     {
       id: 'backdoorroth',
