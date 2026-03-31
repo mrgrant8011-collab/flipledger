@@ -451,35 +451,6 @@ export default function TaxSavings({ sales = [], expenses = [], settings = {}, u
           </div>
         </div>
 
-        {/* PERSONALIZED BRACKET CALLOUT */}
-        <div style={{ background: `rgba(201,169,98,0.06)`, border: `1px solid rgba(201,169,98,0.2)`, borderRadius: 14, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.gold, boxShadow: `0 0 10px ${c.gold}`, animation: 'pulse-glow 2s ease-in-out infinite' }} />
-            <span style={{ fontSize: 12, color: c.textMuted }}>This page is personalized to</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 10, color: c.textDim, letterSpacing: '1px' }}>INCOME</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: c.gold }}>${netProfit.toLocaleString()}</span>
-            </div>
-            <div style={{ width: 1, height: 16, background: c.border }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 10, color: c.textDim, letterSpacing: '1px' }}>FED BRACKET</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: c.gold }}>{bracket.label}</span>
-            </div>
-            <div style={{ width: 1, height: 16, background: c.border }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 10, color: c.textDim, letterSpacing: '1px' }}>STATE</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: c.gold }}>{STATE_NAMES[stateCode]} {stateRate > 0 ? `(${stateRate}%)` : '(0% — no income tax)'}</span>
-            </div>
-            <div style={{ width: 1, height: 16, background: c.border }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 10, color: c.textDim, letterSpacing: '1px' }}>MARGINAL RATE</span>
-              <span style={{ fontSize: 13, fontWeight: 700, color: c.red }}>{(marginalRate * 100).toFixed(1)}%</span>
-            </div>
-          </div>
-        </div>
-
         {/* METRICS */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 14 }}>
           {[
@@ -494,6 +465,20 @@ export default function TaxSavings({ sales = [], expenses = [], settings = {}, u
               <div style={{ fontSize: 10, color: c.textDim, marginTop: 4 }}>{m.sub}</div>
             </div>
           ))}
+        </div>
+
+        {/* PERSONALIZED SAVINGS CALLOUT */}
+        <div style={{ background: 'rgba(52,211,153,0.06)', border: '1px solid rgba(52,211,153,0.2)', borderRadius: 14, padding: '16px 20px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.green, boxShadow: `0 0 10px ${c.green}`, flexShrink: 0, animation: 'pulse-glow 2s ease-in-out infinite' }} />
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: c.green, marginBottom: 3 }}>
+              💰 ${totalSavings > 0 ? totalSavings.toLocaleString() : '—'} in potential savings identified
+            </div>
+            <div style={{ fontSize: 11, color: c.textDim, lineHeight: 1.6 }}>
+              Personalized to your <span style={{ color: c.textMuted }}>${netProfit.toLocaleString()} income</span> · <span style={{ color: c.textMuted }}>{bracket.label} federal bracket</span> · <span style={{ color: c.textMuted }}>{STATE_NAMES[stateCode]} {stateRate > 0 ? `${stateRate}% state tax` : '(no state income tax)'}</span>
+              {' · '}every deduction saves you <span style={{ color: c.green, fontWeight: 700 }}>{(marginalRate * 100).toFixed(1)}¢ per dollar</span>
+            </div>
+          </div>
         </div>
 
         {/* TAX BREAKDOWN */}
