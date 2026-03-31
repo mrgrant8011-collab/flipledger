@@ -25,7 +25,7 @@ export default function HiveMind({ stockxToken, ebayToken, userId }) {
   const [error, setError] = useState(null);
 
   const allSizes = result?.stockx?.allVariants?.map(v => v.size) || [];
-  const { personal, community, stockx, ebay, netComparison, hotSizes, signals } = result || {};
+  const { personal, community, stockx, ebay, hotSizes, signals } = result || {};
 
   async function scan(overrideSku, overrideSize) {
     const scanSku = (overrideSku || sku).trim().toUpperCase();
@@ -73,9 +73,33 @@ export default function HiveMind({ stockxToken, ebayToken, userId }) {
     }
   }
 
-  const estProfit = cost && ebay?.avg
-    ? Math.round(ebay.avg * 0.92 - parseFloat(cost))
-    : null;
+  const sellRate = community?.sellRate || 0;
+  const hotSize = hotSizes?.find(h => h.size === selectedSize)?.heat;
+
+  // CHANGED: use lowestAsk only — earnMore removed
+  const STOCKX_FEE = 0.095;
+  const stockxNet = stockx?.lowestAsk ? Math.round(stockx.lowestAsk * (1 - STOCKX_FEE)) : null;
+
+  // Real profit = stockx net - user's cost
+  const costNum = cost ? parseFloat(cost) : null;
+  const estProfit = costNum && stockxNet ? Math.round(stockxNet - costNum) : null;
+
+  function getVerdict() {
+    if (!selectedSize) return null;
+    if (costNum && stockxNet) {
+      const profit = Math.round(stockxNet - costNum);
+      if (profit >= 60 && sellRate >= 70) return { label: 'STRONG BUY', color: '#34D399', glow: 'rgba(52,211,153,0.3)', bg: 'rgba(52,211,153,0.08)', border: 'rgba(52,211,153,0.3)' };
+      if (profit >= 30) return { label: 'WORTH IT', color: '#C9A962', glow: 'rgba(201,169,98,0.3)', bg: 'rgba(201,169,98,0.08)', border: 'rgba(201,169,98,0.3)' };
+      if (profit >= 15) return { label: 'MAYBE', color: 'rgba(255,255,255,0.5)', glow: 'none', bg: 'rgba(255,255,255,0.04)', border: 'rgba(255,255,255,0.1)' };
+      return { label: 'PASS', color: '#F87171', glow: 'rgba(248,113,113,0.3)', bg: 'rgba(248,113,113,0.06)', border: 'rgba(248,113,113,0.2)' };
+    }
+    if (sellRate >= 80 && hotSize === 'hot') return { label: 'STRONG MARKET', color: '#34D399', glow: 'rgba(52,211,153,0.3)', bg: 'rgba(52,211,153,0.08)', border: 'rgba(52,211,153,0.3)' };
+    if (sellRate >= 50) return { label: 'ACTIVE MARKET', color: '#C9A962', glow: 'rgba(201,169,98,0.3)', bg: 'rgba(201,169,98,0.08)', border: 'rgba(201,169,98,0.3)' };
+    if (sellRate >= 20) return { label: 'SLOW MARKET', color: 'rgba(255,255,255,0.5)', glow: 'none', bg: 'rgba(255,255,255,0.04)', border: 'rgba(255,255,255,0.1)' };
+    return { label: 'WEAK MARKET', color: '#F87171', glow: 'rgba(248,113,113,0.3)', bg: 'rgba(248,113,113,0.06)', border: 'rgba(248,113,113,0.2)' };
+  }
+
+  const verdict = getVerdict();
 
   return (
     <div style={{ background: c.bg, minHeight: '100vh', padding: '28px', fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif", color: c.text }}>
@@ -136,11 +160,11 @@ export default function HiveMind({ stockxToken, ebayToken, userId }) {
             value={sku}
             onChange={e => setSku(e.target.value.toUpperCase())}
             onKeyDown={e => e.key === 'Enter' && scan()}
-            placeholder="enter sku — e.g. CN8490-002"
-            style={{ background: 'transparent', border: 'none', outline: 'none', color: c.text, fontSize: 15, flex: 1, fontFamily: "'SF Mono', 'Courier New', monospace", letterSpacing: '0.5px' }}
+            placeholder="SKU — e.g. CN8490-002"
+            style={{ background: 'transparent', border: 'none', outline: 'none', color: c.text, fontSize: 14, flex: 1, minWidth: 0, fontFamily: "'SF Mono', 'Courier New', monospace", letterSpacing: '0.5px' }}
           />
           <button className="scan-btn" onClick={() => scan()} disabled={loading || !sku.trim()}
-            style={{ background: loading ? 'rgba(201,169,98,0.4)' : `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)`, color: '#000', fontSize: 11, fontWeight: 800, padding: '8px 18px', borderRadius: 10, border: 'none', cursor: 'pointer', letterSpacing: '1px', boxShadow: `0 4px 16px ${c.goldGlow}`, opacity: !sku.trim() ? 0.5 : 1 }}>
+            style={{ background: loading ? 'rgba(201,169,98,0.4)' : `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)`, color: '#000', fontSize: 11, fontWeight: 800, padding: '8px 16px', borderRadius: 10, border: 'none', cursor: 'pointer', letterSpacing: '1px', boxShadow: `0 4px 16px ${c.goldGlow}`, opacity: !sku.trim() ? 0.5 : 1, flexShrink: 0, whiteSpace: 'nowrap' }}>
             {loading ? '···' : 'SCAN'}
           </button>
         </div>
@@ -168,22 +192,52 @@ export default function HiveMind({ stockxToken, ebayToken, userId }) {
               </div>
             </div>
 
-            {/* NET COMPARISON */}
-            {(netComparison?.ebayNet || netComparison?.stockxNet) && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                {[
-                  { label: 'STOCKX NET', val: netComparison.stockxNet, better: netComparison.better === 'stockx', color: c.green, glow: c.greenGlow, fee: 'after 9.5% fee', empty: 'select size below' },
-                  { label: 'EBAY NET', val: netComparison.ebayNet, better: netComparison.better === 'ebay', color: c.gold, glow: c.goldGlow, fee: netComparison.diff && netComparison.better ? `+$${netComparison.diff} more on ${netComparison.better}` : 'after 8% fee', empty: '—' },
-                ].map(({ label, val, better, color, glow, fee, empty }) => (
-                  <div key={label} className="net-card" style={{ background: better ? `${color}14` : c.card, border: `1px solid ${better ? `${color}50` : c.border}`, borderRadius: 16, padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
-                    {better && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${color}, transparent)`, animation: 'shimmer-line 2s ease-in-out infinite' }} />}
-                    <div style={{ fontSize: 10, color: c.textDim, letterSpacing: '2px', marginBottom: 10 }}>{label}</div>
-                    <div style={{ fontSize: 34, fontWeight: 900, lineHeight: 1, color: val ? (better ? color : c.textMuted) : c.textDim, textShadow: val && better ? `0 0 20px ${glow}` : 'none' }}>
-                      {val ? `$${val}` : '—'}
+            {/* HERO DECISION BLOCK */}
+            {selectedSize && verdict && (
+              <div style={{ background: verdict.bg, border: `1px solid ${verdict.border}`, borderRadius: 20, padding: '24px 28px', marginBottom: 16, position: 'relative', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${verdict.color}, transparent)`, animation: 'shimmer-line 2s ease-in-out infinite' }} />
+                <div style={{ position: 'absolute', top: -40, right: -40, width: 160, height: 160, background: `radial-gradient(circle, ${verdict.glow} 0%, transparent 60%)`, pointerEvents: 'none' }} />
+                <div style={{ position: 'relative', zIndex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', background: `${verdict.color}20`, border: `1px solid ${verdict.color}50`, borderRadius: 100 }}>
+                      <div style={{ width: 7, height: 7, background: verdict.color, borderRadius: '50%', boxShadow: `0 0 10px ${verdict.color}`, animation: 'pulse-glow 2s ease-in-out infinite' }} />
+                      <span style={{ fontSize: 11, fontWeight: 800, color: verdict.color, letterSpacing: '2px' }}>{verdict.label}</span>
                     </div>
-                    <div style={{ fontSize: 10, color: c.textDim, marginTop: 6 }}>{val ? fee : empty}</div>
+                    <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>SIZE {selectedSize}</span>
                   </div>
-                ))}
+                  <div style={{ fontSize: 52, fontWeight: 900, lineHeight: 1, letterSpacing: '-2px', marginBottom: 12 }}>
+                    <span style={{ color: verdict.color, textShadow: `0 0 30px ${verdict.glow}` }}>
+                      {estProfit !== null
+                        ? (estProfit >= 0 ? `+$${estProfit}` : `-$${Math.abs(estProfit)}`)
+                        : stockxNet ? `$${stockxNet}` : '—'}
+                    </span>
+                    <span style={{ fontSize: 16, fontWeight: 500, color: 'rgba(255,255,255,0.3)', marginLeft: 8 }}>
+                      {estProfit !== null ? 'profit' : 'net'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                    {stockxNet && (
+                      <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>
+                        <span style={{ color: 'rgba(255,255,255,0.8)', fontWeight: 700 }}>${stockxNet}</span> stockx net
+                      </div>
+                    )}
+                    {community?.sellRate !== null && community?.sellRate !== undefined && (
+                      <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>
+                        <span style={{ color: 'rgba(255,255,255,0.8)', fontWeight: 700 }}>{community.sellRate}%</span> sell rate
+                      </div>
+                    )}
+                    {hotSize && (
+                      <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>
+                        <span style={{ color: hotSize === 'hot' ? '#34D399' : '#C9A962', fontWeight: 700 }}>{hotSize}</span> size
+                      </div>
+                    )}
+                    {personal?.avgProfit && (
+                      <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>
+                        <span style={{ color: '#C9A962', fontWeight: 700 }}>${personal.avgProfit}</span> reseller avg profit
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -229,7 +283,7 @@ export default function HiveMind({ stockxToken, ebayToken, userId }) {
               </div>
             )}
 
-            {/* STOCKX DATA */}
+            {/* STOCKX DATA — lowest ask + highest bid only */}
             {stockx && (stockx.highestBid || stockx.lowestAsk) && (
               <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, padding: '18px 20px', marginBottom: 12, position: 'relative', overflow: 'hidden' }}>
                 <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${c.green}, transparent)`, animation: 'shimmer-line 2.5s ease-in-out infinite' }} />
@@ -238,7 +292,7 @@ export default function HiveMind({ stockxToken, ebayToken, userId }) {
                   {[['highest bid', stockx.highestBid, c.green], ['lowest ask', stockx.lowestAsk, c.gold]].filter(([, val]) => val).map(([label, val, color]) => (
                     <div key={label}>
                       <div style={{ fontSize: 10, color: c.textDim, marginBottom: 4 }}>{label}</div>
-                      <div style={{ fontSize: 22, fontWeight: 900, color, textShadow: color !== c.text ? `0 0 15px ${color === c.green ? c.greenGlow : c.goldGlow}` : 'none' }}>${val}</div>
+                      <div style={{ fontSize: 22, fontWeight: 900, color, textShadow: `0 0 15px ${color === c.green ? c.greenGlow : c.goldGlow}` }}>${val}</div>
                     </div>
                   ))}
                 </div>
@@ -250,7 +304,7 @@ export default function HiveMind({ stockxToken, ebayToken, userId }) {
               <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, overflow: 'hidden', marginBottom: 12 }}>
                 {[
                   personal.timesBought > 0 && ['bought before', `${personal.timesBought}x`, c.text],
-                  personal.avgProfit !== null && ['avg profit', `$${personal.avgProfit}`, c.gold],
+                  personal.avgProfit !== null && ['avg reseller profit', `$${personal.avgProfit}`, c.gold],
                   personal.avgSellTime !== null && [`avg sell time`, `${personal.avgSellTime} days`, c.text],
                   personal.sellRate && ['sell rate', personal.sellRate, c.green],
                   personal.bestPlatform && ['best platform', personal.bestPlatform, c.text],
@@ -268,7 +322,7 @@ export default function HiveMind({ stockxToken, ebayToken, userId }) {
               <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, overflow: 'hidden', marginBottom: 12 }}>
                 <div style={{ padding: '14px 20px 4px', fontSize: 9, color: c.textDim, letterSpacing: '2px' }}>COMMUNITY DATA</div>
                 {[
-                  community.avgProfit !== null && ['avg profit', `$${community.avgProfit}`, c.gold],
+                  community.avgProfit !== null && ['avg reseller profit', `$${community.avgProfit}`, c.gold],
                   community.sellRate !== null && ['sell rate', `${community.sellRate}%`, community.sellRate >= 80 ? c.green : community.sellRate >= 50 ? c.gold : c.red],
                   community.totalSales > 0 && ['units sold', community.totalSales.toLocaleString(), c.text],
                 ].filter(Boolean).map(([label, val, color], i, arr) => (
@@ -308,15 +362,20 @@ export default function HiveMind({ stockxToken, ebayToken, userId }) {
             {/* COST CALCULATOR */}
             <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, padding: '18px 20px', marginBottom: 28, position: 'relative', overflow: 'hidden' }}>
               <div style={{ position: 'absolute', bottom: -30, left: -30, width: 120, height: 120, background: `radial-gradient(circle, ${c.greenGlow} 0%, transparent 70%)`, pointerEvents: 'none' }} />
-              <div style={{ fontSize: 9, color: c.textDim, letterSpacing: '2px', marginBottom: 12 }}>YOUR COST AT OUTLET</div>
+              <div style={{ fontSize: 9, color: c.textDim, letterSpacing: '2px', marginBottom: 4 }}>YOUR COST AT OUTLET</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', marginBottom: 12 }}>
+                {stockxNet
+                  ? `StockX lowest ask: $${stockx?.lowestAsk} → net $${stockxNet} after 9.5% fee`
+                  : 'select a size to calculate profit'}
+              </div>
               <div style={{ display: 'flex', gap: 10, position: 'relative', zIndex: 1 }}>
                 <div style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
                   <span style={{ fontSize: 16, color: c.textDim, fontWeight: 800 }}>$</span>
-                  <input type="number" placeholder="outlet price" value={cost} onChange={e => setCost(e.target.value)}
+                  <input type="number" placeholder="what did you pay?" value={cost} onChange={e => setCost(e.target.value)}
                     style={{ background: 'transparent', border: 'none', outline: 'none', color: c.text, fontSize: 15, width: '100%', fontFamily: 'inherit', fontWeight: 600 }} />
                 </div>
                 <div style={{ background: estProfit === null ? 'rgba(255,255,255,0.03)' : estProfit >= 0 ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)', border: `1px solid ${estProfit === null ? c.border : estProfit >= 0 ? 'rgba(52,211,153,0.3)' : 'rgba(248,113,113,0.3)'}`, borderRadius: 12, padding: '12px 16px', textAlign: 'center', minWidth: 110 }}>
-                  <div style={{ fontSize: 9, color: c.textDim, marginBottom: 4 }}>EST. PROFIT</div>
+                  <div style={{ fontSize: 9, color: c.textDim, marginBottom: 4 }}>STOCKX PROFIT</div>
                   <div style={{ fontSize: 20, fontWeight: 900, color: estProfit === null ? c.textDim : estProfit >= 0 ? c.green : c.red, textShadow: estProfit !== null && estProfit >= 0 ? `0 0 15px ${c.greenGlow}` : 'none' }}>
                     {estProfit === null ? '—' : estProfit >= 0 ? `+$${estProfit}` : `-$${Math.abs(estProfit)}`}
                   </div>
