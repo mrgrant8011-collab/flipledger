@@ -1,6 +1,7 @@
 import LandingPage from './LandingPage';
 import Listings from './Listings';
 import HiveMind from './HiveMind';
+import TaxSavings from './TaxSavings';
 import Analytics from './Analytics';
 import { useState, useEffect, Component, useRef } from 'react';
 import * as XLSX from 'xlsx';
@@ -2768,6 +2769,7 @@ console.log('Found', items.length, 'items');
     { type: 'divider' },
     { id: 'expenses', label: 'Expenses', icon: '◧' },
     { id: 'reports', label: 'CPA Reports', icon: '📊' },
+    { id: 'taxsavings', label: 'Gold Mine', icon: '⛏️' },
     { type: 'divider' },
     { id: 'import', label: 'Import', icon: '📥', badge: pendingCosts.filter(s => year === 'all' || (s.saleDate && s.saleDate.startsWith(year))).length || null },
   { id: 'analytics', label: 'Analytics', icon: '📊' },
@@ -2830,8 +2832,9 @@ console.log('Found', items.length, 'items');
         </div>
       </aside>
 
-      <main id="mainContent" style={{ flex: 1, padding: page === 'hivemind' ? '0' : '24px 24px', overflowY: 'auto' }}>
+      <main id="mainContent" style={{ flex: 1, padding: (page === 'hivemind' || page === 'taxsavings') ? '0' : '24px 24px', overflowY: 'auto' }}>
         {page === 'hivemind' && <HiveMind stockxToken={stockxToken} ebayToken={ebayToken} userId={user?.id} />}
+        {page === 'taxsavings' && <TaxSavings sales={sales} expenses={expenses} settings={settings} userId={user?.id} />}
        <div className="desktop-header" style={{ display: page === 'listings' ? 'none' : 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32, paddingBottom: 24, borderBottom: `1px solid ${c.border}` }}>
           <div>
            <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: '0.5px' }}>{page === 'listings' ? '' : (navItems.find(n => n.id === page)?.label || 'Dashboard')}</h1>
