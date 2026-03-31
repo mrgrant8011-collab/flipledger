@@ -318,7 +318,7 @@ async function getStockXData(sku, size, userToken) {
 
     const matchedVariant = sizeFilter
       ? variants.find(v => {
-          const vSize = (v.sizeChart?.baseSize || v.size || '').toString().replace(/[^0-9.]/g, '');
+          const vSize = (v.variantValue || v.sizeChart?.baseSize || v.size || '').toString().replace(/[^0-9.]/g, '');
           return vSize === sizeFilter;
         })
       : null;
@@ -381,7 +381,7 @@ async function getStockXData(sku, size, userToken) {
 function formatVariants(variants) {
   return (variants || [])
     .map(v => ({
-      size: (v.sizeChart?.baseSize || v.size || '').toString(),
+      size: (v.variantValue || v.sizeChart?.baseSize || v.size || '').toString(),
       variantId: v.variantId || v.id,
     }))
     .filter(v => v.size)
