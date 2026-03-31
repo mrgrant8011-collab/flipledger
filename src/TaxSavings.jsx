@@ -346,7 +346,14 @@ export default function TaxSavings({ sales = [], expenses = [], settings = {}, u
       desc: netProfit >= 80000
         ? `At $${netProfit.toLocaleString()} net profit the S-Corp saves you real money. Pay yourself a salary, take the rest as distributions — no SE tax on distributions.`
         : `You\'re at $${netProfit.toLocaleString()} net profit. S-Corp starts making sense at $60k. Strong case at $80k+. File Form 2553 when ready.`,
-      detail: `Currently every dollar of profit gets hit with 15.3% SE tax. With an S-Corp you pay yourself a "reasonable salary" (say $40,000) and take the rest as distributions. SE tax only applies to the salary portion. At $${netProfit.toLocaleString()} net profit: salary $40k × 15.3% SE = $6,120. Distribution ${Math.max(0, netProfit-40000).toLocaleString()} × 0% SE = $0. Total SE tax: $6,120 vs $${seTaxFull.toLocaleString()} now. Savings: $${Math.max(0, seTaxFull - 6120).toLocaleString()}. Cost: ~$1,800-2,200/year for payroll (Gusto) + CPA fees. Net benefit starts at $60k, strong at $80k+. File Form 2553 with the IRS (free) and set up payroll. Utah LLC filing fee: $70/year.`,
+      detail: (() => {
+        const salary = Math.min(40000, netProfit);
+        const seTaxOnSalary = Math.round(salary * 0.153);
+        const seTaxSavings = Math.max(0, seTaxFull - seTaxOnSalary);
+        const llcFee = STATE_LLC_FEES[stateCode] || 100;
+        const stateName = STATE_NAMES[stateCode] || 'Your state';
+        return `Currently every dollar of profit gets hit with 15.3% SE tax. With an S-Corp you pay yourself a "reasonable salary" and take the rest as distributions — SE tax only applies to the salary. At $${netProfit.toLocaleString()} net profit: salary $${salary.toLocaleString()} × 15.3% = $${seTaxOnSalary.toLocaleString()} SE tax. Distribution $${Math.max(0,netProfit-salary).toLocaleString()} × 0% = $0. Total SE tax: $${seTaxOnSalary.toLocaleString()} vs $${seTaxFull.toLocaleString()} now. Savings: $${seTaxSavings.toLocaleString()}. Cost: ~$1,800-2,200/year for payroll (Gusto) + CPA fees. Net benefit starts at $60k, strong at $80k+. File Form 2553 with the IRS (free). ${stateName} LLC annual fee: ~$${llcFee}/year.`;
+      })(),
       color: netProfit >= 60000 ? c.green : c.textDim,
       saving: netProfit >= 60000 ? Math.max(0, seTaxFull - Math.round(40000 * 0.153) - 2000) : null,
       savingLabel: netProfit >= 60000 ? undefined : 'not yet worth it',
@@ -374,7 +381,17 @@ export default function TaxSavings({ sales = [], expenses = [], settings = {}, u
       title: '529 college savings plan',
       badge: 'IF YOU HAVE KIDS',
       desc: 'State tax deduction for contributions. Money grows tax-free and withdraws tax-free for education expenses.',
-      detail: `Utah has one of the best 529 plans in the country (my529). Contributions up to $4,080/year per beneficiary get a Utah state income tax credit of 5% = $204 credit (better than a deduction). Growth is 100% tax-free. Withdrawals for qualified education expenses (tuition, room, board, books, computers) are tax-free. Can also be used for K-12 tuition ($10,000/year). Recent law change: unused 529 funds can be rolled into a Roth IRA after 15 years. If you have kids, start this early — even $100/month from birth compounds to $60,000+ by college.`,
+      detail: (() => {
+        const planName = STATE_529_PLANS[stateCode] || 'your state 529 plan';
+        const stateName = STATE_NAMES[stateCode] || 'Your state';
+        const stateDeduction = STATE_529_DEDUCTIONS[stateCode];
+        const deductionText = stateDeduction > 0
+          ? `${stateName} lets you deduct up to $${stateDeduction.toLocaleString()}/year per beneficiary on your state taxes.`
+          : stateRate === 0
+          ? `${stateName} has no state income tax so there's no state deduction, but federal growth benefits still apply.`
+          : `${stateName} does not offer a state deduction for 529 contributions, but growth is still 100% tax-free federally.`;
+        return `${stateName}'s 529 plan is called ${planName}. ${deductionText} Growth is 100% tax-free. Withdrawals for qualified education expenses — tuition, room, board, books, computers — are tax-free. Can also be used for K-12 tuition up to $10,000/year. Recent law: unused 529 funds can be rolled into a Roth IRA after 15 years (up to $35,000 lifetime). If you have kids, start early — even $100/month from birth compounds to $60,000+ by college.`;
+      })(),
       color: c.gold,
       savingLabel: 'state tax credit',
     },
@@ -431,6 +448,35 @@ export default function TaxSavings({ sales = [], expenses = [], settings = {}, u
                 <option key={code} value={code}>{code} — {name}</option>
               ))}
             </select>
+          </div>
+        </div>
+
+        {/* PERSONALIZED BRACKET CALLOUT */}
+        <div style={{ background: `rgba(201,169,98,0.06)`, border: `1px solid rgba(201,169,98,0.2)`, borderRadius: 14, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.gold, boxShadow: `0 0 10px ${c.gold}`, animation: 'pulse-glow 2s ease-in-out infinite' }} />
+            <span style={{ fontSize: 12, color: c.textMuted }}>This page is personalized to</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 10, color: c.textDim, letterSpacing: '1px' }}>INCOME</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: c.gold }}>${netProfit.toLocaleString()}</span>
+            </div>
+            <div style={{ width: 1, height: 16, background: c.border }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 10, color: c.textDim, letterSpacing: '1px' }}>FED BRACKET</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: c.gold }}>{bracket.label}</span>
+            </div>
+            <div style={{ width: 1, height: 16, background: c.border }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 10, color: c.textDim, letterSpacing: '1px' }}>STATE</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: c.gold }}>{STATE_NAMES[stateCode]} {stateRate > 0 ? `(${stateRate}%)` : '(0% — no income tax)'}</span>
+            </div>
+            <div style={{ width: 1, height: 16, background: c.border }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 10, color: c.textDim, letterSpacing: '1px' }}>MARGINAL RATE</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: c.red }}>{(marginalRate * 100).toFixed(1)}%</span>
+            </div>
           </div>
         </div>
 
