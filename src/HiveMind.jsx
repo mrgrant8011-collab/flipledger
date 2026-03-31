@@ -1,507 +1,350 @@
-/**
- * ═══════════════════════════════════════════════════════════════════════════════════
- * HIVE MIND API - Buying Intelligence
- * ═══════════════════════════════════════════════════════════════════════════════════
- *
- * Combines personal history, community data, eBay market, and StockX bid/ask
- * into a single buying intelligence response.
- *
- * Endpoint:
- *   GET /api/hive-mind?sku=CN8490-002&size=10&user_id=xxx&ebayToken=xxx&stockxToken=xxx
- *
- * ═══════════════════════════════════════════════════════════════════════════════════
- */
+import { useState } from 'react';
 
-import { createClient } from '@supabase/supabase-js';
+const c = {
+  bg: '#0C0C0C',
+  card: '#141414',
+  border: 'rgba(255,255,255,0.06)',
+  gold: '#C9A962',
+  goldDark: '#8B7355',
+  goldGlow: 'rgba(201,169,98,0.3)',
+  green: '#34D399',
+  greenGlow: 'rgba(52,211,153,0.3)',
+  red: '#F87171',
+  text: '#FFFFFF',
+  textMuted: 'rgba(255,255,255,0.5)',
+  textDim: 'rgba(255,255,255,0.3)',
+};
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+export default function HiveMind({ stockxToken, ebayToken, userId }) {
+  const [sku, setSku] = useState('');
+  const [selectedSize, setSelectedSize] = useState(null);
+  const [cost, setCost] = useState('');
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [sizeLoading, setSizeLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-const STOCKX_API_BASE = 'https://api.stockx.com/v2';
-const EBAY_API_BASE = 'https://api.ebay.com';
+  const allSizes = result?.stockx?.allVariants?.map(v => v.size) || [];
+  const { personal, community, stockx, ebay, netComparison, hotSizes, signals } = result || {};
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'GET') return res.status(405).json({ error: 'GET only' });
-
-  const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-  const sku = (url.searchParams.get('sku') || '').trim().toUpperCase();
-  const size = (url.searchParams.get('size') || '').trim();
-  const userId = url.searchParams.get('user_id') || '';
-  const stockxToken = url.searchParams.get('stockxToken') || req.headers['x-stockx-token'] || '';
-  const ebayToken = (req.headers.authorization || '').replace('Bearer ', '').trim();
-
-  if (!sku) return res.status(400).json({ error: 'sku required' });
-  if (!userId) return res.status(400).json({ error: 'user_id required' });
-
-  try {
-    const [personal, community, stockxData, ebayData] = await Promise.allSettled([
-      getPersonalHistory(userId, sku, size),
-      getCommunityData(sku, size),
-      getStockXData(sku, size, stockxToken),
-      getEbayData(sku, size, ebayToken),
-    ]);
-
-    const personalResult = personal.status === 'fulfilled' ? personal.value : null;
-    const communityResult = community.status === 'fulfilled' ? community.value : null;
-    const stockxResult = stockxData.status === 'fulfilled' ? stockxData.value : null;
-    const ebayResult = ebayData.status === 'fulfilled' ? ebayData.value : null;
-
-    const netComparison = calcNetComparison(ebayResult, stockxResult);
-    const hotSizes = communityResult?.hotSizes || [];
-    const signals = calcSignals(personalResult, communityResult, ebayResult);
-
-    return res.status(200).json({
-      success: true,
-      sku,
-      size,
-      personal: personalResult,
-      community: communityResult,
-      stockx: stockxResult,
-      ebay: ebayResult,
-      netComparison,
-      hotSizes,
-      signals,
-    });
-  } catch (err) {
-    console.error('[HiveMind] Error:', err.message);
-    return res.status(500).json({ error: err.message });
-  }
-}
-
-// ─── PERSONAL HISTORY ────────────────────────────────────────────────────────
-
-async function getPersonalHistory(userId, sku, size) {
-  try {
-    const normalizedSku = sku.toUpperCase().replace(/[^A-Z0-9-]/g, '');
-
-    let salesQuery = supabaseAdmin
-      .from('sales')
-      .select('id, sku, size, cost, sale_price, profit, platform, sale_date, fees')
-      .eq('user_id', userId)
-      .ilike('sku', `%${normalizedSku}%`)
-      .order('sale_date', { ascending: false })
-      .limit(100);
-
-    let inventoryQuery = supabaseAdmin
-      .from('inventory')
-      .select('id, sku, size, cost, date, sold, source')
-      .eq('user_id', userId)
-      .ilike('sku', `%${normalizedSku}%`)
-      .limit(100);
-
-    const [salesRes, inventoryRes] = await Promise.all([salesQuery, inventoryQuery]);
-
-    const allSales = salesRes.data || [];
-    const allInventory = inventoryRes.data || [];
-
-    const sizeFilter = size ? size.toString().replace(/[^0-9.]/g, '') : null;
-
-    const filteredSales = sizeFilter
-      ? allSales.filter(s => s.size && s.size.toString().replace(/[^0-9.]/g, '') === sizeFilter)
-      : allSales;
-
-    const filteredInventory = sizeFilter
-      ? allInventory.filter(i => i.size && i.size.toString().replace(/[^0-9.]/g, '') === sizeFilter)
-      : allInventory;
-
-    if (filteredSales.length === 0 && filteredInventory.length === 0) {
-      return null;
+  async function scan(overrideSku, overrideSize) {
+    const scanSku = (overrideSku || sku).trim().toUpperCase();
+    if (!scanSku || !userId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ sku: scanSku, user_id: userId });
+      if (overrideSize) params.set('size', overrideSize);
+      if (stockxToken) params.set('stockxToken', stockxToken);
+      const res = await fetch(`/api/hive-mind?${params}`, {
+        headers: ebayToken ? { Authorization: `Bearer ${ebayToken}` } : {},
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed');
+      setResult(data);
+      setSelectedSize(overrideSize || null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
-
-    const profits = filteredSales.map(s => s.profit || 0).filter(p => p !== 0);
-    const avgProfit = profits.length > 0
-      ? Math.round(profits.reduce((a, b) => a + b, 0) / profits.length)
-      : null;
-
-    const sellTimes = filteredSales
-      .filter(s => s.sale_date)
-      .map(s => {
-        const inventoryMatch = allInventory.find(i =>
-          i.sku?.toUpperCase() === s.sku?.toUpperCase() &&
-          i.size?.toString() === s.size?.toString()
-        );
-        if (!inventoryMatch?.date) return null;
-        const days = Math.round(
-          (new Date(s.sale_date) - new Date(inventoryMatch.date)) / (1000 * 60 * 60 * 24)
-        );
-        return days > 0 ? days : null;
-      })
-      .filter(d => d !== null);
-
-    const avgSellTime = sellTimes.length > 0
-      ? Math.round(sellTimes.reduce((a, b) => a + b, 0) / sellTimes.length)
-      : null;
-
-    const platformCounts = {};
-    filteredSales.forEach(s => {
-      if (s.platform) {
-        platformCounts[s.platform] = (platformCounts[s.platform] || 0) + 1;
-      }
-    });
-    const bestPlatform = Object.keys(platformCounts).sort(
-      (a, b) => platformCounts[b] - platformCounts[a]
-    )[0] || null;
-
-    const timesBought = filteredInventory.length;
-    const timesSold = filteredSales.length;
-    const sellRate = timesBought > 0
-      ? `${timesSold}/${timesBought}`
-      : null;
-
-    return {
-      timesBought,
-      timesSold,
-      sellRate,
-      avgProfit,
-      avgSellTime,
-      bestPlatform,
-    };
-  } catch (err) {
-    console.error('[HiveMind] Personal history error:', err.message);
-    return null;
   }
-}
 
-// ─── COMMUNITY DATA ───────────────────────────────────────────────────────────
-
-async function getCommunityData(sku, size) {
-  try {
-    const normalizedSku = sku.toUpperCase().replace(/[^A-Z0-9-]/g, '');
-
-    const { data: allSales, error } = await supabaseAdmin
-      .from('sales')
-      .select('sku, size, profit, platform, sale_date, cost, sale_price')
-      .ilike('sku', `%${normalizedSku}%`)
-      .limit(500);
-
-    if (error || !allSales || allSales.length === 0) return null;
-
-    const sizeFilter = size ? size.toString().replace(/[^0-9.]/g, '') : null;
-
-    const filteredSales = sizeFilter
-      ? allSales.filter(s => s.size && s.size.toString().replace(/[^0-9.]/g, '') === sizeFilter)
-      : allSales;
-
-    if (filteredSales.length === 0) return null;
-
-    const profits = filteredSales.map(s => s.profit || 0).filter(p => p !== 0);
-    const avgProfit = profits.length > 0
-      ? Math.round(profits.reduce((a, b) => a + b, 0) / profits.length)
-      : null;
-
-    const salePrices = filteredSales.map(s => s.sale_price || 0).filter(p => p > 0);
-    const avgSalePrice = salePrices.length > 0
-      ? Math.round(salePrices.reduce((a, b) => a + b, 0) / salePrices.length)
-      : null;
-
-    const sellRate = allSales.length > 0
-      ? Math.round((filteredSales.length / allSales.length) * 100)
-      : null;
-
-    const sizeCounts = {};
-    allSales.forEach(s => {
-      if (s.size) {
-        const sizeKey = s.size.toString().replace(/[^0-9.]/g, '');
-        sizeCounts[sizeKey] = (sizeCounts[sizeKey] || 0) + 1;
-      }
-    });
-
-    const totalSizeCount = Object.values(sizeCounts).reduce((a, b) => a + b, 0);
-    const sizeEntries = Object.entries(sizeCounts)
-      .sort((a, b) => b[1] - a[1])
-      .map(([sz, count]) => ({
-        size: sz,
-        count,
-        pct: Math.round((count / totalSizeCount) * 100),
-      }));
-
-    const topThreshold = sizeEntries[0]?.count * 0.6 || 0;
-    const midThreshold = sizeEntries[0]?.count * 0.3 || 0;
-
-    const hotSizes = sizeEntries.map(s => ({
-      size: s.size,
-      heat: s.count >= topThreshold ? 'hot' : s.count >= midThreshold ? 'warm' : 'slow',
-    }));
-
-    return {
-      totalSales: filteredSales.length,
-      avgProfit,
-      avgSalePrice,
-      sellRate,
-      hotSizes,
-    };
-  } catch (err) {
-    console.error('[HiveMind] Community data error:', err.message);
-    return null;
-  }
-}
-
-// ─── STOCKX APP TOKEN ────────────────────────────────────────────────────────
-
-async function getStockXAppToken() {
-  try {
-    const res = await fetch('https://accounts.stockx.com/oauth/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        client_id: process.env.STOCKX_CLIENT_ID,
-        client_secret: process.env.STOCKX_CLIENT_SECRET,
-        refresh_token: process.env.STOCKX_REFRESH_TOKEN,
-        audience: 'gateway.stockx.com',
-      }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.access_token || null;
-  } catch (err) {
-    return null;
-  }
-}
-
-// ─── STOCKX DATA ─────────────────────────────────────────────────────────────
-
-async function getStockXData(sku, size, userToken) {
-  try {
-    const apiKey = process.env.STOCKX_API_KEY;
-    const accessToken = await getStockXAppToken() || userToken;
-    if (!accessToken) return null;
-
-    const searchRes = await fetch(
-      `${STOCKX_API_BASE}/catalog/search?query=${encodeURIComponent(sku)}`,
-      {
-        headers: {
-          'x-api-key': apiKey,
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    if (!searchRes.ok) return null;
-
-    const searchData = await searchRes.json();
-    const products = searchData?.products || [];
-    if (products.length === 0) return null;
-
-    const product = products.find(p =>
-      p.styleId?.toUpperCase() === sku.toUpperCase()
-    ) || products[0];
-
-    const productId = product.productId || product.id;
-    if (!productId) return null;
-
-    const variantsRes = await fetch(
-      `${STOCKX_API_BASE}/catalog/products/${productId}/variants`,
-      {
-        headers: {
-          'x-api-key': apiKey,
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    if (!variantsRes.ok) return null;
-
-    const variantsData = await variantsRes.json();
-    const variants = variantsData?.variants || variantsData || [];
-
-    const sizeFilter = size ? size.toString().replace(/[^0-9.]/g, '') : null;
-
-    const matchedVariant = sizeFilter
-      ? variants.find(v => {
-          const vSize = (v.sizeChart?.baseSize || v.size || '').toString().replace(/[^0-9.]/g, '');
-          return vSize === sizeFilter;
-        })
-      : null;
-
-    if (!matchedVariant && sizeFilter) {
-      return {
-        productId,
-        productTitle: product.title || '',
-        retailPrice: product.productAttributes?.retailPrice || null,
-        variantNotFound: true,
-        allVariants: formatVariants(variants),
-      };
+  async function handleSizeSelect(sz) {
+    if (sizeLoading) return;
+    const newSize = sz === selectedSize ? null : sz;
+    setSizeLoading(true);
+    setSelectedSize(newSize);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ sku: sku.trim().toUpperCase(), user_id: userId });
+      if (newSize) params.set('size', newSize);
+      if (stockxToken) params.set('stockxToken', stockxToken);
+      const res = await fetch(`/api/hive-mind?${params}`, {
+        headers: ebayToken ? { Authorization: `Bearer ${ebayToken}` } : {},
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Failed');
+      setResult(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSizeLoading(false);
     }
-
-    const variantId = matchedVariant?.variantId || matchedVariant?.id;
-    if (!variantId) {
-      return {
-        productId,
-        productTitle: product.title || '',
-        retailPrice: product.productAttributes?.retailPrice || null,
-        allVariants: formatVariants(variants),
-      };
-    }
-
-    const marketRes = await fetch(
-      `${STOCKX_API_BASE}/catalog/products/${productId}/variants/${variantId}/market-data`,
-      {
-        headers: {
-          'x-api-key': apiKey,
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    if (!marketRes.ok) return null;
-
-    const marketData = await marketRes.json();
-
-    // LOG raw response so we can see the actual field structure
-    console.log('[HiveMind] RAW market data:', JSON.stringify(marketData).slice(0, 500));
-
-    // StockX API may nest data under different keys - try all common paths
-    const md = marketData?.ProductMarket || marketData?.market || marketData?.data?.market || marketData;
-    console.log('[HiveMind] Resolved md keys:', Object.keys(md || {}));
-
-    return {
-      productId,
-      productTitle: product.title || '',
-      retailPrice: product.productAttributes?.retailPrice || null,
-      size: sizeFilter,
-      lowestAsk: parseFloat(md.lowestAskAmount || md.lowestAsk) || null,
-      highestBid: parseFloat(md.highestBidAmount || md.highestBid) || null,
-      sellFaster: parseFloat(md.sellFasterAmount || md.sellFaster) || null,
-      earnMore: parseFloat(md.earnMoreAmount || md.earnMore) || null,
-      allVariants: formatVariants(variants),
-    };
-  } catch (err) {
-    console.error('[HiveMind] StockX error:', err.message);
-    return null;
-  }
-}
-
-function formatVariants(variants) {
-  return (variants || [])
-    .map(v => ({
-      size: (v.sizeChart?.baseSize || v.size || '').toString(),
-      variantId: v.variantId || v.id,
-    }))
-    .filter(v => v.size)
-    .sort((a, b) => parseFloat(a.size) - parseFloat(b.size));
-}
-
-// ─── EBAY DATA ────────────────────────────────────────────────────────────────
-
-async function getEbayData(sku, size, accessToken) {
-  if (!accessToken) return null;
-
-  try {
-    const query = size ? `${sku} size ${size}` : sku;
-
-    const searchParams = new URLSearchParams({
-      q: query,
-      limit: '100',
-      filter: 'conditions:{NEW}',
-      sort: 'price',
-    });
-
-    const r = await fetch(
-      `${EBAY_API_BASE}/buy/browse/v1/item_summary/search?${searchParams}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
-          'Accept': 'application/json',
-        },
-      }
-    );
-
-    if (!r.ok) return null;
-
-    const data = await r.json();
-    const items = data.itemSummaries || [];
-
-    const listings = items
-      .map(item => ({
-        price: parseFloat(item.price?.value) || 0,
-        title: item.title || '',
-      }))
-      .filter(l => l.price > 0);
-
-    if (listings.length === 0) return null;
-
-    const prices = listings.map(l => l.price).sort((a, b) => a - b);
-    const low = prices[0];
-    const high = prices[prices.length - 1];
-    const avg = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length);
-    const mid = Math.floor(prices.length / 2);
-    const median = prices.length % 2 === 0
-      ? Math.round((prices[mid - 1] + prices[mid]) / 2)
-      : prices[mid];
-
-    return {
-      low,
-      avg,
-      median,
-      high,
-      count: listings.length,
-      total: data.total || listings.length,
-    };
-  } catch (err) {
-    console.error('[HiveMind] eBay error:', err.message);
-    return null;
-  }
-}
-
-// ─── NET COMPARISON ───────────────────────────────────────────────────────────
-
-function calcNetComparison(ebay, stockx) {
-  const ebayAvg = ebay?.avg || null;
-  const stockxAsk = stockx?.lowestAsk || stockx?.earnMore || null;
-
-  const EBAY_FEE = 0.08;
-  const STOCKX_FEE = 0.095;
-
-  const ebayNet = ebayAvg ? Math.round(ebayAvg * (1 - EBAY_FEE)) : null;
-  const stockxNet = stockxAsk ? Math.round(stockxAsk * (1 - STOCKX_FEE)) : null;
-
-  if (!ebayNet && !stockxNet) return null;
-
-  const diff = ebayNet && stockxNet ? ebayNet - stockxNet : null;
-  const better = diff === null ? null : diff > 0 ? 'ebay' : diff < 0 ? 'stockx' : 'equal';
-
-  return {
-    ebayNet,
-    stockxNet,
-    diff: diff ? Math.abs(diff) : null,
-    better,
-  };
-}
-
-// ─── SIGNALS ─────────────────────────────────────────────────────────────────
-
-function calcSignals(personal, community, ebay) {
-  const signals = [];
-
-  if (personal) {
-    if (personal.timesBought >= 5) signals.push('green');
-    else if (personal.timesBought >= 1) signals.push('yellow');
-    else signals.push('gray');
   }
 
-  if (community) {
-    if (community.sellRate >= 80) signals.push('green');
-    else if (community.sellRate >= 50) signals.push('yellow');
-    else signals.push('red');
-  }
+  const estProfit = cost && ebay?.avg
+    ? Math.round(ebay.avg * 0.92 - parseFloat(cost))
+    : null;
 
-  if (ebay) {
-    if (ebay.count >= 20) signals.push('green');
-    else if (ebay.count >= 5) signals.push('yellow');
-    else signals.push('red');
-  }
+  return (
+    <div style={{ background: c.bg, minHeight: '100vh', padding: '28px', fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif", color: c.text }}>
+      <style>{`
+        @keyframes border-flow { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        @keyframes breathe { 0%, 100% { transform: scale(1); opacity: 0.3; } 50% { transform: scale(1.1); opacity: 0.6; } }
+        @keyframes pulse-glow { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.3); opacity: 0.7; } }
+        @keyframes shimmer-line { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        .hive-row { transition: all 0.2s ease; }
+        .hive-row:hover { background: rgba(52,211,153,0.04) !important; transform: translateX(4px); }
+        .size-btn { transition: all 0.2s ease; }
+        .size-btn:hover { transform: translateY(-2px); }
+        .scan-btn { transition: all 0.2s ease; }
+        .scan-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(201,169,98,0.5) !important; }
+        .net-card { transition: all 0.3s ease; }
+        .net-card:hover { transform: translateY(-4px); }
+        .fade-in { animation: fadeInUp 0.4s ease both; }
+      `}</style>
 
-  return signals;
+      <div style={{ maxWidth: 560, margin: '0 auto' }}>
+
+        {/* HEADER */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28 }}>
+          <div style={{ width: 48, height: 48, background: `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)`, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 4px 20px ${c.goldGlow}`, flexShrink: 0 }}>
+            <svg width="26" height="26" viewBox="0 0 22 22" fill="none">
+              <circle cx="11" cy="11" r="3" fill="#000"/>
+              <circle cx="4" cy="6" r="2.2" fill="#000"/>
+              <circle cx="18" cy="6" r="2.2" fill="#000"/>
+              <circle cx="4" cy="16" r="2.2" fill="#000"/>
+              <circle cx="18" cy="16" r="2.2" fill="#000"/>
+              <line x1="6" y1="7.5" x2="9" y2="9.5" stroke="#000" strokeWidth="1.5"/>
+              <line x1="16" y1="7.5" x2="13" y2="9.5" stroke="#000" strokeWidth="1.5"/>
+              <line x1="6" y1="14.5" x2="9" y2="12.5" stroke="#000" strokeWidth="1.5"/>
+              <line x1="16" y1="14.5" x2="13" y2="12.5" stroke="#000" strokeWidth="1.5"/>
+            </svg>
+          </div>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: c.gold, letterSpacing: '2px', textShadow: `0 0 30px ${c.goldGlow}` }}>HIVE MIND</div>
+            <div style={{ fontSize: 10, color: c.textDim, letterSpacing: '3px', marginTop: 1 }}>BUYING INTELLIGENCE</div>
+          </div>
+          {result && (
+            <div style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.2)', borderRadius: 100 }}>
+              <div style={{ width: 7, height: 7, background: c.green, borderRadius: '50%', boxShadow: `0 0 10px ${c.green}`, animation: 'pulse-glow 2s ease-in-out infinite' }} />
+              <span style={{ fontSize: 10, fontWeight: 700, color: c.green, letterSpacing: '1px' }}>LIVE</span>
+            </div>
+          )}
+        </div>
+
+        {/* SEARCH */}
+        <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${c.gold}, ${c.green}, ${c.gold}, transparent)`, backgroundSize: '200% 100%', animation: 'border-flow 3s linear infinite' }} />
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+            <circle cx="6.5" cy="6.5" r="4.5" stroke={c.textDim} strokeWidth="1.3"/>
+            <line x1="10" y1="10" x2="13.5" y2="13.5" stroke={c.textDim} strokeWidth="1.3" strokeLinecap="round"/>
+          </svg>
+          <input
+            value={sku}
+            onChange={e => setSku(e.target.value.toUpperCase())}
+            onKeyDown={e => e.key === 'Enter' && scan()}
+            placeholder="enter sku — e.g. CN8490-002"
+            style={{ background: 'transparent', border: 'none', outline: 'none', color: c.text, fontSize: 15, flex: 1, fontFamily: "'SF Mono', 'Courier New', monospace", letterSpacing: '0.5px' }}
+          />
+          <button className="scan-btn" onClick={() => scan()} disabled={loading || !sku.trim()}
+            style={{ background: loading ? 'rgba(201,169,98,0.4)' : `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)`, color: '#000', fontSize: 11, fontWeight: 800, padding: '8px 18px', borderRadius: 10, border: 'none', cursor: 'pointer', letterSpacing: '1px', boxShadow: `0 4px 16px ${c.goldGlow}`, opacity: !sku.trim() ? 0.5 : 1 }}>
+            {loading ? '···' : 'SCAN'}
+          </button>
+        </div>
+
+        {error && (
+          <div style={{ background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, fontSize: 13, color: c.red }}>{error}</div>
+        )}
+
+        {result && (
+          <div className="fade-in">
+
+            {/* PRODUCT HEADER */}
+            <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 20, padding: '20px 24px', marginBottom: 16, position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: -60, right: -40, width: 200, height: 200, background: `radial-gradient(circle, ${c.goldGlow} 0%, transparent 60%)`, pointerEvents: 'none', animation: 'breathe 4s ease-in-out infinite' }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'relative', zIndex: 1 }}>
+                <div>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: c.text, marginBottom: 4 }}>{stockx?.productTitle || sku}</div>
+                  <div style={{ fontSize: 12, color: c.textMuted }}>{sku}{stockx?.retailPrice ? ` · Retail $${stockx.retailPrice}` : ''}{selectedSize ? ` · Size ${selectedSize}` : ''}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                  {(signals || []).map((s, i) => (
+                    <div key={i} style={{ width: 10, height: 10, borderRadius: '50%', background: s === 'green' ? c.green : s === 'yellow' ? c.gold : s === 'red' ? c.red : 'rgba(255,255,255,0.1)', boxShadow: s === 'green' ? `0 0 10px ${c.greenGlow}` : s === 'yellow' ? `0 0 10px ${c.goldGlow}` : 'none', animation: 'pulse-glow 2s ease-in-out infinite', animationDelay: `${i * 0.3}s` }} />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* NET COMPARISON */}
+            {(netComparison?.ebayNet || netComparison?.stockxNet) && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                {[
+                  { label: 'STOCKX NET', val: netComparison.stockxNet, better: netComparison.better === 'stockx', color: c.green, glow: c.greenGlow, fee: 'after 9.5% fee', empty: 'select size below' },
+                  { label: 'EBAY NET', val: netComparison.ebayNet, better: netComparison.better === 'ebay', color: c.gold, glow: c.goldGlow, fee: netComparison.diff && netComparison.better ? `+$${netComparison.diff} more on ${netComparison.better}` : 'after 8% fee', empty: '—' },
+                ].map(({ label, val, better, color, glow, fee, empty }) => (
+                  <div key={label} className="net-card" style={{ background: better ? `${color}14` : c.card, border: `1px solid ${better ? `${color}50` : c.border}`, borderRadius: 16, padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
+                    {better && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${color}, transparent)`, animation: 'shimmer-line 2s ease-in-out infinite' }} />}
+                    <div style={{ fontSize: 10, color: c.textDim, letterSpacing: '2px', marginBottom: 10 }}>{label}</div>
+                    <div style={{ fontSize: 34, fontWeight: 900, lineHeight: 1, color: val ? (better ? color : c.textMuted) : c.textDim, textShadow: val && better ? `0 0 20px ${glow}` : 'none' }}>
+                      {val ? `$${val}` : '—'}
+                    </div>
+                    <div style={{ fontSize: 10, color: c.textDim, marginTop: 6 }}>{val ? fee : empty}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* EBAY MARKET */}
+            {ebay && (
+              <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, padding: '18px 20px', marginBottom: 12, position: 'relative', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${c.gold}, transparent)`, animation: 'shimmer-line 3s ease-in-out infinite' }} />
+                <div style={{ fontSize: 9, color: c.textDim, letterSpacing: '2px', marginBottom: 14 }}>EBAY MARKET{selectedSize ? ` · SIZE ${selectedSize}` : ''}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 4, textAlign: 'center', marginBottom: 10 }}>
+                  {[['lowest', ebay.low, c.text], ['median', ebay.median, c.gold], ['average', ebay.avg, c.gold], ['highest', ebay.high, c.text]].map(([label, val, color]) => (
+                    <div key={label}>
+                      <div style={{ fontSize: 9, color: c.textDim, marginBottom: 5 }}>{label}</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color, textShadow: color === c.gold ? `0 0 15px ${c.goldGlow}` : 'none' }}>${val}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ fontSize: 10, color: c.textDim }}>{ebay.total} listings found</div>
+              </div>
+            )}
+
+            {/* SIZE SELECTOR */}
+            {allSizes.length > 0 && (
+              <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, padding: '18px 20px', marginBottom: 12 }}>
+                <div style={{ fontSize: 9, color: c.textDim, letterSpacing: '2px', marginBottom: 12 }}>SELECT SIZE</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {allSizes.map(sz => {
+                    const isSelected = selectedSize === sz;
+                    const heat = hotSizes?.find(h => h.size === sz)?.heat;
+                    return (
+                      <button key={sz} className="size-btn" onClick={() => handleSizeSelect(sz)} disabled={sizeLoading}
+                        style={{ background: isSelected ? `linear-gradient(135deg, ${c.gold} 0%, ${c.goldDark} 100%)` : heat === 'hot' ? 'rgba(52,211,153,0.1)' : heat === 'warm' ? 'rgba(201,169,98,0.1)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isSelected ? c.gold : heat === 'hot' ? 'rgba(52,211,153,0.4)' : heat === 'warm' ? 'rgba(201,169,98,0.4)' : c.border}`, borderRadius: 8, padding: '7px 14px', fontSize: 13, fontWeight: 700, color: isSelected ? '#000' : heat === 'hot' ? c.green : heat === 'warm' ? c.gold : c.textMuted, cursor: sizeLoading ? 'wait' : 'pointer', boxShadow: isSelected ? `0 4px 16px ${c.goldGlow}` : 'none' }}>
+                        {sz}
+                      </button>
+                    );
+                  })}
+                </div>
+                {sizeLoading && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+                    <div style={{ width: 6, height: 6, background: c.green, borderRadius: '50%', animation: 'pulse-glow 1s ease-in-out infinite' }} />
+                    <span style={{ fontSize: 11, color: c.textDim }}>loading size data...</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* STOCKX DATA */}
+            {stockx && (stockx.highestBid || stockx.lowestAsk) && (
+              <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, padding: '18px 20px', marginBottom: 12, position: 'relative', overflow: 'hidden' }}>
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${c.green}, transparent)`, animation: 'shimmer-line 2.5s ease-in-out infinite' }} />
+                <div style={{ fontSize: 9, color: c.textDim, letterSpacing: '2px', marginBottom: 14 }}>STOCKX{selectedSize ? ` · SIZE ${selectedSize}` : ''}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  {[['highest bid', stockx.highestBid, c.green], ['lowest ask', stockx.lowestAsk, c.gold]].filter(([, val]) => val).map(([label, val, color]) => (
+                    <div key={label}>
+                      <div style={{ fontSize: 10, color: c.textDim, marginBottom: 4 }}>{label}</div>
+                      <div style={{ fontSize: 22, fontWeight: 900, color, textShadow: color !== c.text ? `0 0 15px ${color === c.green ? c.greenGlow : c.goldGlow}` : 'none' }}>${val}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* YOUR DATA */}
+            {personal && (
+              <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, overflow: 'hidden', marginBottom: 12 }}>
+                {[
+                  personal.timesBought > 0 && ['bought before', `${personal.timesBought}x`, c.text],
+                  personal.avgProfit !== null && ['avg profit', `$${personal.avgProfit}`, c.gold],
+                  personal.avgSellTime !== null && [`avg sell time`, `${personal.avgSellTime} days`, c.text],
+                  personal.sellRate && ['sell rate', personal.sellRate, c.green],
+                  personal.bestPlatform && ['best platform', personal.bestPlatform, c.text],
+                ].filter(Boolean).map(([label, val, color], i, arr) => (
+                  <div key={label} className="hive-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: i < arr.length - 1 ? `1px solid ${c.border}` : 'none' }}>
+                    <span style={{ fontSize: 13, color: c.textMuted }}>{label}</span>
+                    <span style={{ fontSize: 15, fontWeight: 800, color, textShadow: color !== c.text ? `0 0 15px ${color === c.green ? c.greenGlow : c.goldGlow}` : 'none' }}>{val}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* COMMUNITY DATA */}
+            {community && (
+              <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, overflow: 'hidden', marginBottom: 12 }}>
+                <div style={{ padding: '14px 20px 4px', fontSize: 9, color: c.textDim, letterSpacing: '2px' }}>COMMUNITY DATA</div>
+                {[
+                  community.avgProfit !== null && ['avg profit', `$${community.avgProfit}`, c.gold],
+                  community.sellRate !== null && ['sell rate', `${community.sellRate}%`, community.sellRate >= 80 ? c.green : community.sellRate >= 50 ? c.gold : c.red],
+                  community.totalSales > 0 && ['units sold', community.totalSales.toLocaleString(), c.text],
+                ].filter(Boolean).map(([label, val, color], i, arr) => (
+                  <div key={label} className="hive-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', borderBottom: i < arr.length - 1 ? `1px solid ${c.border}` : 'none' }}>
+                    <span style={{ fontSize: 13, color: c.textMuted }}>{label}</span>
+                    <span style={{ fontSize: 15, fontWeight: 800, color, textShadow: color !== c.text ? `0 0 15px ${color === c.green ? c.greenGlow : c.goldGlow}` : 'none' }}>{val}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* HOT SIZES */}
+            {hotSizes?.length > 0 && (
+              <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, padding: '18px 20px', marginBottom: 12 }}>
+                <div style={{ fontSize: 9, color: c.textDim, letterSpacing: '2px', marginBottom: 12 }}>HOT SIZES</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                  {hotSizes.map(({ size: sz, heat }) => {
+                    const color = heat === 'hot' ? c.green : heat === 'warm' ? c.gold : c.red;
+                    const bg = heat === 'hot' ? 'rgba(52,211,153,0.1)' : heat === 'warm' ? 'rgba(201,169,98,0.1)' : 'rgba(248,113,113,0.08)';
+                    const border = heat === 'hot' ? 'rgba(52,211,153,0.3)' : heat === 'warm' ? 'rgba(201,169,98,0.3)' : 'rgba(248,113,113,0.2)';
+                    return (
+                      <div key={sz} style={{ background: bg, border: `1px solid ${border}`, borderRadius: 8, padding: '6px 13px', fontSize: 13, fontWeight: 800, color, boxShadow: `0 0 10px ${color}30` }}>{sz}</div>
+                    );
+                  })}
+                </div>
+                <div style={{ display: 'flex', gap: 16 }}>
+                  {[['hot', c.green], ['warm', c.gold], ['slow', c.red]].map(([label, color]) => (
+                    <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <div style={{ width: 6, height: 6, background: color, borderRadius: '50%', boxShadow: `0 0 8px ${color}`, animation: 'pulse-glow 2s ease-in-out infinite' }} />
+                      <span style={{ fontSize: 10, color: c.textDim }}>{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* COST CALCULATOR */}
+            <div style={{ background: c.card, border: `1px solid ${c.border}`, borderRadius: 16, padding: '18px 20px', marginBottom: 28, position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', bottom: -30, left: -30, width: 120, height: 120, background: `radial-gradient(circle, ${c.greenGlow} 0%, transparent 70%)`, pointerEvents: 'none' }} />
+              <div style={{ fontSize: 9, color: c.textDim, letterSpacing: '2px', marginBottom: 12 }}>YOUR COST AT OUTLET</div>
+              <div style={{ display: 'flex', gap: 10, position: 'relative', zIndex: 1 }}>
+                <div style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+                  <span style={{ fontSize: 16, color: c.textDim, fontWeight: 800 }}>$</span>
+                  <input type="number" placeholder="outlet price" value={cost} onChange={e => setCost(e.target.value)}
+                    style={{ background: 'transparent', border: 'none', outline: 'none', color: c.text, fontSize: 15, width: '100%', fontFamily: 'inherit', fontWeight: 600 }} />
+                </div>
+                <div style={{ background: estProfit === null ? 'rgba(255,255,255,0.03)' : estProfit >= 0 ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)', border: `1px solid ${estProfit === null ? c.border : estProfit >= 0 ? 'rgba(52,211,153,0.3)' : 'rgba(248,113,113,0.3)'}`, borderRadius: 12, padding: '12px 16px', textAlign: 'center', minWidth: 110 }}>
+                  <div style={{ fontSize: 9, color: c.textDim, marginBottom: 4 }}>EST. PROFIT</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: estProfit === null ? c.textDim : estProfit >= 0 ? c.green : c.red, textShadow: estProfit !== null && estProfit >= 0 ? `0 0 15px ${c.greenGlow}` : 'none' }}>
+                    {estProfit === null ? '—' : estProfit >= 0 ? `+$${estProfit}` : `-$${Math.abs(estProfit)}`}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {!result && !loading && (
+          <div style={{ textAlign: 'center', padding: '80px 20px' }}>
+            <svg width="60" height="60" viewBox="0 0 22 22" fill="none" style={{ margin: '0 auto 16px', display: 'block', opacity: 0.2 }}>
+              <circle cx="11" cy="11" r="3" fill={c.gold}/>
+              <circle cx="4" cy="6" r="2.2" fill={c.gold}/>
+              <circle cx="18" cy="6" r="2.2" fill={c.gold}/>
+              <circle cx="4" cy="16" r="2.2" fill={c.gold}/>
+              <circle cx="18" cy="16" r="2.2" fill={c.gold}/>
+              <line x1="6" y1="7.5" x2="9" y2="9.5" stroke={c.gold} strokeWidth="1.5"/>
+              <line x1="16" y1="7.5" x2="13" y2="9.5" stroke={c.gold} strokeWidth="1.5"/>
+              <line x1="6" y1="14.5" x2="9" y2="12.5" stroke={c.gold} strokeWidth="1.5"/>
+              <line x1="16" y1="14.5" x2="13" y2="12.5" stroke={c.gold} strokeWidth="1.5"/>
+            </svg>
+            <div style={{ fontSize: 14, color: c.textDim }}>scan a sku to see buying intelligence</div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
 }
