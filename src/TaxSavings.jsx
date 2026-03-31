@@ -413,10 +413,15 @@ export default function TaxSavings({ sales = [], expenses = [], settings = {}, u
         {/* HEADER */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28 }}>
           <div style={{ width: 48, height: 48, background: `linear-gradient(135deg,${c.gold},${c.goldDark})`, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 4px 20px ${c.goldGlow}`, flexShrink: 0 }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2L14.5 9H22L16 13.5L18.5 21L12 17L5.5 21L8 13.5L2 9H9.5L12 2Z" fill="#000"/></svg>
+            <svg width="28" height="28" viewBox="0 0 44 44" fill="none">
+              <polygon points="22,6 40,14 40,30 22,22" fill="#000"/>
+              <polygon points="4,14 22,6 22,22 4,30" fill="#000"/>
+              <polygon points="4,30 22,22 40,30 22,38" fill="#000"/>
+              <line x1="26" y1="9" x2="38" y2="15" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" opacity="0.25"/>
+            </svg>
           </div>
           <div>
-            <div style={{ fontSize: 22, fontWeight: 900, color: c.gold, letterSpacing: '2px', textShadow: `0 0 30px ${c.goldGlow}` }}>TAX SAVINGS</div>
+            <div style={{ fontSize: 22, fontWeight: 900, color: c.gold, letterSpacing: '2px', textShadow: `0 0 30px ${c.goldGlow}` }}>GOLD MINE</div>
             <div style={{ fontSize: 10, color: c.textDim, letterSpacing: '3px', marginTop: 1 }}>WEALTH INTELLIGENCE</div>
           </div>
           <div style={{ marginLeft: 'auto' }}>
@@ -674,24 +679,28 @@ export default function TaxSavings({ sales = [], expenses = [], settings = {}, u
         })()}
 
         {/* LEGAL DISCLAIMER */}
-        <div style={{ background:'rgba(255,255,255,0.03)', border:`1px solid ${c.border}`, borderRadius:16, padding:'20px 24px', marginBottom:28 }}>
-          <div style={{ fontSize:9, color:c.textDim, letterSpacing:'2px', marginBottom:12 }}>IMPORTANT DISCLAIMER</div>
-          <div style={{ fontSize:12, color:c.textDim, lineHeight:1.8 }}>
-            FlipLedger is a financial management and planning tool, not a licensed tax, legal, or financial advisory service. All estimates, calculations, and information provided in this Tax Savings section are for <span style={{ color:c.textMuted, fontWeight:700 }}>educational and planning purposes only</span> and do not constitute tax advice, legal advice, or financial advice of any kind.
+        <div style={{ background:'rgba(255,255,255,0.02)', border:`1px solid ${c.border}`, borderRadius:16, padding:'20px 24px', marginBottom:28 }}>
+          <div style={{ fontSize:9, color:'rgba(248,113,113,0.6)', letterSpacing:'2px', marginBottom:14 }}>⚠️ IMPORTANT — PLEASE READ</div>
+
+          <div style={{ fontSize:12, color:c.textDim, lineHeight:1.9, marginBottom:10 }}>
+            <span style={{ color:c.text, fontWeight:700 }}>This is NOT tax advice. This is NOT legal advice. This is NOT financial advice.</span> Nothing in this section constitutes professional advice of any kind. FlipLedger is a software tool that performs general calculations for <span style={{ color:c.textMuted, fontWeight:700 }}>informational and educational purposes only.</span>
           </div>
-          <div style={{ fontSize:12, color:c.textDim, lineHeight:1.8, marginTop:10 }}>
-            Tax laws vary by state and individual circumstance. The estimates shown are based on general tax rates and standard assumptions and <span style={{ color:c.textMuted, fontWeight:700 }}>may not reflect your actual tax liability</span>. Deduction eligibility depends on your specific situation and the accuracy of information you provide.
+
+          <div style={{ fontSize:12, color:c.textDim, lineHeight:1.9, marginBottom:10 }}>
+            All numbers shown are <span style={{ color:c.textMuted, fontWeight:700 }}>estimates based on publicly available general tax rates</span> and do not account for your specific financial situation, deduction eligibility, filing status, or applicable laws. Actual tax liability may differ significantly.
           </div>
-          <div style={{ fontSize:12, color:c.textDim, lineHeight:1.8, marginTop:10 }}>
-            FlipLedger does not prepare tax returns, file documents with any government agency, or provide representation before the IRS or any state tax authority. <span style={{ color:c.textMuted, fontWeight:700 }}>Always consult a licensed CPA, enrolled agent, or qualified tax professional</span> before making tax-related decisions.
+
+          <div style={{ fontSize:12, color:c.textDim, lineHeight:1.9, marginBottom:10 }}>
+            FlipLedger LLC does not prepare tax returns, represent users before the IRS or any tax authority, provide accounting services, or offer investment advisory services. <span style={{ color:c.textMuted, fontWeight:700 }}>FlipLedger LLC is not a licensed CPA firm, law firm, or registered investment advisor.</span>
           </div>
-          <div style={{ fontSize:12, color:c.textDim, lineHeight:1.8, marginTop:10 }}>
-            Investment-related information is for general educational purposes only and does not constitute investment advice. FlipLedger is not a registered investment advisor. Consult a qualified financial advisor before making investment decisions.
+
+          <div style={{ fontSize:12, color:c.textDim, lineHeight:1.9, marginBottom:10 }}>
+            Tax laws change frequently and vary by jurisdiction. Information presented may be outdated or inapplicable to your situation. <span style={{ color:c.textMuted, fontWeight:700 }}>Always consult a licensed CPA, enrolled agent, tax attorney, or qualified financial advisor</span> before making any tax, legal, or investment decisions.
           </div>
-          <div style={{ marginTop:14, paddingTop:14, borderTop:`1px solid ${c.border}`, display:'flex', alignItems:'flex-start', gap:10 }}>
-            <div style={{ width:6, height:6, background:c.textDim, borderRadius:'50%', marginTop:4, flexShrink:0 }} />
-            <div style={{ fontSize:11, color:c.textDim, fontStyle:'italic' }}>
-              By using the Tax Savings feature, you acknowledge that FlipLedger LLC is not liable for any tax penalties, interest, or financial losses resulting from reliance on information provided in this tool. Use at your own discretion.
+
+          <div style={{ marginTop:16, padding:'14px 16px', background:'rgba(248,113,113,0.05)', border:'1px solid rgba(248,113,113,0.15)', borderRadius:10 }}>
+            <div style={{ fontSize:11, color:'rgba(248,113,113,0.7)', lineHeight:1.8 }}>
+              <span style={{ fontWeight:700, color:'rgba(248,113,113,0.9)' }}>LIMITATION OF LIABILITY:</span> By using this feature, you acknowledge and agree that FlipLedger LLC, its owners, employees, and affiliates are not liable for any tax penalties, interest charges, audits, fines, financial losses, or damages of any kind arising from your use of or reliance on any information, estimate, or calculation provided here. Use entirely at your own risk.
             </div>
           </div>
         </div>
