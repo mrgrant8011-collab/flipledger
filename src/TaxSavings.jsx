@@ -36,6 +36,36 @@ const STATE_NAMES = {
   WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming',DC:'Washington DC'
 };
 
+const STATE_LLC_FEES = {
+  AL:100,AK:100,AZ:50,AR:150,CA:800,CO:10,CT:80,DE:300,FL:139,GA:50,
+  HI:15,ID:30,IL:75,IN:31,IA:30,KS:55,KY:15,LA:35,ME:85,MD:100,
+  MA:500,MI:25,MN:25,MS:25,MO:45,MT:20,NE:26,NV:350,NH:100,NJ:75,
+  NM:50,NY:9,NC:200,ND:50,OH:99,OK:25,OR:100,PA:70,RI:50,
+  SC:10,SD:50,TN:300,TX:0,UT:70,VT:35,VA:50,WA:60,WV:25,WI:130,WY:60,DC:300
+};
+
+const STATE_529_PLANS = {
+  AL:'CollegeCounts',AK:'University of Alaska College Savings',AZ:'AZ529',AR:'GIFT College Investing Plan',
+  CA:'ScholarShare 529',CO:'CollegeInvest',CT:'CHET',DE:'DE529',FL:'Florida Prepaid',GA:'Path2College',
+  HI:'HI529',ID:'IDeal',IL:'Bright Start',IN:'CollegeChoice',IA:'College Savings Iowa',
+  KS:'Learning Quest',KY:'KY Saves 529',LA:'START Saving',ME:'NextGen',MD:'College Investment Plan',
+  MA:'U.Fund',MI:'MI 529 Advisor',MN:'Minnesota College Savings Plan',MS:'MACS',MO:'MOST',
+  MT:'Achieve Montana',NE:'NEST',NV:'Nevada 529',NH:'UNIQUE College Investing',NJ:'NJBEST',
+  NM:'The Education Plan',NY:'NY 529',NC:'NC 529',ND:'College SAVE',OH:'CollegeAdvantage',
+  OK:'Oklahoma 529',OR:'Oregon College Savings',PA:'PA 529',RI:'CollegeBound Saver',
+  SC:'Future Scholar',SD:'CollegeAccess 529',TN:'TNStars',TX:'Texas College Savings',
+  UT:'my529',VT:'Vermont Higher Education',VA:'Invest529',WA:'DreamAhead',
+  WV:'SMART529',WI:'Edvest',WY:'College Achievement',DC:'DC College Savings'
+};
+
+const STATE_529_DEDUCTIONS = {
+  AL:5000,AR:5000,CO:22000,CT:10000,DC:4000,GA:4000,ID:6000,IL:10000,
+  IN:1500,IA:3522,KS:3000,KY:4000,LA:4800,ME:1000,MD:2500,MA:1000,
+  MI:10000,MN:1500,MS:10000,MO:8000,MT:3000,NE:10000,NY:5000,
+  ND:5000,OH:4000,OK:10000,OR:4660,PA:16000,RI:1000,
+  UT:2290,VA:4000,WI:3560
+};
+
 function getFederalBracket(income) {
   if (income <= 11600) return { rate: 10, label: '10%' };
   if (income <= 47150) return { rate: 12, label: '12%' };
