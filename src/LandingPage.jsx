@@ -16,6 +16,26 @@ export default function LandingPage({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const animRef = useRef(null);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+
+  // Check if returning from Stripe with successful payment
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') === 'success') {
+      setPaymentSuccess(true);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  async function goToStripe() {
+    try {
+      const res = await fetch('/api/create-checkout-session', { method: 'POST' });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+    } catch (err) {
+      console.error('Stripe redirect failed:', err);
+    }
+  }
 
   // Scroll animation observer
   useEffect(() => {
@@ -426,7 +446,7 @@ export default function LandingPage({ onLogin }) {
             <a href="#fl-features" onClick={() => setMenuOpen(false)}>Features</a>
             <a href="#fl-pricing" onClick={() => setMenuOpen(false)}>Pricing</a>
             <button onClick={() => { setMenuOpen(false); openAuth(false); }}>Log In</button>
-            <button className="fl-nav-cta" onClick={() => { setMenuOpen(false); openAuth(true); }}>Get Started</button>
+            <button className="fl-nav-cta" onClick={() => { setMenuOpen(false); goToStripe(); }}>Get Started</button>
           </div>
         </nav>
 
@@ -435,7 +455,7 @@ export default function LandingPage({ onLogin }) {
           <div className="fl-hero-content">
             <h1>Reprice, track & sell.<br/><span className="fl-gold">Effortlessly.</span></h1>
             <p>The all-in-one wealth intelligence platform for resellers. Reprice on StockX, cross-list to eBay, track inventory, scan receipts, and run CPA reports — all from one dashboard.</p>
-            <button className="fl-hero-cta" onClick={() => openAuth(true)}>Get Started</button>
+            <button className="fl-hero-cta" onClick={() => goToStripe()}>Get Started</button>
           </div>
           <div className="fl-hero-img">
             <div className="fl-preview">
@@ -487,7 +507,7 @@ export default function LandingPage({ onLogin }) {
                 <div className="fl-chk"><div className="fl-chk-i fl-chk-gold">✓</div><div><h4>Real-time market data</h4><p>See lowest ask, highest bid, and sell faster prices for every size — updated live from StockX.</p></div></div>
                 <div className="fl-chk"><div className="fl-chk-i fl-chk-gold">✓</div><div><h4>Bulk price updates</h4><p>Select all listings that need repricing and save hundreds of changes at once. No more clicking one by one.</p></div></div>
               </div>
-              <button className="fl-feat-cta" onClick={() => openAuth(true)}>Start Repricing</button>
+              <button className="fl-feat-cta" onClick={() => goToStripe()}>Start Repricing</button>
             </div>
             <div className="fl-feat-vis">
               <div className="fl-mock">
@@ -521,7 +541,7 @@ export default function LandingPage({ onLogin }) {
                 <div className="fl-chk"><div className="fl-chk-i fl-chk-green">✓</div><div><h4>Oversell prevention</h4><p>FlipLedger maps listings across platforms. When an item sells on StockX, the eBay listing is tracked so you never double-sell.</p></div></div>
                 <div className="fl-chk"><div className="fl-chk-i fl-chk-green">✓</div><div><h4>Auto-delist sold items</h4><p>Sold on StockX? FlipLedger automatically delists the matching eBay listing. Runs 24/7 — even when you're asleep.</p></div></div>
               </div>
-              <button className="fl-feat-cta" onClick={() => openAuth(true)}>Cross List Now</button>
+              <button className="fl-feat-cta" onClick={() => goToStripe()}>Cross List Now</button>
             </div>
             <div className="fl-feat-vis">
               <div className="fl-mock">
@@ -553,7 +573,7 @@ export default function LandingPage({ onLogin }) {
                 <div className="fl-chk"><div className="fl-chk-i fl-chk-purple">✓</div><div><h4>Auto-match cost basis</h4><p>FlipLedger matches each sale to your inventory so you know your exact cost and profit without lifting a finger.</p></div></div>
                 <div className="fl-chk"><div className="fl-chk-i fl-chk-purple">✓</div><div><h4>Review & confirm</h4><p>Pending sales sit in your import queue until you review and confirm. Full control, zero guesswork.</p></div></div>
               </div>
-              <button className="fl-feat-cta" onClick={() => openAuth(true)}>See It Work</button>
+              <button className="fl-feat-cta" onClick={() => goToStripe()}>See It Work</button>
             </div>
             <div className="fl-feat-vis">
               <div className="fl-mock">
@@ -584,7 +604,7 @@ export default function LandingPage({ onLogin }) {
                 <div className="fl-chk"><div className="fl-chk-i fl-chk-gold">✓</div><div><h4>CPA-ready exports</h4><p>Export clean sales reports, cost of goods, and profit summaries — CSV or PDF — ready for tax season.</p></div></div>
                 <div className="fl-chk"><div className="fl-chk-i fl-chk-gold">✓</div><div><h4>Expense & mileage tracking</h4><p>Track business expenses, storage fees, and mileage with IRS standard rates. Everything your CPA needs.</p></div></div>
               </div>
-              <button className="fl-feat-cta" onClick={() => openAuth(true)}>See Your Numbers</button>
+              <button className="fl-feat-cta" onClick={() => goToStripe()}>See Your Numbers</button>
             </div>
             <div className="fl-feat-vis">
               <div className="fl-mock">
@@ -635,7 +655,7 @@ export default function LandingPage({ onLogin }) {
         </section>
 
         {/* BIG CTA */}
-        <div className="fl-bigcta"><button className="fl-bigcta-btn" onClick={() => openAuth(true)}>Get Started</button></div>
+        <div className="fl-bigcta"><button className="fl-bigcta-btn" onClick={() => goToStripe()}>Get Started</button></div>
 
         {/* AUDIENCE */}
         <section className="fl-section" style={{background:'#0a0a0a'}}>
@@ -669,7 +689,7 @@ export default function LandingPage({ onLogin }) {
             <div><span className="fl-price-amt">$149</span><span className="fl-price-per">per month</span></div>
             <div className="fl-price-trial">Everything included. No tiers.</div>
             <div className="fl-price-divider"></div>
-            <button className="fl-price-btn" onClick={() => openAuth(true)}>Get Started</button>
+            <button className="fl-price-btn" onClick={() => goToStripe()}>Get Started</button>
             <div className="fl-price-feats">
               <div className="fl-price-feat">Unlimited inventory</div>
               <div className="fl-price-feat">StockX repricer</div>
@@ -693,7 +713,7 @@ export default function LandingPage({ onLogin }) {
         {/* FINAL CTA */}
         <section className="fl-section" style={{textAlign:'center'}}>
           <div className="fl-title" style={{marginBottom:30}}>Ready to flip smarter?</div>
-          <button className="fl-bigcta-btn" onClick={() => openAuth(true)}>Get Started</button>
+          <button className="fl-bigcta-btn" onClick={() => goToStripe()}>Get Started</button>
         </section>
 
         {/* FOOTER */}
@@ -702,6 +722,20 @@ export default function LandingPage({ onLogin }) {
           <div className="fl-footer-links"><a href="#fl-features">Features</a><a href="#fl-pricing">Pricing</a><a href="#">Support</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
           <div style={{fontSize:12,color:'#555'}}>© 2026 FlipLedger. All rights reserved.</div>
         </footer>
+
+        {/* PAYMENT SUCCESS BANNER */}
+        {paymentSuccess && (
+          <div style={{ position: 'fixed', top: 80, left: '50%', transform: 'translateX(-50%)', zIndex: 150, background: 'rgba(16,185,129,0.95)', borderRadius: 14, padding: '16px 28px', display: 'flex', alignItems: 'center', gap: 14, boxShadow: '0 8px 40px rgba(16,185,129,0.3)', maxWidth: 500, width: '90%' }}>
+            <span style={{ fontSize: 24 }}>🎉</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, color: '#000', fontSize: 15 }}>Payment successful! Welcome to FlipLedger.</div>
+              <div style={{ fontSize: 13, color: 'rgba(0,0,0,0.7)', marginTop: 2 }}>Now create your account to get in.</div>
+            </div>
+            <button onClick={() => { setPaymentSuccess(false); openAuth(true); }} style={{ background: '#000', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontWeight: 700, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              Create Account →
+            </button>
+          </div>
+        )}
 
         {/* AUTH MODAL */}
         {showAuth && (
