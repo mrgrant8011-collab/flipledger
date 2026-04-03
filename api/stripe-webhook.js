@@ -25,22 +25,72 @@ export default async function handler(req, res) {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  if (event.type === 'customer.subscription.created') {
-    const subscription = event.data.object;
-    const customer = await stripe.customers.retrieve(subscription.customer);
-    const email = customer.email;
+  const subscription = event.data.object;
 
-    if (email) {
-      const { error } = await supabase.from('allowed_emails').insert({ email: email.toLowerCase() });
-      if (error && error.code !== '23505') {
-        console.error('Whitelist error:', error);
-        return res.status(500).json({ error: error.message });
-      }
-      console.log(`✓ Added ${email} to FlipLedger whitelist`);
+  // Helper — get email from Stripe customer
+  async function getEmail(customerId) {
+    try {
+      const customer = await stripe.customers.retrieve(customerId);
+      return customer.email?.toLowerCase() || null;
+    } catch (err) {
+      console.error('Failed to retrieve customer:', err.message);
+      return null;
     }
   }
 
-  res.status(200).json({ received: true });
+  // ─── SUBSCRIPTION CREATED — add to whitelist ───────────────────────────────
+  if (event.type === 'customer.subscription.created') {
+    const email = await getEmail(subscription.customer);
+    if (email) {
+      const { error } = await supabase
+        .from('allowed_emails')
+        .insert({ email })
+        .select();
+      if (error && error.code !== '23505') {
+        console.error('Whitelist insert error:', error);
+        return res.status(500).json({ error: error.message });
+      }
+      console.log(`✓ Added ${email} to FlipLedger — subscription started`);
+    }
+  }
+
+  // ─── SUBSCRIPTION DELETED — remove from whitelist ──────────────────────────
+  if (event.type === 'customer.subscription.deleted') {
+    const email = await getEmail(subscription.customer);
+    if (email) {
+      const { error } = await supabase
+        .from('allowed_emails')
+        .delete()
+        .eq('email', email);
+      if (error) {
+        console.error('Whitelist delete error:', error);
+        return res.status(500).json({ error: error.message });
+      }
+      console.log(`✓ Removed ${email} from FlipLedger — subscription cancelled`);
+    }
+  }
+
+  // ─── PAYMENT FAILED — remove from whitelist ────────────────────────────────
+  if (event.type === 'invoice.payment_failed') {
+    const invoice = event.data.object;
+    // Only act on subscription invoices, not one-time charges
+    if (invoice.subscription) {
+      const email = await getEmail(invoice.customer);
+      if (email) {
+        const { error } = await supabase
+          .from('allowed_emails')
+          .delete()
+          .eq('email', email);
+        if (error) {
+          console.error('Whitelist delete error:', error);
+          return res.status(500).json({ error: error.message });
+        }
+        console.log(`✓ Removed ${email} from FlipLedger — payment failed`);
+      }
+    }
+  }
+
+  return res.status(200).json({ received: true });
 }
 
 async function getRawBody(req) {
