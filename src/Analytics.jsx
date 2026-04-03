@@ -101,7 +101,7 @@ export default function Analytics({ sales, purchases, year, c, fmt }) {
           <option value="all">All Platforms</option>
           <option value="stockx">All StockX</option>
           <option value="StockX Standard">StockX Standard</option>
-          <option value="StockX Direct">StockX Direct</option>
+
           <option value="StockX Flex">StockX Flex</option>
           <option value="eBay">eBay</option>
           <option value="GOAT">GOAT</option>
