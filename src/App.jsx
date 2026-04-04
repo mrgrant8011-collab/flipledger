@@ -5104,7 +5104,7 @@ Let me know if you need anything else.`;
               💳 Subscription
             </h3>
             <div style={{ padding: 20, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: `1px solid ${c.border}` }}>
-              <ManageSubscription session={session} c={c} />
+              <ManageSubscription c={c} />
             </div>
           </div>
 
