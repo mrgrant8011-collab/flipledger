@@ -7,6 +7,7 @@ import { useState, useEffect, Component, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import Tesseract from 'tesseract.js';
 import { supabase } from './supabase';
+import ManageSubscription from './ManageSubscription';
 import { NIKE_DESKTOP_EXAMPLE, NIKE_MOBILE_EXAMPLE } from './nike-examples';
 import { 
   safeSavePendingCost, 
@@ -5095,6 +5096,15 @@ Let me know if you need anything else.`;
                   Sign Out
                 </button>
               </div>
+            </div>
+          </div>
+          {/* Subscription */}
+          <div style={{ ...cardStyle, padding: 24, marginBottom: 16 }}>
+            <h3 style={{ margin: '0 0 20px', fontSize: 18, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10 }}>
+              💳 Subscription
+            </h3>
+            <div style={{ padding: 20, background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: `1px solid ${c.border}` }}>
+              <ManageSubscription session={session} c={c} />
             </div>
           </div>
 
