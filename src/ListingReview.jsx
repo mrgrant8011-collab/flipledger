@@ -37,10 +37,10 @@ export default function ListingReview({ items = [], ebayToken, userId, onBack, o
   const [toast, setToast] = useState(null);
   const [marketDataCache, setMarketDataCache] = useState({});
   const [ebaySellerLevel] = useState(() => {
-    try { return localStorage.getItem('fl_ebay_seller_level') || 'above_standard'; } catch { return 'above_standard'; }
+    try { return localStorage.getItem(`fl_ebay_seller_level_${userId}`) || 'above_standard'; } catch { return 'above_standard'; }
   });
   const [ebayStoreType] = useState(() => {
-    try { return localStorage.getItem('fl_ebay_store_type') || 'none'; } catch { return 'none'; }
+    try { return localStorage.getItem(`fl_ebay_store_type_${userId}`) || 'none'; } catch { return 'none'; }
   });
 
   // Default description template
