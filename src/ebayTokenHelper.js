@@ -13,7 +13,7 @@ function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
     .finally(() => clearTimeout(timer));
 }
 
-const STORAGE_KEYS = (userId = 'default') => ({
+const STORAGE_KEYS = (userId) => ({
   ACCESS_TOKEN: `flipledger_ebay_token_${userId}`,
   REFRESH_TOKEN: `flipledger_ebay_refresh_${userId}`,
   TOKEN_EXPIRY: `flipledger_ebay_expiry_${userId}`
@@ -25,7 +25,8 @@ const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 /**
  * Store eBay tokens after successful OAuth
  */
-export function storeEbayTokens(accessToken, refreshToken, expiresIn, userId = 'default') {
+export function storeEbayTokens(accessToken, refreshToken, expiresIn, userId) {
+  if (!userId) return;
   const keys = STORAGE_KEYS(userId);
   const expiryTime = Date.now() + (expiresIn * 1000);
   
@@ -41,7 +42,8 @@ export function storeEbayTokens(accessToken, refreshToken, expiresIn, userId = '
 /**
  * Get a valid eBay access token, auto-refreshing if needed
  */
-export async function getValidEbayToken(onTokenRefresh, userId = 'default') {
+export async function getValidEbayToken(onTokenRefresh, userId) {
+  if (!userId) return null;
   const keys = STORAGE_KEYS(userId);
   const accessToken = localStorage.getItem(keys.ACCESS_TOKEN);
   const refreshToken = localStorage.getItem(keys.REFRESH_TOKEN);
@@ -122,7 +124,7 @@ export async function getValidEbayToken(onTokenRefresh, userId = 'default') {
 /**
  * Clear all eBay tokens (disconnect)
  */
-export function clearEbayTokens(userId = 'default') {
+export function clearEbayTokens(userId) {
   const keys = STORAGE_KEYS(userId);
   localStorage.removeItem(keys.ACCESS_TOKEN);
   localStorage.removeItem(keys.REFRESH_TOKEN);
