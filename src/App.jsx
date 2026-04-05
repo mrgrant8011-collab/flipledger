@@ -687,7 +687,10 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
       const inSize = s.size && s.size.toString().toLowerCase().includes(searchTerm);
       if (!inName && !inSku && !inSize) return false;
     }
-    if (platformFilter !== 'all' && s.platform !== platformFilter) return false;
+    if (platformFilter !== 'all') {
+      const effectivePlatform = (s.platform || '').includes('StockX') ? 'StockX' : (s.platform || '');
+      if (effectivePlatform !== platformFilter) return false;
+    }
     if (monthFilter !== 'all' && (!s.saleDate || s.saleDate.substring(5, 7) !== monthFilter)) return false;
     return true;
   });
@@ -740,7 +743,7 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
         <option value="all">All Months</option><option value="01">January</option><option value="02">February</option><option value="03">March</option><option value="04">April</option><option value="05">May</option><option value="06">June</option><option value="07">July</option><option value="08">August</option><option value="09">September</option><option value="10">October</option><option value="11">November</option><option value="12">December</option>
       </select>
       <select value={formData.salesFilter || 'all'} onChange={e => { setFormData({ ...formData, salesFilter: e.target.value }); setSalesPage(1); }} style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: c.text, fontSize: 13 }}>
-        <option value="all">All Platforms</option><option value="StockX Standard">StockX Standard</option><option value="StockX Flex">StockX Flex</option><option value="GOAT">GOAT</option><option value="eBay">eBay</option><option value="Local">Local</option>
+        <option value="all">All Platforms</option><option value="StockX">StockX</option><option value="GOAT">GOAT</option><option value="eBay">eBay</option><option value="Local">Local</option>
       </select>
       <button onClick={() => { setFormData({}); setModal('sale'); }} style={{ padding: '14px 24px', ...btnPrimary, fontSize: 13 }}>+ RECORD SALE</button>
     </div>
@@ -1687,7 +1690,7 @@ const loadedUserRef = useRef(null);
   const filteredStorage = filterByYear(storageFees, 'month');
 
   const calcFees = (price, platform) => {
-    if (platform === 'StockX Standard') return price * ((settings.stockxLevel + settings.stockxProcessing + (settings.stockxQuickShip ? -2 : 0)) / 100);
+    if (platform === 'StockX Standard' || platform === 'StockX') return price * ((settings.stockxLevel + settings.stockxProcessing + (settings.stockxQuickShip ? -2 : 0)) / 100);
     
     if (platform === 'StockX Flex') return price * ((settings.stockxFlexFee + settings.stockxFlexProcessing) / 100) + settings.stockxFlexFulfillment;
     if (platform === 'GOAT') return price * ((settings.goatFee + settings.goatProcessing) / 100);
