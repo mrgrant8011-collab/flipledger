@@ -120,6 +120,17 @@ const handleSubmit = async (e) => {
         });
         if (error) throw error;
         if (data.user) {
+          const { data: whitelist, error: whitelistError } = await supabase
+            .from('allowed_emails')
+            .select('email')
+            .eq('email', email.toLowerCase())
+            .single();
+          if (whitelistError || !whitelist) {
+            await supabase.auth.signOut();
+            setError('Your subscription is inactive. Please visit flipledgerhq.com to resubscribe.');
+            setLoading(false);
+            return;
+          }
           onLogin(data.user);
         }
       }
