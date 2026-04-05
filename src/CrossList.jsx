@@ -13,7 +13,7 @@ import EbayInlineEdit from './EbayInlineEdit';
  * - Mappings → Supabase (permanent, for oversell prevention)
  */
 
-const CACHE_KEYS = { SX: 'fl_crosslist_sx', EB: 'fl_crosslist_eb' };
+const CACHE_KEYS = (uid) => ({ SX: `fl_crosslist_sx_${uid}`, EB: `fl_crosslist_eb_${uid}` });
 
 // ════════════════════════════════════════════════════════════════════════════════
 // CANONICAL EBAY SKU BUILDER - MUST MATCH SERVER EXACTLY (api/ebay-listings.js)
@@ -81,46 +81,10 @@ function parseEbaySku(ebaySku) {
 // TOKEN HELPER - Read eBay token from localStorage with multiple key fallbacks
 // ════════════════════════════════════════════════════════════════════════════════
 function getEbayTokenFromStorage() {
-  // Try multiple possible localStorage keys - CORRECT KEY FIRST
-  const possibleKeys = [
-    'flipledger_ebay_token',  // ACTUAL KEY USED BY APP
-    'ebay_access_token',
-    'ebayToken', 
-    'ebay_token',
-    'fl_ebay_token'
-  ];
-  
-  for (const key of possibleKeys) {
-    const token = localStorage.getItem(key);
-    if (token && token.length > 10) {
-      console.log(`[CrossList:Auth] ✓ Found eBay token in localStorage key: "${key}" (length: ${token.length})`);
-      return token;
-    }
-  }
-  
-  console.log('[CrossList:Auth] ✗ No eBay token found in localStorage. Checked keys:', possibleKeys.join(', '));
   return null;
 }
 
 function getStockxTokenFromStorage() {
-  // CORRECT KEY FIRST
-  const possibleKeys = [
-    'flipledger_stockx_token',  // ACTUAL KEY USED BY APP
-    'stockx_access_token',
-    'stockxToken',
-    'stockx_token', 
-    'fl_stockx_token'
-  ];
-  
-  for (const key of possibleKeys) {
-    const token = localStorage.getItem(key);
-    if (token && token.length > 10) {
-      console.log(`[CrossList:Auth] ✓ Found StockX token in localStorage key: "${key}" (length: ${token.length})`);
-      return token;
-    }
-  }
-  
-  console.log('[CrossList:Auth] ✗ No StockX token found in localStorage');
   return null;
 }
 
@@ -178,10 +142,10 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
   
   // Listings from localStorage cache
   const [stockxListings, setStockxListings] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(CACHE_KEYS.SX) || '[]'); } catch { return []; }
+    try { return JSON.parse(localStorage.getItem(CACHE_KEYS(userId || 'default').SX) || '[]'); } catch { return []; }
   });
   const [ebayListings, setEbayListings] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(CACHE_KEYS.EB) || '[]'); } catch { return []; }
+    try { return JSON.parse(localStorage.getItem(CACHE_KEYS(userId || 'default').EB) || '[]'); } catch { return []; }
   });
   
   // Mappings from Supabase
@@ -195,10 +159,10 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
   const [marketDataCache, setMarketDataCache] = useState({});
   const [loadingMarketData, setLoadingMarketData] = useState(null);
   const [ebaySellerLevel, setEbaySellerLevel] = useState(() => {
-    try { return localStorage.getItem('fl_ebay_seller_level') || 'above_standard'; } catch { return 'above_standard'; }
+    try { return localStorage.getItem(`fl_ebay_seller_level_${userId || 'default'}`) || 'above_standard'; } catch { return 'above_standard'; }
   });
   const [ebayStoreType, setEbayStoreType] = useState(() => {
-    try { return localStorage.getItem('fl_ebay_store_type') || 'none'; } catch { return 'none'; }
+    try { return localStorage.getItem(`fl_ebay_store_type_${userId || 'default'}`) || 'none'; } catch { return 'none'; }
   });
   const [toast, setToast] = useState(null);
   const [userId, setUserId] = useState(null);
@@ -229,11 +193,11 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
           .single();
         if (data?.ebay_seller_level) {
           setEbaySellerLevel(data.ebay_seller_level);
-          localStorage.setItem('fl_ebay_seller_level', data.ebay_seller_level);
+          localStorage.setItem(`fl_ebay_seller_level_${userId || 'default'}`, data.ebay_seller_level);
         }
         if (data?.ebay_store_type) {
           setEbayStoreType(data.ebay_store_type);
-          localStorage.setItem('fl_ebay_store_type', data.ebay_store_type);
+          localStorage.setItem(`fl_ebay_store_type_${userId || 'default'}`, data.ebay_store_type);
         }
       } catch {}
     })();
@@ -242,10 +206,10 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
   const saveEbaySetting = async (field, value) => {
     if (field === 'ebay_seller_level') {
       setEbaySellerLevel(value);
-      localStorage.setItem('fl_ebay_seller_level', value);
+      localStorage.setItem(`fl_ebay_seller_level_${userId || 'default'}`, value);
     } else {
       setEbayStoreType(value);
-      localStorage.setItem('fl_ebay_store_type', value);
+      localStorage.setItem(`fl_ebay_store_type_${userId || 'default'}`, value);
     }
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -436,8 +400,8 @@ export default function CrossList({ stockxToken: stockxTokenProp, ebayToken: eba
       // Update state and cache
       setStockxListings(sx);
       setEbayListings(eb);
-      localStorage.setItem(CACHE_KEYS.SX, JSON.stringify(sx));
-      localStorage.setItem(CACHE_KEYS.EB, JSON.stringify(eb));
+      localStorage.setItem(CACHE_KEYS(userId || 'default').SX, JSON.stringify(sx));
+      localStorage.setItem(CACHE_KEYS(userId || 'default').EB, JSON.stringify(eb));
       
     // Reload mappings from Supabase
            const { data: freshMappingData } = await supabase
