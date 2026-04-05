@@ -21,7 +21,7 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
   const [updating, setUpdating] = useState(false);
   const [loadingMarketData, setLoadingMarketData] = useState(false);
   const [stockxListings, setStockxListings] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('fl_repricer_sx') || '[]'); } catch { return []; }
+    try { return JSON.parse(localStorage.getItem(`fl_repricer_sx_${userId || 'default'}`) || '[]'); } catch { return []; }
   });
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [editedPrices, setEditedPrices] = useState({});
@@ -35,9 +35,11 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
   const [bulkEditMode, setBulkEditMode] = useState('');
   const [bulkEditAmount, setBulkEditAmount] = useState('');
   const [sellerLevel, setSellerLevel] = useState(() => {
-    try { return parseInt(localStorage.getItem('fl_stockx_seller_level')) || 1; } catch { return 1; }
+    try { return parseInt(localStorage.getItem(`fl_stockx_seller_level_${userId || 'default'}`)) || 1; } catch { return 1; }
   });
   const [showLevelPicker, setShowLevelPicker] = useState(false);
+  const [userId, setUserId] = useState(null);
+  useEffect(() => { supabase.auth.getUser().then(({ data: { user } }) => { if (user) setUserId(user.id); }); }, []);
 
   useEffect(() => {
     (async () => {
@@ -51,7 +53,7 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
           .single();
         if (data?.stockx_seller_level) {
           setSellerLevel(data.stockx_seller_level);
-          localStorage.setItem('fl_stockx_seller_level', data.stockx_seller_level);
+          localStorage.setItem(`fl_stockx_seller_level_${userId || 'default'}`, data.stockx_seller_level);
         }
       } catch {}
     })();
@@ -60,7 +62,7 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
   const saveSellerLevel = async (level) => {
     setSellerLevel(level);
     setShowLevelPicker(false);
-    localStorage.setItem('fl_stockx_seller_level', level);
+    localStorage.setItem(`fl_stockx_seller_level_${userId || 'default'}`, level);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -133,7 +135,7 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
       console.log('[Repricer] Synced', listings.length, 'listings');
       
       setStockxListings(listings);
-      localStorage.setItem('fl_repricer_sx', JSON.stringify(listings));
+      localStorage.setItem(`fl_repricer_sx_${userId || 'default'}`, JSON.stringify(listings));
       showToast(`Synced ${listings.length} StockX listings`);
       
     } catch (e) {
@@ -198,7 +200,7 @@ export default function Repricer({ stockxToken, purchases = [], c }) {
             }
             return l;
           });
-          localStorage.setItem('fl_repricer_sx', JSON.stringify(updated));
+          localStorage.setItem(`fl_repricer_sx_${userId || 'default'}`, JSON.stringify(updated));
           return updated;
         });
       }
