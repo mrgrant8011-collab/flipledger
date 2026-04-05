@@ -1093,12 +1093,12 @@ const loadedUserRef = useRef(null);
         const savedGoals = localStorage.getItem(`flipledger_goals_${user.id}`);
         if (savedGoals) setGoals(JSON.parse(savedGoals));
 
-       const stockxTok = localStorage.getItem('flipledger_stockx_token');
+       const stockxTok = localStorage.getItem(`flipledger_stockx_token_${user?.id || 'default'}`);
         if (stockxTok) {
           setStockxToken(stockxTok);
           setStockxConnected(true);
           // Refresh in background
-          const refreshToken = localStorage.getItem('flipledger_stockx_refresh');
+          const refreshToken = localStorage.getItem(`flipledger_stockx_refresh_${user?.id || 'default'}`);
           if (refreshToken) {
             fetch('/api/stockx-refresh', {
               method: 'POST',
@@ -1106,8 +1106,8 @@ const loadedUserRef = useRef(null);
               body: JSON.stringify({ refresh_token: refreshToken })
             }).then(r => r.json()).then(data => {
               if (data.access_token) {
-                localStorage.setItem('flipledger_stockx_token', data.access_token);
-                if (data.refresh_token) localStorage.setItem('flipledger_stockx_refresh', data.refresh_token);
+                localStorage.setItem(`flipledger_stockx_token_${user?.id || 'default'}`, data.access_token);
+                if (data.refresh_token) localStorage.setItem(`flipledger_stockx_refresh_${user?.id || 'default'}`, data.refresh_token);
                 setStockxToken(data.access_token);
               }
             }).catch(() => {});
@@ -1450,8 +1450,8 @@ const loadedUserRef = useRef(null);
    const token = params.get('access_token');
     const stockxRefresh = params.get('refresh_token');
     if (token) {
-      localStorage.setItem('flipledger_stockx_token', token);
-      if (stockxRefresh) localStorage.setItem('flipledger_stockx_refresh', stockxRefresh);
+      localStorage.setItem(`flipledger_stockx_token_${user?.id || 'default'}`, token);
+      if (stockxRefresh) localStorage.setItem(`flipledger_stockx_refresh_${user?.id || 'default'}`, stockxRefresh);
       setStockxToken(token);
       setStockxConnected(true);
       linkTokensToServer('stockx', token, stockxRefresh, 86400);
@@ -1602,10 +1602,10 @@ const loadedUserRef = useRef(null);
       const result = await syncStockXSales(user.id, stockxToken, {
   year: stockxApiFilter.year,
   month: stockxApiFilter.month,
-  refreshToken: localStorage.getItem('flipledger_stockx_refresh'),
+  refreshToken: localStorage.getItem(`flipledger_stockx_refresh_${user?.id || 'default'}`),
   onTokenRefresh: (newToken, newRefresh) => {
-    localStorage.setItem('flipledger_stockx_token', newToken);
-    if (newRefresh) localStorage.setItem('flipledger_stockx_refresh', newRefresh);
+    localStorage.setItem(`flipledger_stockx_token_${user?.id || 'default'}`, newToken);
+    if (newRefresh) localStorage.setItem(`flipledger_stockx_refresh_${user?.id || 'default'}`, newRefresh);
     setStockxToken(newToken);
   }
 });
@@ -1632,15 +1632,15 @@ const loadedUserRef = useRef(null);
 
   // Disconnect StockX
   const disconnectStockX = () => {
-    localStorage.removeItem('flipledger_stockx_token');
-    localStorage.removeItem('flipledger_stockx_refresh');
+    localStorage.removeItem(`flipledger_stockx_token_${user?.id || 'default'}`);
+    localStorage.removeItem(`flipledger_stockx_refresh_${user?.id || 'default'}`);
     setStockxToken(null);
     setStockxConnected(false);
   };
 
   // Auto-refresh StockX token
   const getValidStockXToken = async () => {
-    const refreshToken = localStorage.getItem('flipledger_stockx_refresh');
+    const refreshToken = localStorage.getItem(`flipledger_stockx_refresh_${user?.id || 'default'}`);
     if (!refreshToken) return stockxToken;
     try {
       const res = await fetch('/api/stockx-refresh', {
@@ -1650,8 +1650,8 @@ const loadedUserRef = useRef(null);
       });
       const data = await res.json();
       if (data.access_token) {
-        localStorage.setItem('flipledger_stockx_token', data.access_token);
-        if (data.refresh_token) localStorage.setItem('flipledger_stockx_refresh', data.refresh_token);
+        localStorage.setItem(`flipledger_stockx_token_${user?.id || 'default'}`, data.access_token);
+        if (data.refresh_token) localStorage.setItem(`flipledger_stockx_refresh_${user?.id || 'default'}`, data.refresh_token);
         setStockxToken(data.access_token);
         return data.access_token;
       }
@@ -4761,9 +4761,9 @@ Let me know if you need anything else.`;
                               const result = await syncEbaySales(user.id, ebayToken, {
                                 year: ebayApiFilter.year,
                                 month: ebayApiFilter.month,
-                                refreshToken: localStorage.getItem('flipledger_ebay_refresh'),
+                                refreshToken: localStorage.getItem(`flipledger_ebay_refresh_${user?.id || 'default'}`),
                                 onTokenRefresh: (newToken) => {
-                                  localStorage.setItem('flipledger_ebay_token', newToken);
+                                  localStorage.setItem(`flipledger_ebay_token_${user?.id || 'default'}`, newToken);
                                   setEbayToken(newToken);
                                 }
                               });
