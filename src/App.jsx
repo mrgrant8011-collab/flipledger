@@ -1096,12 +1096,13 @@ const loadedUserRef = useRef(null);
         const savedGoals = localStorage.getItem(`flipledger_goals_${user.id}`);
         if (savedGoals) setGoals(JSON.parse(savedGoals));
 
-       const stockxTok = localStorage.getItem(`flipledger_stockx_token_${user?.id || 'default'}`);
+       if (user?.id) {
+        const stockxTok = localStorage.getItem(`flipledger_stockx_token_${user?.id}`);
         if (stockxTok) {
           setStockxToken(stockxTok);
           setStockxConnected(true);
           // Refresh in background
-          const refreshToken = localStorage.getItem(`flipledger_stockx_refresh_${user?.id || 'default'}`);
+          const refreshToken = localStorage.getItem(`flipledger_stockx_refresh_${user?.id}`);
           if (refreshToken) {
             fetch('/api/stockx-refresh', {
               method: 'POST',
@@ -1109,17 +1110,17 @@ const loadedUserRef = useRef(null);
               body: JSON.stringify({ refresh_token: refreshToken })
             }).then(r => r.json()).then(data => {
               if (data.access_token) {
-                localStorage.setItem(`flipledger_stockx_token_${user?.id || 'default'}`, data.access_token);
-                if (data.refresh_token) localStorage.setItem(`flipledger_stockx_refresh_${user?.id || 'default'}`, data.refresh_token);
+                localStorage.setItem(`flipledger_stockx_token_${user?.id}`, data.access_token);
+                if (data.refresh_token) localStorage.setItem(`flipledger_stockx_refresh_${user?.id}`, data.refresh_token);
                 setStockxToken(data.access_token);
               }
             }).catch(() => {});
           }
         }
+       }
 
         // eBay: use cached token immediately so app never blocks on refresh
-      const cachedEbayToken = localStorage.getItem(`flipledger_ebay_token_${user.id}`) || 
-                        localStorage.getItem('flipledger_ebay_token_default');
+      const cachedEbayToken = localStorage.getItem(`flipledger_ebay_token_${user.id}`);
         if (cachedEbayToken) {
           setEbayToken(cachedEbayToken);
           setEbayConnected(true);
@@ -1452,15 +1453,15 @@ const loadedUserRef = useRef(null);
     const params = new URLSearchParams(window.location.search);
    const token = params.get('access_token');
     const stockxRefresh = params.get('refresh_token');
-    if (token) {
-      localStorage.setItem(`flipledger_stockx_token_${user?.id || 'default'}`, token);
-      if (stockxRefresh) localStorage.setItem(`flipledger_stockx_refresh_${user?.id || 'default'}`, stockxRefresh);
+    if (token && user?.id) {
+      localStorage.setItem(`flipledger_stockx_token_${user?.id}`, token);
+      if (stockxRefresh) localStorage.setItem(`flipledger_stockx_refresh_${user?.id}`, stockxRefresh);
       setStockxToken(token);
       setStockxConnected(true);
       linkTokensToServer('stockx', token, stockxRefresh, 86400);
       window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, []);
+  }, [user?.id]);
 
   // Handle invite link from email
   useEffect(() => {
@@ -1478,9 +1479,9 @@ const loadedUserRef = useRef(null);
     const ebayRefreshParam = params.get('ebay_refresh');
     const ebayError = params.get('ebay_error');
     
-    if (ebayConnectedParam === 'true' && ebayTokenParam) {
+    if (ebayConnectedParam === 'true' && ebayTokenParam && user?.id) {
     const expiresIn = parseInt(params.get('ebay_expires')) || 7200;
-     storeEbayTokens(ebayTokenParam, ebayRefreshParam, expiresIn, user?.id || 'default');
+     storeEbayTokens(ebayTokenParam, ebayRefreshParam, expiresIn, user?.id);
       setEbayToken(ebayTokenParam);
       setEbayConnected(true);
       linkTokensToServer('ebay', ebayTokenParam, ebayRefreshParam, expiresIn);
@@ -1491,7 +1492,7 @@ const loadedUserRef = useRef(null);
       window.history.replaceState({}, document.title, window.location.pathname);
       alert('eBay connection failed: ' + ebayError);
     }
-  }, []);
+  }, [user?.id]);
 
   // Show loading while checking auth
   if (authLoading) {
@@ -1599,16 +1600,17 @@ const loadedUserRef = useRef(null);
   // Fetch StockX sales - Filter by selected year - SAFE VERSION v2.0
   const fetchStockXSales = async () => {
     if (!stockxToken) return;
+    if (!user?.id) return;
     setStockxSyncing(true);
-    
+
     try {
       const result = await syncStockXSales(user.id, stockxToken, {
   year: stockxApiFilter.year,
   month: stockxApiFilter.month,
-  refreshToken: localStorage.getItem(`flipledger_stockx_refresh_${user?.id || 'default'}`),
+  refreshToken: localStorage.getItem(`flipledger_stockx_refresh_${user?.id}`),
   onTokenRefresh: (newToken, newRefresh) => {
-    localStorage.setItem(`flipledger_stockx_token_${user?.id || 'default'}`, newToken);
-    if (newRefresh) localStorage.setItem(`flipledger_stockx_refresh_${user?.id || 'default'}`, newRefresh);
+    localStorage.setItem(`flipledger_stockx_token_${user?.id}`, newToken);
+    if (newRefresh) localStorage.setItem(`flipledger_stockx_refresh_${user?.id}`, newRefresh);
     setStockxToken(newToken);
   }
 });
@@ -1635,15 +1637,17 @@ const loadedUserRef = useRef(null);
 
   // Disconnect StockX
   const disconnectStockX = () => {
-    localStorage.removeItem(`flipledger_stockx_token_${user?.id || 'default'}`);
-    localStorage.removeItem(`flipledger_stockx_refresh_${user?.id || 'default'}`);
+    if (!user?.id) return;
+    localStorage.removeItem(`flipledger_stockx_token_${user?.id}`);
+    localStorage.removeItem(`flipledger_stockx_refresh_${user?.id}`);
     setStockxToken(null);
     setStockxConnected(false);
   };
 
   // Auto-refresh StockX token
   const getValidStockXToken = async () => {
-    const refreshToken = localStorage.getItem(`flipledger_stockx_refresh_${user?.id || 'default'}`);
+    if (!user?.id) return stockxToken;
+    const refreshToken = localStorage.getItem(`flipledger_stockx_refresh_${user?.id}`);
     if (!refreshToken) return stockxToken;
     try {
       const res = await fetch('/api/stockx-refresh', {
@@ -1653,8 +1657,8 @@ const loadedUserRef = useRef(null);
       });
       const data = await res.json();
       if (data.access_token) {
-        localStorage.setItem(`flipledger_stockx_token_${user?.id || 'default'}`, data.access_token);
-        if (data.refresh_token) localStorage.setItem(`flipledger_stockx_refresh_${user?.id || 'default'}`, data.refresh_token);
+        localStorage.setItem(`flipledger_stockx_token_${user?.id}`, data.access_token);
+        if (data.refresh_token) localStorage.setItem(`flipledger_stockx_refresh_${user?.id}`, data.refresh_token);
         setStockxToken(data.access_token);
         return data.access_token;
       }
@@ -4761,12 +4765,13 @@ Let me know if you need anything else.`;
                           onClick={async () => {
                             setEbaySyncing(true);
                             try {
+                              if (!user?.id) return;
                               const result = await syncEbaySales(user.id, ebayToken, {
                                 year: ebayApiFilter.year,
                                 month: ebayApiFilter.month,
-                                refreshToken: localStorage.getItem(`flipledger_ebay_refresh_${user?.id || 'default'}`),
+                                refreshToken: localStorage.getItem(`flipledger_ebay_refresh_${user?.id}`),
                                 onTokenRefresh: (newToken) => {
-                                  localStorage.setItem(`flipledger_ebay_token_${user?.id || 'default'}`, newToken);
+                                  localStorage.setItem(`flipledger_ebay_token_${user?.id}`, newToken);
                                   setEbayToken(newToken);
                                 }
                               });
