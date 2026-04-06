@@ -453,6 +453,10 @@ async function processUser(userId, platforms) {
                 await supabaseAdmin.from('delist_log').update({
                   status: 'failed', error_message: delistResult.error || 'Unknown error'
                 }).eq('user_id', userId).eq('order_number', claimKey);
+                if (delistResult.error?.includes('401')) {
+                  await supabaseAdmin.from('user_tokens').update({ access_token: null, expires_at: new Date().toISOString() }).eq('user_id', userId).eq('platform', 'stockx');
+                  console.error(`[Cron] StockX token expired for user ${userId} — marked invalid`);
+                }
                 console.error(`[Cron] StockX delist FAILED: ${match.sku} size ${match.size} -> ${JSON.stringify(delistResult)}`);
               }
             } catch (err) {
