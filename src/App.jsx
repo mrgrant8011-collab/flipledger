@@ -1612,6 +1612,7 @@ const loadedUserRef = useRef(null);
     localStorage.setItem(`flipledger_stockx_token_${user?.id}`, newToken);
     if (newRefresh) localStorage.setItem(`flipledger_stockx_refresh_${user?.id}`, newRefresh);
     setStockxToken(newToken);
+    linkTokensToServer('stockx', newToken, newRefresh, 86400);
   }
 });
       
