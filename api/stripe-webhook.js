@@ -64,7 +64,8 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: error.message });
       }
 
-      await upsertSubscriptionStatus(email, 'active', obj.current_period_end);
+      const periodEnd = obj.current_period_end || obj.items?.data?.[0]?.current_period_end;
+      await upsertSubscriptionStatus(email, 'active', periodEnd);
       console.log(`[Webhook] ✓ Added ${email} — subscription started`);
     }
   }
@@ -74,9 +75,10 @@ export default async function handler(req, res) {
     const email = await getEmail(obj.customer);
     if (email) {
       if (obj.cancel_at_period_end) {
-        await upsertSubscriptionStatus(email, 'canceling', obj.current_period_end);
+        const periodEnd = obj.current_period_end || obj.items?.data?.[0]?.current_period_end;
+        await upsertSubscriptionStatus(email, 'canceling', periodEnd);
         console.log(
-          `[Webhook] ✓ ${email} cancelled — access until ${new Date(obj.current_period_end * 1000).toISOString()}`
+          `[Webhook] ✓ ${email} cancelled — access until ${new Date(periodEnd * 1000).toISOString()}`
         );
       } else if (obj.status === 'active') {
         await upsertSubscriptionStatus(email, 'active', obj.current_period_end);
