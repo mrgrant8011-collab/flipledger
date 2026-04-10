@@ -148,7 +148,7 @@ async function fetchStockXActiveOrders(accessToken) {
     let pageNumber = 1;
 
     while (pageNumber <= 10) {
-      const url = `https://api.stockx.com/v2/selling/orders/active?pageSize=100&pageNumber=${pageNumber}`;
+      const url = `https://api.stockx.com/v2/selling/orders/active?pageSize=100&pageNumber=${pageNumber}&orderStatus=CREATED`;
       const res = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
