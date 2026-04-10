@@ -237,7 +237,7 @@ async function processUser(userId, platforms) {
         const product = order.product || {};
         const orderSku = (product.styleId || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
         const orderSize = (variant.variantValue || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-        console.log(`[Cron] StockX order: ${order.orderNumber} | styleId: ${product.styleId} | size: ${variant.variantValue} | normalized: ${orderSku} / ${orderSize}`);
+        console.log(`[Cron] StockX order: ${order.orderNumber} | status=${order.status} | createdAt=${order.createdAt} | styleId: ${product.styleId} | size: ${variant.variantValue} | normalized: ${orderSku} / ${orderSize}`);
 
         const orderListingId = order.listingId || null;
         const orderAskId = order.askId || null;
