@@ -286,45 +286,92 @@ We cannot guarantee the ability to cancel orders once placed. Please review all 
   // PHOTO UPLOAD
   // ============================================
  const handlePhotoUpload = async (id, files) => {
-    const uploadedUrls = [];
+  const uploadedUrls = [];
 
-    for (const file of Array.from(files)) {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${fileExt}`;
-      const filePath = `listing-photos/${fileName}`;
+  for (let file of Array.from(files)) {
+    const originalName = file.name || 'upload';
+    const fileExt = originalName.split('.').pop()?.toLowerCase();
 
-      const { data, error } = await supabase.storage
-        .from('listing-photos')
-        .upload(filePath, file, { contentType: file.type, upsert: false });
+    let contentType =
+      file.type ||
+      (fileExt === 'jpg' || fileExt === 'jpeg'
+        ? 'image/jpeg'
+        : fileExt === 'webp'
+        ? 'image/webp'
+        : 'image/png');
 
-      if (error) {
-        console.error('Photo upload failed:', error.message);
-        continue;
-      }
+    const lowerName = originalName.toLowerCase();
+    const isLikelyScreenshot =
+      lowerName.includes('screenshot') ||
+      (lowerName.startsWith('img_') === false && contentType === 'image/png');
 
-      const { data: urlData } = supabase.storage
-        .from('listing-photos')
-        .getPublicUrl(filePath);
+    if (!isLikelyScreenshot && contentType.startsWith('image/')) {
+      try {
+        const imageCompression = (await import('browser-image-compression')).default;
 
-      if (urlData?.publicUrl) {
-        uploadedUrls.push(urlData.publicUrl);
+        const normalizedFile = await imageCompression(file, {
+          maxSizeMB: 5,
+          useWebWorker: true,
+          fileType: 'image/jpeg',
+          exifOrientation: -1
+        });
+
+        file = new File(
+          [normalizedFile],
+          originalName.replace(/\.[^.]+$/, '') + '.jpg',
+          { type: 'image/jpeg' }
+        );
+
+        contentType = 'image/jpeg';
+      } catch (e) {
+        console.error('Image normalization failed, uploading original:', e);
       }
     }
 
-    if (uploadedUrls.length === 0) {
-      alert('Photo upload failed. Check that the "listing-photos" bucket exists in Supabase Storage.');
-      return;
+    const finalExt =
+      contentType === 'image/jpeg'
+        ? 'jpg'
+        : contentType === 'image/webp'
+        ? 'webp'
+        : 'png';
+
+    const fileName = `${id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${finalExt}`;
+    const filePath = `listing-photos/${fileName}`;
+
+    const { error } = await supabase.storage
+      .from('listing-photos')
+      .upload(filePath, file, { contentType, upsert: false });
+
+    if (error) {
+      console.error('Photo upload failed:', error.message);
+      continue;
     }
 
-    setEnrichedItems(prev => prev.map(item => {
+    const { data: urlData } = supabase.storage
+      .from('listing-photos')
+      .getPublicUrl(filePath);
+
+    if (urlData?.publicUrl) {
+      uploadedUrls.push(urlData.publicUrl);
+    }
+  }
+
+  if (uploadedUrls.length === 0) {
+    showToast('Photo upload failed. Check your Supabase storage bucket.', 'error');
+    return;
+  }
+
+  setEnrichedItems(prev =>
+    prev.map(item => {
       if (item.id !== id) return item;
       return {
         ...item,
         photos: [...item.photos, ...uploadedUrls].slice(0, 12),
         photosSource: 'user'
       };
-    }));
-  };
+    })
+  );
+};
 
   const removePhoto = (itemId, photoIndex) => {
     setEnrichedItems(prev => prev.map(item => {
