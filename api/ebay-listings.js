@@ -2642,6 +2642,43 @@ async function handlePost(headers, body, res) {
         const patchOk = (patchData.responses || [])[0]?.statusCode === 200;
 
         if (patchOk) {
+          // Update existing offer description if provided
+          if (item.description && existingOffer.offerId) {
+            try {
+              const offerGetRes = await fetch(`${EBAY_API_BASE}/sell/inventory/v1/offer/${existingOffer.offerId}`, {
+                method: 'GET',
+                headers
+              });
+
+              if (offerGetRes.ok) {
+                const existingOfferData = await offerGetRes.json();
+
+                const updatePayload = {
+                  ...existingOfferData,
+                  listingDescription: item.description
+                };
+
+                const offerPutRes = await fetch(`${EBAY_API_BASE}/sell/inventory/v1/offer/${existingOffer.offerId}`, {
+                  method: 'PUT',
+                  headers,
+                  body: JSON.stringify(updatePayload)
+                });
+
+                if (!offerPutRes.ok) {
+                  const offerErrText = await offerPutRes.text();
+                  console.error('[eBay:POST] Description update failed:', offerErrText);
+                } else {
+                  console.log(`[eBay:POST] Updated listingDescription for existing offer ${existingOffer.offerId}`);
+                }
+              } else {
+                const offerGetErr = await offerGetRes.text();
+                console.error('[eBay:POST] Failed to fetch existing offer for description update:', offerGetErr);
+              }
+            } catch (e) {
+              console.error('[eBay:POST] Description update exception:', e.message);
+            }
+          }
+
           console.log(`[eBay:POST] ✓ Incremented ${candidateSku} qty to ${newQty}`);
           result = {
             success: true,
