@@ -1850,11 +1850,26 @@ async function getCurrentOfferQty(headers, offerId) {
     const res = await fetch(`${EBAY_API_BASE}/sell/inventory/v1/offer/${offerId}`, { headers });
     if (res.ok) {
       const data = await res.json();
-      return data.availableQuantity || 1;
+
+      // Primary source (offer-level)
+      if (typeof data.availableQuantity === 'number') {
+        return data.availableQuantity;
+      }
+
+      // Fallback if eBay returns quantity differently
+      if (typeof data.quantity === 'number') {
+        return data.quantity;
+      }
+
+      // Last fallback (rare)
+      if (data.shipToLocationAvailability?.quantity != null) {
+        return data.shipToLocationAvailability.quantity;
+      }
     }
   } catch (e) {
     console.warn('[eBay:Offer] Could not get current qty:', e.message);
   }
+
   return 1;
 }
 async function findOfferBySku(headers, sku) {
