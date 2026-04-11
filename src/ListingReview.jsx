@@ -289,13 +289,20 @@ We cannot guarantee the ability to cancel orders once placed. Please review all 
     const uploadedUrls = [];
 
     for (const file of Array.from(files)) {
-      const fileExt = file.name.split('.').pop();
+      const fileExt = file.name.split('.').pop()?.toLowerCase();
       const fileName = `${id}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${fileExt}`;
       const filePath = `listing-photos/${fileName}`;
+      const contentType =
+        file.type ||
+        (fileExt === 'jpg' || fileExt === 'jpeg'
+          ? 'image/jpeg'
+          : fileExt === 'webp'
+          ? 'image/webp'
+          : 'image/png');
 
       const { data, error } = await supabase.storage
         .from('listing-photos')
-        .upload(filePath, file, { contentType: file.type, upsert: false });
+        .upload(filePath, file, { contentType, upsert: false });
 
       if (error) {
         console.error('Photo upload failed:', error.message);
