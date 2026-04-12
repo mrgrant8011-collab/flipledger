@@ -143,11 +143,16 @@ async function retryFailedJobs(userId, tokens, activeMappings) {
 }
 
 async function fetchStockXActiveOrders(accessToken) {
+  const LOOKBACK_DAYS = 7;
+  const MAX_PAGES = 20;
+  const cutoffMs = Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
+
   try {
     let allOrders = [];
     let pageNumber = 1;
+    let shouldContinue = true;
 
-    while (pageNumber <= 10) {
+    while (shouldContinue && pageNumber <= MAX_PAGES) {
       const url = `https://api.stockx.com/v2/selling/orders/active?pageSize=100&pageNumber=${pageNumber}&orderStatus=CREATED`;
       const res = await fetch(url, {
         headers: {
@@ -160,12 +165,31 @@ async function fetchStockXActiveOrders(accessToken) {
       const data = await res.json();
       const orders = data.orders || [];
       if (orders.length === 0) break;
-      allOrders = [...allOrders, ...orders];
+
+      allOrders.push(...orders);
+
+      const pageHasRelevantOrders = orders.some(order => {
+        const createdMs = new Date(order.createdAt || order.updatedAt).getTime();
+        return Number.isFinite(createdMs) && createdMs >= cutoffMs;
+      });
+
+      if (!pageHasRelevantOrders) {
+        shouldContinue = false;
+        break;
+      }
+
       if (!data.hasNextPage || orders.length < 100) break;
       pageNumber++;
     }
 
-    return allOrders;
+    const relevantOrders = allOrders.filter(order => {
+      const createdMs = new Date(order.createdAt || order.updatedAt).getTime();
+      return Number.isFinite(createdMs) && createdMs >= cutoffMs;
+    });
+
+    console.log(`[Cron] StockX fetch: ${pageNumber} page(s), ${allOrders.length} total, ${relevantOrders.length} relevant (last ${LOOKBACK_DAYS} days)`);
+
+    return relevantOrders;
   } catch (err) {
     console.error('[Cron] StockX active orders fetch error:', err.message);
     return [];
