@@ -112,6 +112,10 @@ async function retryFailedJobs(userId, tokens, activeMappings) {
           }
         } else if (job.sold_on === 'ebay' && job.delisted_from === 'stockx' && match.stockx_listing_id) {
           delistResult = await delistStockXListing(tokens.stockxToken, match.stockx_listing_id);
+          if (!delistResult.success && delistResult.error?.includes('401')) {
+            await supabaseAdmin.from('user_tokens').update({ access_token: null, expires_at: new Date().toISOString() }).eq('user_id', userId).eq('platform', 'stockx');
+            console.error(`[Cron] StockX token expired during retry for user ${userId} — marked invalid`);
+          }
         } else {
           delistResult = { success: false, error: 'Missing listing id for retry' };
         }
