@@ -21,6 +21,7 @@ function isRetryableErrorMessage(errorMessage = '') {
     msg.includes('fetch') ||
     msg.includes('socket') ||
     msg.includes('rate limit') ||
+    msg.includes('401') ||
     msg.includes('429') ||
     msg.includes('500') ||
     msg.includes('502') ||
