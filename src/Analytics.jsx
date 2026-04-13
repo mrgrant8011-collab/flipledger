@@ -68,7 +68,7 @@ export default function Analytics({ sales, purchases, year, c, fmt }) {
   return (
     <div>
       {/* Stats row — matches Dashboard stats pattern exactly */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 20, marginBottom: 28 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 28 }}>
         {[
           { label: 'Total Profit', value: fmt(totalProfit), color: c.gold },
           { label: 'Unique SKUs', value: String(skuData.length), color: c.green },
