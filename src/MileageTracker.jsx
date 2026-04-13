@@ -453,7 +453,7 @@ export default function MileageTracker({ user, session, c = {} }) {
 
       {/* ═══════ NEW ROUTE ═══════ */}
       {tab === 'new' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
           <div>
             {/* Home address */}
             <div style={{ ...card, marginBottom: 14 }}>
