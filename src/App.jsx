@@ -38,6 +38,7 @@ import {
 import { AutoMatchButton } from './autoMatch.jsx';
 import { syncStockXSales, syncEbaySales, transformPendingForDisplay } from './syncModule';
 import { storeEbayTokens, getValidEbayToken, clearEbayTokens } from './ebayTokenHelper';
+import MileageTracker from './MileageTracker';
 // ═══════════════════════════════════════════════════════════════════════
 // FETCH WITH TIMEOUT: Prevents app from hanging on slow/dead endpoints
 // ═══════════════════════════════════════════════════════════════════════
@@ -2788,6 +2789,7 @@ console.log('Found', items.length, 'items');
     { id: 'sales', label: 'Sales', icon: '◈', count: filteredSales.length },
     { type: 'divider' },
     { id: 'expenses', label: 'Expenses', icon: '◧' },
+    { id: 'mileage', label: 'Mileage', icon: '🚗' },
     { id: 'reports', label: 'CPA Reports', icon: '📊' },
     { id: 'taxsavings', label: 'Gold Mine', icon: '⛏️' },
     { type: 'divider' },
@@ -3917,6 +3919,7 @@ console.log('Found', items.length, 'items');
 
         {/* MILEAGE */}
         {/* CPA REPORTS */}
+        {page === 'mileage' && <MileageTracker user={user} session={session} c={c} />}
         {page === 'reports' && <div style={{ maxWidth: 1000 }}>
                    {/* ALL GROSS METHOD — Report full selling price, deduct ALL fees */}
           {(() => {
