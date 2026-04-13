@@ -3963,7 +3963,7 @@ console.log('Found', items.length, 'items');
 
             
             const line5_grossProfit = line1_gross - (totalCostOfGoods - cogsReductions);
-            const line31_netProfit = line1_gross - (totalCostOfGoods - cogsReductions) - line10_fees - totalExp;
+            const line31_netProfit = line1_gross - (totalCostOfGoods - cogsReductions) - line10_fees - totalExp - totalMileageDeduction;
             
             return (
               <>
@@ -3987,6 +3987,7 @@ console.log('Found', items.length, 'items');
                 ['Line 1', 'Gross receipts (full selling price, all platforms)', line1_gross],
                 ['Line 4', 'Cost of goods sold', totalCostOfGoods],
                 ['Line 5', 'Gross profit (Line 1 - Line 4)', line5_grossProfit],
+                ['Line 9', 'Car and truck expenses (mileage)', totalMileageDeduction],
                 ['Line 10', 'Commissions/fees (all platforms)', line10_fees],
                 ['Line 27a', 'Other expenses', totalExp],
                 ['Line 31', 'NET PROFIT', line31_netProfit],
@@ -4109,6 +4110,11 @@ console.log('Found', items.length, 'items');
                   <td style={{ padding: '14px 16px', fontWeight: 600, color: '#60a5fa' }}>Line 5</td>
                   <td style={{ padding: '14px 16px', fontWeight: 600 }}>Gross profit (Line 1 − Line 4)</td>
                   <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 15, fontWeight: 700 }}>{fmt(line5_grossProfit)}</td>
+                </tr>
+                <tr style={{ borderBottom: `1px solid ${c.border}` }}>
+                  <td style={{ padding: '14px 16px', fontWeight: 600, color: '#60a5fa' }}>Line 9</td>
+                  <td style={{ padding: '14px 16px', fontWeight: 600 }}>Car and truck expenses (mileage)</td>
+                  <td style={{ padding: '14px 16px', textAlign: 'right', fontFamily: 'monospace', fontSize: 15, color: c.red }}>{fmt(totalMileageDeduction)}</td>
                 </tr>
                 <tr style={{ borderBottom: `1px solid ${c.border}` }}>
                   <td style={{ padding: '14px 16px', fontWeight: 600, color: '#60a5fa' }}>Line 10</td>
