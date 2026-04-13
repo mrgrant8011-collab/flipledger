@@ -464,7 +464,7 @@ export default function MileageTracker({ user, session, c = {} }) {
                   onChange={e => { setHomeAddress(e.target.value); setHomeSaved(false); getSuggestions(e.target.value, list => setHomeSuggestions(list)); }}
                   onFocus={() => setHomeFocused(true)}
                   onBlur={() => setTimeout(() => setHomeFocused(false), 150)}
-                  placeholder="e.g. 1234 Main St, West Jordan, UT 84084"
+                  placeholder="e.g. 123 Main St, Your City, State 00000"
                   style={{ ...inp, color: homeSaved ? col.green : col.text, borderColor: homeSaved ? 'rgba(16,185,129,.25)' : col.border, background: homeSaved ? 'rgba(16,185,129,.05)' : 'rgba(255,255,255,.04)' }}
                 />
                 {homeFocused && homeSuggestions.length > 0 && (
@@ -504,7 +504,7 @@ export default function MileageTracker({ user, session, c = {} }) {
                         onChange={e => updateStop(stop.id, e.target.value)}
                         onFocus={() => setFocusedStop(stop.id)}
                         onBlur={() => setTimeout(() => setFocusedStop(null), 150)}
-                        placeholder="Nike Factory Lehi, Ross, UPS Store, Post Office..."
+                        placeholder="Store name or address — Nike, Ross, UPS, Post Office..."
                         style={{ ...inp, color: stop.value ? col.gold : col.text, borderColor: stop.value ? 'rgba(201,169,98,.25)' : col.border, background: stop.value ? 'rgba(201,169,98,.05)' : 'rgba(255,255,255,.04)' }}
                       />
                       {focusedStop === stop.id && (suggestions[stop.id] || []).length > 0 && (
@@ -547,7 +547,7 @@ export default function MileageTracker({ user, session, c = {} }) {
                 <p style={{ margin: '0 0 6px', fontSize: 9, fontWeight: 700, color: col.textDim, textTransform: 'uppercase', letterSpacing: '.5px' }}>
                   Trip Purpose <span style={{ color: col.red }}>★ Required by IRS</span>
                 </p>
-                <input value={purpose} onChange={e => { setPurpose(e.target.value); setTripError(''); }} placeholder="e.g. Inventory sourcing at Nike Factory Lehi, picked up 12 pairs for resale" style={{ ...inp }} />
+                <input value={purpose} onChange={e => { setPurpose(e.target.value); setTripError(''); }} placeholder="e.g. Inventory sourcing — picked up items for resale" style={{ ...inp }} />
                 <p style={{ margin: '5px 0 0', fontSize: 10, color: col.textDim, fontWeight: 500 }}>Be specific — this is your IRS mileage log entry</p>
               </div>
 
@@ -590,7 +590,7 @@ export default function MileageTracker({ user, session, c = {} }) {
                     ) : (
                       <div style={{ padding: 12, background: 'rgba(201,169,98,.06)', border: '1px solid rgba(201,169,98,.2)', borderRadius: 12 }}>
                         <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 700, color: col.gold }}>Name this route:</p>
-                        <input value={routeName} onChange={e => { setRouteName(e.target.value); setSaveRouteError(''); }} placeholder="e.g. Lehi Run, Lehi + Draper Loop" style={{ ...inp, marginBottom: 8 }} />
+                        <input value={routeName} onChange={e => { setRouteName(e.target.value); setSaveRouteError(''); }} placeholder="e.g. My Store Run, Multi-Store Loop" style={{ ...inp, marginBottom: 8 }} />
                         {saveRouteError && <Banner type="error" message={saveRouteError} />}
                         <div style={{ display: 'flex', gap: 8 }}>
                           <button onClick={doSaveRoute} style={{ flex: 1, padding: '9px', borderRadius: 9, border: 'none', background: col.gold, color: '#000', fontWeight: 800, fontSize: 12, cursor: 'pointer' }}>Save Route</button>
@@ -613,7 +613,7 @@ export default function MileageTracker({ user, session, c = {} }) {
               <div style={{ textAlign: 'center', padding: 40 }}>
                 <div style={{ fontSize: 52, marginBottom: 14 }}>🗺</div>
                 <p style={{ color: col.textDim, fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Add your stops and calculate</p>
-                <p style={{ color: col.textDim, fontSize: 11, fontWeight: 500, lineHeight: 1.6 }}>Nike Factory, Ross, UPS Store<br />Any address or place name works</p>
+                <p style={{ color: col.textDim, fontSize: 11, fontWeight: 500, lineHeight: 1.6 }}>Any store, address, or place name<br />Works anywhere in all 50 states</p>
               </div>
             ) : (
               <div style={{ textAlign: 'center', padding: 40 }}>
@@ -644,7 +644,7 @@ export default function MileageTracker({ user, session, c = {} }) {
             <p style={{ margin: '0 0 6px', fontSize: 9, fontWeight: 700, color: col.textDim, textTransform: 'uppercase', letterSpacing: '.5px' }}>
               Trip Purpose <span style={{ color: col.red }}>★ Required before logging</span>
             </p>
-            <input value={quickPurpose} onChange={e => { setQuickPurpose(e.target.value); setQuickError(''); }} placeholder="e.g. Inventory sourcing at Nike Factory Lehi, picked up 8 pairs for resale" style={{ ...inp }} />
+            <input value={quickPurpose} onChange={e => { setQuickPurpose(e.target.value); setQuickError(''); }} placeholder="e.g. Inventory sourcing — picked up items for resale" style={{ ...inp }} />
             <p style={{ margin: '5px 0 0', fontSize: 10, color: col.textDim }}>IRS requires a business purpose for every mileage deduction — be specific</p>
           </div>
 
