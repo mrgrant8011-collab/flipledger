@@ -4143,7 +4143,7 @@ console.log('Found', items.length, 'items');
           </div>
           
           {/* 1099-K RECONCILIATION BY PLATFORM */}
-          <div className="no-print" style={{ ...cardStyle, padding: 0, overflow: 'hidden', marginBottom: 20 }}>
+          <div className="no-print" style={{ ...cardStyle, padding: 0, overflow: 'auto', overflowX: 'auto', marginBottom: 20 }}>
             <div style={{ padding: '16px 20px', borderBottom: `1px solid ${c.border}` }}>
               <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>🔗 1099-K Reconciliation by Platform</h3>
               <p style={{ margin: '4px 0 0', fontSize: 12, color: c.textMuted }}>Match these totals to your 1099-K forms</p>
