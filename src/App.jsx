@@ -2991,7 +2991,7 @@ console.log('Found', items.length, 'items');
           </div>
 
           {/* STATS ROW - GAMIFIED */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 20, marginBottom: 28 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 28 }}>
             {[
               { label: 'Gross Revenue', value: totalRevenue, icon: '📈', color: c.gold, glow: 'rgba(201,169,98,0.3)', trend: filteredSales.length > 0 ? '+' + ((totalRevenue / (totalRevenue || 1)) * 18).toFixed(0) + '%' : '+0%' },
               { label: 'Cost of Goods', value: totalCOGS, icon: '💎', color: c.green, glow: 'rgba(52,211,153,0.3)', trend: '+12%' },
