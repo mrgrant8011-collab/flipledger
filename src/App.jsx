@@ -505,7 +505,7 @@ function MobileDashboard({
       </div>
 
       {/* STATS ROW - 2x2 Grid with shimmer */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginBottom: 16 }}>
         {[
           { label: 'Gross Revenue', value: totalRevenue, icon: '📈', color: c.gold, glow: 'rgba(201,169,98,0.3)' },
           { label: 'Cost of Goods', value: totalCOGS, icon: '💎', color: c.green, glow: 'rgba(52,211,153,0.3)' },
@@ -733,7 +733,7 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
    const groupedBySku = items.reduce((acc, s) => { const key = s.sku || s.name || 'Unknown'; if (!acc[key]) acc[key] = { name: s.name, sku: s.sku, image: s.image, items: [] }; acc[key].items.push(s); return acc; }, {});
 
   return <div>
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 20 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 20 }}>
       <div style={{ ...cardStyle, padding: 16 }}><span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL SALES</span><p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: '#fff' }}>{total}</p></div>
       <div style={{ ...cardStyle, padding: 16 }}><span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL PROFIT</span><p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: profit >= 0 ? c.green : c.red }}>{fmt(profit)}</p></div>
     </div>
@@ -2991,7 +2991,7 @@ console.log('Found', items.length, 'items');
           </div>
 
           {/* STATS ROW - GAMIFIED */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 28 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 20, marginBottom: 28 }}>
             {[
               { label: 'Gross Revenue', value: totalRevenue, icon: '📈', color: c.gold, glow: 'rgba(201,169,98,0.3)', trend: filteredSales.length > 0 ? '+' + ((totalRevenue / (totalRevenue || 1)) * 18).toFixed(0) + '%' : '+0%' },
               { label: 'Cost of Goods', value: totalCOGS, icon: '💎', color: c.green, glow: 'rgba(52,211,153,0.3)', trend: '+12%' },
@@ -3025,7 +3025,7 @@ console.log('Found', items.length, 'items');
           </div>
 
           {/* TWO COLUMN - TABLE & CHART */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
             {/* MONTHLY TABLE */}
             <div style={{ ...cardStyle }}>
               <div style={{ padding: '24px 28px', borderBottom: `1px solid ${c.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -3432,7 +3432,7 @@ console.log('Found', items.length, 'items');
           </div>
           
           {/* STATS BAR */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 20 }}>
             <div style={{ ...cardStyle, padding: 16 }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL ITEMS</span>
               <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: '#fff' }}>{purchases.length}</p>
@@ -3826,7 +3826,7 @@ console.log('Found', items.length, 'items');
           
           return <div style={{ maxWidth: 900 }}>
           {/* STATS */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 20 }}>
             <div style={{ ...cardStyle, padding: 16 }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: c.textMuted }}>TOTAL EXPENSES</span>
               <p style={{ margin: '6px 0 0', fontSize: 24, fontWeight: 800, color: c.red }}>{fmt(totalExp)}</p>
@@ -4313,7 +4313,7 @@ Let me know if you need anything else.`;
           <div className="card-hover no-print" style={{ ...cardStyle, padding: 24 }}>
             <h4 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700 }}>📎 EXPORT DETAIL REPORTS</h4>
             <p style={{ margin: '0 0 16px', fontSize: 12, color: c.textMuted }}>Download detailed data for backup documentation</p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
               <button className="btn-hover" onClick={() => exportCSV(filteredSales, 'sales-detail.csv', ['saleDate','name','sku','size','platform','salePrice','payout','cost','fees','profit'])} style={{ padding: 16, background: 'rgba(255,255,255,0.03)', border: `1px solid ${c.border}`, borderRadius: 12, color: '#fff', cursor: 'pointer', textAlign: 'center' }}>
                 <div style={{ fontSize: 24, marginBottom: 8 }}>💰</div>
                 <div style={{ fontWeight: 600, fontSize: 13 }}>Sales Detail</div>
@@ -5313,7 +5313,7 @@ Let me know if you need anything else.`;
                       <div style={{ minWidth: 44, height: 32, paddingLeft: 6, paddingRight: 6, background: platform.color, border: platform.border ? `2px solid ${platform.border}` : 'none', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 10, color: '#fff' }}>{platform.code}</div>
                       <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{platform.name}</h3>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
                       {platform.fields.map(field => (
                         <div key={field.k}>
                           <label style={{ display: 'block', marginBottom: 4, fontSize: 10, color: c.textMuted, fontWeight: 600 }}>{field.l.toUpperCase()}</label>
@@ -5521,7 +5521,7 @@ Let me know if you need anything else.`;
             {/* Stats */}
             <div style={{ marginTop: 20, padding: 16, background: 'rgba(255,255,255,0.02)', borderRadius: 10, border: `1px solid ${c.border}` }}>
               <div style={{ fontSize: 11, color: c.textMuted, marginBottom: 8 }}>CURRENT DATA</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, fontSize: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, fontSize: 12 }}>
                 <div><span style={{ color: c.textMuted }}>Inventory:</span> <strong>{purchases.length}</strong></div>
                 <div><span style={{ color: c.textMuted }}>Sales:</span> <strong>{sales.length}</strong></div>
                 <div><span style={{ color: c.textMuted }}>Expenses:</span> <strong>{expenses.length}</strong></div>
