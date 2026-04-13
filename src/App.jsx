@@ -876,6 +876,7 @@ function SalesPage({ filteredSales, formData, setFormData, salesPage, setSalesPa
 function App() {
   // Auth state
   const [user, setUser] = useState(null);
+  const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(true);
   
@@ -944,11 +945,13 @@ const loadedUserRef = useRef(null);
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
+      setSession(session);
       setAuthLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
   setUser(session?.user ?? null);
+  setSession(session);
   if (_event === 'SIGNED_IN' && (window.location.hash.includes('type=invite') || window.location.hash.includes('type=recovery'))) {
     setShowSetPassword(true);
   }
