@@ -1077,7 +1077,7 @@ const loadedUserRef = useRef(null);
 
         // Load mileage
         const { data: mileageData, error: mileageError } = await supabase
-          .from('mileage')
+          .from('mileage_logs')
           .select('*')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false }).range(0, 999999);
@@ -1085,11 +1085,11 @@ const loadedUserRef = useRef(null);
         if (mileageData && mileageData.length > 0) {
           setMileage(mileageData.map(item => ({
             id: item.id,
-            date: item.date || '',
-            miles: parseFloat(item.miles) || 0,
-            purpose: item.purpose || 'Pickup/Dropoff',
-            from: item.from_location || '',
-            to: item.to_location || ''
+            date: item.trip_date || '',
+            miles: parseFloat(item.total_miles) || 0,
+            purpose: item.purpose || '',
+            from: item.home_address || '',
+            to: (item.stores_visited || []).join(', ')
           })));
         }
 
