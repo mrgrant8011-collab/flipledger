@@ -1508,17 +1508,41 @@ const loadedUserRef = useRef(null);
     }
   }
   useEffect(() => {
-    if (!user?.id) return;
-    const checkTerms = async () => {
-      const { data } = await supabase
-        .from('user_settings')
-        .select('terms_agreed')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      setHasAgreedToTerms(data?.terms_agreed === true);
+    if (!user?.id) {
       setTermsLoading(false);
+      return;
+    }
+
+    const checkTerms = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('user_settings')
+          .select('terms_agreed')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (error) {
+          console.error('Terms check failed:', error);
+          setHasAgreedToTerms(true);
+          return;
+        }
+
+        setHasAgreedToTerms(data?.terms_agreed === true);
+      } catch (e) {
+        console.error('Terms check failed:', e);
+        setHasAgreedToTerms(true);
+      } finally {
+        setTermsLoading(false);
+      }
     };
-    checkTerms();
+
+    const timeout = setTimeout(() => {
+      console.warn('Terms check timeout — allowing app to continue');
+      setTermsLoading(false);
+      setHasAgreedToTerms(true);
+    }, 5000);
+
+    checkTerms().finally(() => clearTimeout(timeout));
   }, [user?.id]);
 
   // Save settings to localStorage (user-specific)
