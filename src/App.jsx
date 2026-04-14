@@ -955,54 +955,72 @@ const loadedUserRef = useRef(null);
   // Check for existing session on load
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      const email = session?.user?.email?.toLowerCase();
-      if (session?.user && email) {
-        const { data: allowed } = await supabase
-          .from('allowed_emails')
-          .select('email')
-          .eq('email', email)
-          .maybeSingle();
-        if (!allowed) {
-          await supabase.auth.signOut();
-          setUser(null);
-          setSession(null);
-          setAuthLoading(false);
-          return;
+      try {
+        const email = session?.user?.email?.toLowerCase();
+
+        if (session?.user && email) {
+          const { data: allowed, error } = await supabase
+            .from('allowed_emails')
+            .select('email')
+            .eq('email', email)
+            .maybeSingle();
+
+          if (error) {
+            console.error('[Auth getSession] allowed_emails check failed:', error);
+          }
+
+          if (!allowed) {
+            await supabase.auth.signOut();
+            setUser(null);
+            setSession(null);
+            return;
+          }
         }
+
+        setUser(session?.user ?? null);
+        setSession(session);
+      } catch (err) {
+        console.error('[Auth getSession] failed:', err);
+        setUser(null);
+        setSession(null);
+      } finally {
+        setAuthLoading(false);
       }
-      setUser(session?.user ?? null);
-      setSession(session);
-      setAuthLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-  const email = session?.user?.email?.toLowerCase();
+      try {
+        const email = session?.user?.email?.toLowerCase();
 
-  if (session?.user && email) {
-    const { data: allowed } = await supabase
-      .from('allowed_emails')
-      .select('email')
-      .eq('email', email)
-      .maybeSingle();
+        if (session?.user && email) {
+          const { data: allowed, error } = await supabase
+            .from('allowed_emails')
+            .select('email')
+            .eq('email', email)
+            .maybeSingle();
 
-    if (!allowed) {
-      await supabase.auth.signOut();
-      setUser(null);
-      setSession(null);
-      if (_event === 'SIGNED_IN') {
-        console.warn(`[Auth] Blocked session for non-allowed email: ${email}`);
+          if (error) {
+            console.error('[Auth onAuthStateChange] allowed_emails check failed:', error);
+          }
+
+          if (!allowed) {
+            await supabase.auth.signOut();
+            setUser(null);
+            setSession(null);
+            return;
+          }
+        }
+
+        setUser(session?.user ?? null);
+        setSession(session);
+
+        if (_event === 'SIGNED_IN' && (window.location.hash.includes('type=invite') || window.location.hash.includes('type=recovery'))) {
+          setShowSetPassword(true);
+        }
+      } catch (err) {
+        console.error('[Auth onAuthStateChange] failed:', err);
       }
-      return;
-    }
-  }
-
-  setUser(session?.user ?? null);
-  setSession(session);
-
-  if (_event === 'SIGNED_IN' && (window.location.hash.includes('type=invite') || window.location.hash.includes('type=recovery'))) {
-    setShowSetPassword(true);
-  }
-});
+    });
 
     return () => subscription.unsubscribe();
   }, []);
