@@ -937,6 +937,11 @@ function App() {
   const [expandPages, setExpandPages] = useState({});
   const [mobileInvDrawer, setMobileInvDrawer] = useState(null);
   const [showSetPassword, setShowSetPassword] = useState(false);
+  const [hasAgreedToTerms, setHasAgreedToTerms] = useState(false);
+  const [termsLoading, setTermsLoading] = useState(true);
+  const [termsChecked, setTermsChecked] = useState(false);
+  const [termsError, setTermsError] = useState('');
+  const [savingTerms, setSavingTerms] = useState(false);
   const [newPassword, setNewPassword] = useState('');
 
   const ITEMS_PER_PAGE = 50;
@@ -1474,6 +1479,20 @@ const loadedUserRef = useRef(null);
       console.error('Failed to save policies:', err);
     }
   }
+  useEffect(() => {
+    if (!user?.id) return;
+    const checkTerms = async () => {
+      const { data } = await supabase
+        .from('user_settings')
+        .select('terms_agreed')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      setHasAgreedToTerms(data?.terms_agreed === true);
+      setTermsLoading(false);
+    };
+    checkTerms();
+  }, [user?.id]);
+
   // Save settings to localStorage (user-specific)
   useEffect(() => {
     if (user) {
@@ -1603,6 +1622,82 @@ const loadedUserRef = useRef(null);
   // Show login page if not authenticated
   if (!user) {
     return <LandingPage onLogin={setUser} />;
+  }
+
+  if (termsLoading) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 64, height: 64, background: 'linear-gradient(135deg, #C9A962 0%, #B8943F 100%)', borderRadius: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 24, color: '#000', marginBottom: 16 }}>FL</div>
+          <p style={{ color: '#888' }}>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasAgreedToTerms) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Inter', sans-serif", padding: 20 }}>
+        <div style={{ width: '100%', maxWidth: 480, background: '#111', border: '1px solid #1a1a1a', borderRadius: 24, padding: 40 }}>
+          <div style={{ textAlign: 'center', marginBottom: 28 }}>
+            <div style={{ width: 64, height: 64, background: 'linear-gradient(135deg, #C9A962, #B8943F)', borderRadius: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 24, color: '#000', marginBottom: 16 }}>FL</div>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#C9A962' }}>Welcome to FlipLedger</h1>
+            <p style={{ margin: '8px 0 0', color: '#888', fontSize: 14 }}>Please review and agree to our terms before getting started.</p>
+          </div>
+          <div style={{ padding: 16, background: 'rgba(255,255,255,0.03)', border: '1px solid #1a1a1a', borderRadius: 12, marginBottom: 20, fontSize: 13, color: '#888', lineHeight: 1.6 }}>
+            By using FlipLedger you agree to our{' '}
+            <a href="https://flipledgerhq.com/terms" target="_blank" rel="noreferrer" style={{ color: '#C9A962' }}>Terms of Service</a>
+            {' '}and{' '}
+            <a href="https://flipledgerhq.com/privacy" target="_blank" rel="noreferrer" style={{ color: '#C9A962' }}>Privacy Policy</a>,
+            including the use of anonymized aggregated data to improve platform features.
+          </div>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 8, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={termsChecked}
+              onChange={e => { setTermsChecked(e.target.checked); setTermsError(''); }}
+              style={{ width: 18, height: 18, marginTop: 2, accentColor: '#C9A962', cursor: 'pointer', flexShrink: 0 }}
+            />
+            <span style={{ fontSize: 13, color: '#ccc', lineHeight: 1.5 }}>
+              I have read and agree to the Terms of Service and Privacy Policy, including the use of anonymized aggregated data to improve platform features.
+            </span>
+          </label>
+          {termsError && (
+            <div style={{ marginBottom: 16, padding: '10px 14px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, color: '#ef4444', fontSize: 13 }}>
+              {termsError}
+            </div>
+          )}
+          <button
+            disabled={savingTerms}
+            onClick={async () => {
+              if (!termsChecked) {
+                setTermsError('Please agree to the terms to continue.');
+                return;
+              }
+              setSavingTerms(true);
+              const { error } = await supabase
+                .from('user_settings')
+                .upsert({
+                  user_id: user.id,
+                  terms_agreed: true,
+                  terms_agreed_at: new Date().toISOString(),
+                  terms_version: '1.0'
+                }, { onConflict: 'user_id' });
+              if (error) {
+                setTermsError('Error saving agreement. Please try again.');
+                setSavingTerms(false);
+                return;
+              }
+              setHasAgreedToTerms(true);
+              setSavingTerms(false);
+            }}
+            style={{ width: '100%', padding: 14, background: 'linear-gradient(135deg, #C9A962, #B8943F)', border: 'none', borderRadius: 12, color: '#000', fontSize: 15, fontWeight: 700, cursor: savingTerms ? 'wait' : 'pointer', opacity: savingTerms ? 0.7 : 1 }}
+          >
+            {savingTerms ? 'Saving...' : 'I Agree — Enter FlipLedger'}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // Show loading while fetching data
