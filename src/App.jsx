@@ -1543,10 +1543,10 @@ const loadedUserRef = useRef(null);
     const ebayTokenParam = params.get('ebay_token');
     const ebayRefreshParam = params.get('ebay_refresh');
     const ebayError = params.get('ebay_error');
-    
+
     if (ebayConnectedParam === 'true' && ebayTokenParam && user?.id) {
-    const expiresIn = parseInt(params.get('ebay_expires')) || 7200;
-     storeEbayTokens(ebayTokenParam, ebayRefreshParam, expiresIn, user?.id);
+      const expiresIn = parseInt(params.get('ebay_expires')) || 7200;
+      storeEbayTokens(ebayTokenParam, ebayRefreshParam, expiresIn, user?.id);
       setEbayToken(ebayTokenParam);
       setEbayConnected(true);
       linkTokensToServer('ebay', ebayTokenParam, ebayRefreshParam, expiresIn);
@@ -1693,6 +1693,17 @@ const loadedUserRef = useRef(null);
                 setTermsError('Error saving agreement. Please try again.');
                 setSavingTerms(false);
                 return;
+              }
+              const pendingParams = new URLSearchParams(window.location.search);
+              const pendingEbayToken = pendingParams.get('ebay_token');
+              const pendingEbayRefresh = pendingParams.get('ebay_refresh');
+              const pendingEbayConnected = pendingParams.get('ebay_connected');
+              if (pendingEbayConnected === 'true' && pendingEbayToken && user?.id) {
+                const expiresIn = parseInt(pendingParams.get('ebay_expires')) || 7200;
+                storeEbayTokens(pendingEbayToken, pendingEbayRefresh, expiresIn, user.id);
+                setEbayToken(pendingEbayToken);
+                setEbayConnected(true);
+                window.history.replaceState({}, document.title, window.location.pathname);
               }
               setHasAgreedToTerms(true);
               setSavingTerms(false);
