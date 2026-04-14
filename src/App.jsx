@@ -964,9 +964,30 @@ const loadedUserRef = useRef(null);
       setAuthLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+  const email = session?.user?.email?.toLowerCase();
+
+  if (session?.user && email) {
+    const { data: allowed } = await supabase
+      .from('allowed_emails')
+      .select('email')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (!allowed) {
+      await supabase.auth.signOut();
+      setUser(null);
+      setSession(null);
+      if (_event === 'SIGNED_IN') {
+        console.warn(`[Auth] Blocked session for non-allowed email: ${email}`);
+      }
+      return;
+    }
+  }
+
   setUser(session?.user ?? null);
   setSession(session);
+
   if (_event === 'SIGNED_IN' && (window.location.hash.includes('type=invite') || window.location.hash.includes('type=recovery'))) {
     setShowSetPassword(true);
   }
