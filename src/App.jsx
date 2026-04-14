@@ -1562,6 +1562,15 @@ const loadedUserRef = useRef(null);
     const ebayRefreshParam = params.get('ebay_refresh');
     const ebayError = params.get('ebay_error');
 
+    if (ebayConnectedParam === 'true' && ebayTokenParam && !user?.id) {
+      sessionStorage.setItem('flipledger_ebay_pending_token', ebayTokenParam);
+      sessionStorage.setItem('flipledger_ebay_pending_refresh', ebayRefreshParam || '');
+      sessionStorage.setItem('flipledger_ebay_pending_expires', params.get('ebay_expires') || '7200');
+      sessionStorage.setItem('flipledger_ebay_pending_connected', 'true');
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
     if (ebayConnectedParam === 'true' && ebayTokenParam && user?.id) {
       const expiresIn = parseInt(params.get('ebay_expires')) || 7200;
       storeEbayTokens(ebayTokenParam, ebayRefreshParam, expiresIn, user?.id);
@@ -1570,7 +1579,29 @@ const loadedUserRef = useRef(null);
       linkTokensToServer('ebay', ebayTokenParam, ebayRefreshParam, expiresIn);
       window.history.replaceState({}, document.title, window.location.pathname);
       setPage('settings');
-    } else if (ebayError) {
+      return;
+    }
+
+    const pendingToken = sessionStorage.getItem('flipledger_ebay_pending_token');
+    const pendingRefresh = sessionStorage.getItem('flipledger_ebay_pending_refresh');
+    const pendingExpires = parseInt(sessionStorage.getItem('flipledger_ebay_pending_expires')) || 7200;
+    const pendingConnected = sessionStorage.getItem('flipledger_ebay_pending_connected');
+
+    if (pendingConnected === 'true' && pendingToken && user?.id) {
+      storeEbayTokens(pendingToken, pendingRefresh, pendingExpires, user?.id);
+      setEbayToken(pendingToken);
+      setEbayConnected(true);
+      linkTokensToServer('ebay', pendingToken, pendingRefresh, pendingExpires);
+      sessionStorage.removeItem('flipledger_ebay_pending_token');
+      sessionStorage.removeItem('flipledger_ebay_pending_refresh');
+      sessionStorage.removeItem('flipledger_ebay_pending_expires');
+      sessionStorage.removeItem('flipledger_ebay_pending_connected');
+      window.history.replaceState({}, document.title, window.location.pathname);
+      setPage('settings');
+      return;
+    }
+
+    if (ebayError) {
       console.error('eBay connection error:', ebayError);
       window.history.replaceState({}, document.title, window.location.pathname);
       alert('eBay connection failed: ' + ebayError);
