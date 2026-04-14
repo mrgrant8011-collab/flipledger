@@ -4519,7 +4519,7 @@ Let me know if you need anything else.`;
                     <option value="sku">SKU</option>
                     <option value="price">Payout</option>
                   </select>
-                  <AutoMatchButton userId={user.id} onComplete={() => loadUserData(user.id)} />
+                  <AutoMatchButton userId={user.id} onComplete={() => window.location.reload()} />
                   <button onClick={async () => { 
                     if (confirm(`Clear all?`)) {
                       await deleteAllPendingFromSupabase();
