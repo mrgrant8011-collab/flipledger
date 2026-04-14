@@ -878,28 +878,6 @@ function App() {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [hasAccess, setHasAccess] = useState(false);
-
-  const checkAccess = async (currentSession) => {
-    if (!currentSession?.access_token) {
-      setUser(null); setSession(null); setHasAccess(false); return;
-    }
-    try {
-      const res = await fetch('/api/check-access', {
-        headers: { Authorization: `Bearer ${currentSession.access_token}` }
-      });
-      const data = await res.json();
-      if (!data.allowed) {
-        await supabase.auth.signOut();
-        setUser(null); setSession(null); setHasAccess(false);
-      } else {
-        setHasAccess(true);
-      }
-    } catch (e) {
-      console.error('[checkAccess]', e);
-      setHasAccess(false);
-    }
-  };
   const [dataLoading, setDataLoading] = useState(true);
   
   // App state
@@ -966,24 +944,29 @@ const loadedUserRef = useRef(null);
   // Check for existing session on load
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
+      const email = session?.user?.email?.toLowerCase();
+      if (session?.user && email) {
+        const { data: allowed } = await supabase
+          .from('allowed_emails')
+          .select('email')
+          .eq('email', email)
+          .maybeSingle();
+        if (!allowed) {
+          await supabase.auth.signOut();
+          setUser(null);
+          setSession(null);
+          setAuthLoading(false);
+          return;
+        }
+      }
       setUser(session?.user ?? null);
       setSession(session);
-      try {
-        await Promise.race([
-          checkAccess(session),
-          new Promise(resolve => setTimeout(resolve, 5000))
-        ]);
-      } catch (e) {
-        console.error('[getSession checkAccess]', e);
-      } finally {
-        setAuthLoading(false);
-      }
+      setAuthLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
   setUser(session?.user ?? null);
   setSession(session);
-  await checkAccess(session);
   if (_event === 'SIGNED_IN' && (window.location.hash.includes('type=invite') || window.location.hash.includes('type=recovery'))) {
     setShowSetPassword(true);
   }
@@ -991,15 +974,6 @@ const loadedUserRef = useRef(null);
 
     return () => subscription.unsubscribe();
   }, []);
-
-  useEffect(() => {
-    if (!session?.access_token) return;
-    const interval = setInterval(async () => {
-      const { data: { session: latest } } = await supabase.auth.getSession();
-      await checkAccess(latest);
-    }, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [session?.access_token]);
 
   // Load data from Supabase when user logs in
   useEffect(() => {
