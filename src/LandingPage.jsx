@@ -56,7 +56,7 @@ export default function LandingPage({ onLogin }) {
     .from('allowed_emails')
     .select('email')
     .eq('email', email.toLowerCase())
-    .single();
+    .maybeSingle();
   if (whitelistError || !whitelist) {
     setError('This email is not authorized. Please purchase a subscription at flipledgerhq.com first.');
     setLoading(false);
