@@ -275,7 +275,13 @@ const handleSubmit = async (e) => {
         <p style={{ textAlign: 'center', marginTop: 24, color: c.textMuted, fontSize: 14 }}>
           {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
           <button
-            onClick={() => setIsSignUp(!isSignUp)}
+            onClick={() => {
+              if (isSignUp) {
+                setIsSignUp(false);
+              } else {
+                window.location.assign('https://buy.stripe.com/8x200jfYV4vB41zeFG5sA00');
+              }
+            }}
             style={{
               background: 'none',
               border: 'none',
@@ -285,7 +291,7 @@ const handleSubmit = async (e) => {
               fontSize: 14
             }}
           >
-            {isSignUp ? 'Sign In' : 'Sign Up'}
+            {isSignUp ? 'Sign In' : 'Get Started'}
           </button>
         </p>
       </div>
