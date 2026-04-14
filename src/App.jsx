@@ -279,7 +279,7 @@ const handleSubmit = async (e) => {
               if (isSignUp) {
                 setIsSignUp(false);
               } else {
-                window.location.assign('https://buy.stripe.com/test_7sY5kE6oGdu88KD5AA08g00');
+                window.location.assign('https://buy.stripe.com/8x200jfYV4vB41zeFG5sA00');
               }
             }}
             style={{
