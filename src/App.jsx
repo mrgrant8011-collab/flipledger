@@ -966,13 +966,18 @@ const loadedUserRef = useRef(null);
   // Check for existing session on load
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        await checkAccess(session);
-      } else {
-        setUser(null);
-        setSession(null);
+      setUser(session?.user ?? null);
+      setSession(session);
+      try {
+        await Promise.race([
+          checkAccess(session),
+          new Promise(resolve => setTimeout(resolve, 5000))
+        ]);
+      } catch (e) {
+        console.error('[getSession checkAccess]', e);
+      } finally {
+        setAuthLoading(false);
       }
-      setAuthLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
