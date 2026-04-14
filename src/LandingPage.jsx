@@ -10,7 +10,7 @@ import { supabase } from './supabase';
 export default function LandingPage({ onLogin }) {
   const [showAuth, setShowAuth] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(true);
+  const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -757,26 +757,14 @@ export default function LandingPage({ onLogin }) {
                   <input className="fl-input" type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} placeholder="••••••••" />
                 </div>
                 {error && <div style={{padding:12,background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:10,color:'#ef4444',fontSize:13,marginBottom:16}}>{error}</div>}
-                {isSignUp && (
-                  <div style={{display:'flex',alignItems:'flex-start',gap:10,marginBottom:16}}>
-                    <input type="checkbox" id="agree-terms" required style={{marginTop:3,accentColor:'#C9A962',width:15,height:15,flexShrink:0,cursor:'pointer'}} />
-                    <label htmlFor="agree-terms" style={{fontSize:12,color:'rgba(255,255,255,0.5)',lineHeight:1.6,cursor:'pointer'}}>
-                      I agree to the{' '}
-                      <a href="/terms" target="_blank" rel="noreferrer" style={{color:'#C9A962',textDecoration:'none'}}>Terms of Service</a>
-                      {' '}and{' '}
-                      <a href="/privacy" target="_blank" rel="noreferrer" style={{color:'#C9A962',textDecoration:'none'}}>Privacy Policy</a>
-                      , including the use of anonymized aggregated data to improve platform features.
-                    </label>
-                  </div>
-                )}
                 <button type="submit" disabled={loading} className="fl-submit">
                   {loading ? 'Please wait...' : (isSignUp ? 'Get Started' : 'Sign In')}
                 </button>
               </form>
               <p style={{textAlign:'center',marginTop:24,color:'#555',fontSize:14}}>
-                {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-                <button onClick={() => { setIsSignUp(!isSignUp); setError(''); }} style={{background:'none',border:'none',color:'#C9A962',cursor:'pointer',fontWeight:600,fontSize:14,fontFamily:'inherit'}}>
-                  {isSignUp ? 'Sign In' : 'Sign Up'}
+                Don't have an account?{' '}
+                <button onClick={() => { setShowAuth(false); goToStripe(); }} style={{background:'none',border:'none',color:'#C9A962',cursor:'pointer',fontWeight:600,fontSize:14,fontFamily:'inherit'}}>
+                  Get Started
                 </button>
               </p>
             </div>
