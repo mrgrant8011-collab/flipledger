@@ -66,6 +66,7 @@ export default async function handler(req, res) {
 
       const periodEnd = obj.current_period_end || obj.items?.data?.[0]?.current_period_end;
       await upsertSubscriptionStatus(email, 'active', periodEnd);
+      await enableSupabaseUser(email);
       console.log(`[Webhook] ✓ Added ${email} — subscription started`);
     }
   }
@@ -102,6 +103,7 @@ export default async function handler(req, res) {
       }
 
       await upsertSubscriptionStatus(email, 'canceled', null);
+      await disableSupabaseUser(email);
       console.log(`[Webhook] ✓ Removed ${email} — subscription ended`);
     }
   }
@@ -123,6 +125,7 @@ export default async function handler(req, res) {
         }
 
         await upsertSubscriptionStatus(email, 'payment_failed', null);
+        await disableSupabaseUser(email);
         console.log(`[Webhook] ✓ Removed ${email} — payment failed`);
       }
     }
@@ -176,6 +179,34 @@ async function upsertSubscriptionStatus(email, status, periodEnd) {
     }
   } catch (err) {
     console.error('[Webhook] upsertSubscriptionStatus error:', err.message);
+  }
+}
+
+async function disableSupabaseUser(email) {
+  try {
+    const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
+    if (listError) { console.error('[Webhook] listUsers error:', listError.message); return; }
+    const authUser = users.find(u => u.email?.toLowerCase() === email);
+    if (!authUser) { console.warn(`[Webhook] No Supabase user found for ${email}`); return; }
+    const { error } = await supabase.auth.admin.updateUserById(authUser.id, { ban_duration: '876600h' });
+    if (error) { console.error('[Webhook] Ban user error:', error.message); }
+    else { console.log(`[Webhook] ✓ Banned Supabase user: ${email}`); }
+  } catch (err) {
+    console.error('[Webhook] disableSupabaseUser error:', err.message);
+  }
+}
+
+async function enableSupabaseUser(email) {
+  try {
+    const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
+    if (listError) { console.error('[Webhook] listUsers error:', listError.message); return; }
+    const authUser = users.find(u => u.email?.toLowerCase() === email);
+    if (!authUser) { console.warn(`[Webhook] No Supabase user found for ${email}`); return; }
+    const { error } = await supabase.auth.admin.updateUserById(authUser.id, { ban_duration: 'none' });
+    if (error) { console.error('[Webhook] Unban user error:', error.message); }
+    else { console.log(`[Webhook] ✓ Unbanned Supabase user: ${email}`); }
+  } catch (err) {
+    console.error('[Webhook] enableSupabaseUser error:', err.message);
   }
 }
 
