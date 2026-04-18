@@ -975,8 +975,10 @@ const loadedUserRef = useRef(null);
       (window.location.hash.includes('type=invite') ||
        window.location.hash.includes('type=recovery'))
     ) {
-      setShowSetPassword(true);
-} catch (err) {
+        setShowSetPassword(true);
+      }
+    }
+  } catch (err) {
     console.error('[Auth onAuthStateChange] failed:', err);
   }
   setAuthLoading(false);
