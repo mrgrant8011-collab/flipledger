@@ -986,8 +986,7 @@ const loadedUserRef = useRef(null);
     return () => subscription.unsubscribe();
   }, []);
 
-    return () => subscription.unsubscribe();
-  }, []);
+    
 
 
 
