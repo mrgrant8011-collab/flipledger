@@ -943,12 +943,16 @@ function App() {
 const loadedUserRef = useRef(null);
   // Check for existing session on load
   useEffect(() => {
-   supabase.auth.getSession().then(({ data: { session } }) => {
+   const timeout = setTimeout(() => setAuthLoading(false), 3000);
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setSession(session);
       setAuthLoading(false);
+      clearTimeout(timeout);
     }).catch(() => {
       setAuthLoading(false);
+      clearTimeout(timeout);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
