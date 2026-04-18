@@ -108,7 +108,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // ─── PAYMENT FAILED — remove from whitelist ─────────────────────────────────
+   // ─── PAYMENT FAILED — remove from whitelist ─────────────────────────────────
   if (event.type === 'invoice.payment_failed') {
     const invoice = obj;
     if (invoice.subscription) {
@@ -131,7 +131,34 @@ export default async function handler(req, res) {
     }
   }
 
+  // ─── CHARGE REFUNDED — immediate access revocation (this was the missing piece) ───────
+  if (event.type === 'charge.refunded') {
+    const charge = event.data.object;
+    const email = await getEmail(charge.customer);
+
+    if (email) {
+      console.log(`[Webhook] Charge refunded for ${email} — revoking access immediately`);
+
+      // Remove from whitelist
+      const { error: deleteError } = await supabase
+        .from('allowed_emails')
+        .delete()
+        .eq('email', email);
+
+      if (deleteError) {
+        console.error('[Webhook] Whitelist delete error on refund:', deleteError);
+      }
+
+      // Update status and ban the user
+      await upsertSubscriptionStatus(email, 'refunded', null);
+      await disableSupabaseUser(email);
+
+      console.log(`[Webhook] ✓ Revoked access for refunded user: ${email}`);
+    }
+  }
+
   return res.status(200).json({ received: true });
+
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
