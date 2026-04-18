@@ -943,9 +943,11 @@ function App() {
 const loadedUserRef = useRef(null);
   // Check for existing session on load
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+   supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setSession(session);
+      setAuthLoading(false);
+    }).catch(() => {
       setAuthLoading(false);
     });
 
