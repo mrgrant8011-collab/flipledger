@@ -949,39 +949,18 @@ const loadedUserRef = useRef(null);
       setAuthLoading(false);
     });
 
-   const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-  try {
-    const email = session?.user?.email?.toLowerCase();
-    if (session?.user && email) {
-      const { data: allowed, error } = await supabase
-        .from('allowed_emails')
-        .select('email')
-        .eq('email', email)
-        .maybeSingle();
-      if (error) {
-        console.error('[Auth onAuthStateChange] allowed_emails check failed:', error);
-      }
-      if (!allowed) {
-        await supabase.auth.signOut();
-        setUser(null);
-        setSession(null);
-        return;
-      }
-    }
-    setUser(session?.user ?? null);
-    setSession(session);
-    if (
-      _event === 'SIGNED_IN' &&
-      (window.location.hash.includes('type=invite') ||
-       window.location.hash.includes('type=recovery'))
-    ) {
-      setShowSetPassword(true);
-    }
-  } catch (err) {
-    console.error('[Auth onAuthStateChange] failed:', err);
-  }
-});
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setSession(session);
 
+      if (
+        _event === 'SIGNED_IN' &&
+        (window.location.hash.includes('type=invite') ||
+         window.location.hash.includes('type=recovery'))
+      ) {
+        setShowSetPassword(true);
+      }
+    });
     return () => subscription.unsubscribe();
   }, []);
 
