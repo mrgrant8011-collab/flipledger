@@ -985,8 +985,7 @@ const loadedUserRef = useRef(null);
     return () => subscription.unsubscribe();  // ← CORRECT PLACE
   }, []);
 
-    return () => subscription.unsubscribe();
-  }, []);
+
 
   // Load data from Supabase when user logs in
   useEffect(() => {
