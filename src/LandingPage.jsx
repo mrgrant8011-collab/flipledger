@@ -51,21 +51,33 @@ export default function LandingPage({ onLogin }) {
     setLoading(true);
     setError('');
     try {
-    if (isSignUp) {
-  const { data: whitelist, error: whitelistError } = await supabase
-    .from('allowed_emails')
-    .select('email')
-    .eq('email', email.toLowerCase())
-    .maybeSingle();
-  if (whitelistError || !whitelist) {
-    setError('This email is not authorized. Please purchase a subscription at flipledgerhq.com first.');
-    setLoading(false);
-    return;
-  }
-  const { data, error } = await supabase.auth.signUp({ email, password });
- 
+      if (isSignUp) {
+        const { data: whitelist, error: whitelistError } = await supabase
+          .from('allowed_emails')
+          .select('email')
+          .eq('email', email.toLowerCase())
+          .maybeSingle();
+
+        if (whitelistError || !whitelist) {
+          setError('This email is not authorized. Please purchase a subscription at flipledgerhq.com first.');
+          setLoading(false);
+          return;
+        }
+
+        const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        if (data.user) alert('Check your email for confirmation link!');
+
+        if (data.user) {
+          // Save terms agreement to database
+          await supabase.from('user_settings').upsert({
+            user_id: data.user.id,
+            terms_agreed: true,
+            terms_agreed_at: new Date().toISOString(),
+            terms_version: '1.0'
+          }, { onConflict: 'user_id' });
+
+          alert('Check your email for confirmation link!');
+        }
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -757,6 +769,20 @@ export default function LandingPage({ onLogin }) {
                   <label style={{display:'block',marginBottom:8,fontSize:13,color:'#888'}}>Password</label>
                   <input className="fl-input" type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} placeholder="••••••••" />
                 </div>
+                {isSignUp && (
+                  <div style={{display:'flex', alignItems:'flex-start', gap:10, marginBottom:20}}>
+                    <input
+                      type="checkbox"
+                      id="agree-terms"
+                      required
+                      style={{marginTop:4}}
+                    />
+                    <label htmlFor="agree-terms" style={{fontSize:13, color:'#aaa', lineHeight:1.4}}>
+                      I agree to the <a href="/terms" target="_blank" style={{color:'#C9A962'}}>Terms of Service</a> and{' '}
+                      <a href="/privacy" target="_blank" style={{color:'#C9A962'}}>Privacy Policy</a>.
+                    </label>
+                  </div>
+                )}
                 {error && <div style={{padding:12,background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:10,color:'#ef4444',fontSize:13,marginBottom:16}}>{error}</div>}
                 <button type="submit" disabled={loading} className="fl-submit">
                   {loading ? 'Please wait...' : (isSignUp ? 'Get Started' : 'Sign In')}
