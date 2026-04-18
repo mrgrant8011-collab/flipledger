@@ -88,7 +88,7 @@ export default async function handler(req, res) {
     }
   }
 
-  // ─── SUBSCRIPTION DELETED — remove from whitelist ───────────────────────────
+    // ─── SUBSCRIPTION DELETED — remove from whitelist ───────────────────────────
   if (event.type === 'customer.subscription.deleted') {
     const email = await getEmail(obj.customer);
     if (email) {
@@ -108,25 +108,26 @@ export default async function handler(req, res) {
     }
   }
 
-   // ─── PAYMENT FAILED — remove from whitelist ─────────────────────────────────
+  // ─── INVOICE PAYMENT FAILED — immediate access revocation ───────────────────
   if (event.type === 'invoice.payment_failed') {
     const invoice = obj;
     if (invoice.subscription) {
       const email = await getEmail(invoice.customer);
       if (email) {
-        const { error } = await supabase
+        console.log(`[Webhook] Payment failed for ${email} — revoking access immediately`);
+
+        const { error: deleteError } = await supabase
           .from('allowed_emails')
           .delete()
           .eq('email', email);
 
-        if (error) {
-          console.error('[Webhook] Whitelist delete error:', error);
-          return res.status(500).json({ error: error.message });
+        if (deleteError) {
+          console.error('[Webhook] Whitelist delete error on payment failed:', deleteError);
         }
 
         await upsertSubscriptionStatus(email, 'payment_failed', null);
         await disableSupabaseUser(email);
-        console.log(`[Webhook] ✓ Removed ${email} — payment failed`);
+        console.log(`[Webhook] ✓ Revoked access for payment failed user: ${email}`);
       }
     }
   }
