@@ -977,12 +977,12 @@ const loadedUserRef = useRef(null);
     ) {
       setShowSetPassword(true);
     }
- } catch (err) {
+} catch (err) {
     console.error('[Auth onAuthStateChange] failed:', err);
   }
 });
 
-    return () => subscription.unsubscribe();  // ← CORRECT PLACE
+    return () => subscription.unsubscribe();
   }, []);
 
 
