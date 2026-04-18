@@ -63,6 +63,7 @@ export default function LandingPage({ onLogin }) {
     return;
   }
   const { data, error } = await supabase.auth.signUp({ email, password });
+ 
         if (error) throw error;
         if (data.user) alert('Check your email for confirmation link!');
       } else {
