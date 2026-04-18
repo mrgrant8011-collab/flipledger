@@ -88,7 +88,7 @@ export default async function handler(req, res) {
     }
   }
 
-    // ─── SUBSCRIPTION DELETED — remove from whitelist ───────────────────────────
+      // ─── SUBSCRIPTION DELETED — remove from whitelist ───────────────────────────
   if (event.type === 'customer.subscription.deleted') {
     const email = await getEmail(obj.customer);
     if (email) {
@@ -96,12 +96,10 @@ export default async function handler(req, res) {
         .from('allowed_emails')
         .delete()
         .eq('email', email);
-
       if (error) {
         console.error('[Webhook] Whitelist delete error:', error);
         return res.status(500).json({ error: error.message });
       }
-
       await upsertSubscriptionStatus(email, 'canceled', null);
       await disableSupabaseUser(email);
       console.log(`[Webhook] ✓ Removed ${email} — subscription ended`);
@@ -132,15 +130,14 @@ export default async function handler(req, res) {
     }
   }
 
-  // ─── CHARGE REFUNDED — immediate access revocation (this was the missing piece) ───────
+  // ─── CHARGE REFUNDED — immediate access revocation ─────────────────────────
   if (event.type === 'charge.refunded') {
-    const charge = event.data.object;
+    const charge = obj;   // or event.data.object — both are fine here
     const email = await getEmail(charge.customer);
 
     if (email) {
       console.log(`[Webhook] Charge refunded for ${email} — revoking access immediately`);
 
-      // Remove from whitelist
       const { error: deleteError } = await supabase
         .from('allowed_emails')
         .delete()
@@ -150,7 +147,6 @@ export default async function handler(req, res) {
         console.error('[Webhook] Whitelist delete error on refund:', deleteError);
       }
 
-      // Update status and ban the user
       await upsertSubscriptionStatus(email, 'refunded', null);
       await disableSupabaseUser(email);
 
@@ -159,7 +155,6 @@ export default async function handler(req, res) {
   }
 
   return res.status(200).json({ received: true });
-
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
