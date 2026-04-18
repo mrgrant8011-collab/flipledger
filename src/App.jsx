@@ -976,10 +976,10 @@ const loadedUserRef = useRef(null);
        window.location.hash.includes('type=recovery'))
     ) {
       setShowSetPassword(true);
-    }
 } catch (err) {
     console.error('[Auth onAuthStateChange] failed:', err);
   }
+  setAuthLoading(false);
 });
 
     return () => subscription.unsubscribe();
