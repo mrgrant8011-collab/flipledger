@@ -100,7 +100,7 @@ const handleSubmit = async (e) => {
           .from('allowed_emails')
           .select('email')
           .eq('email', email.toLowerCase())
-          .single();
+          .maybeSingle();
         if (whitelistError || !whitelist) {
           setError('This email is not authorized. Please purchase a subscription at flipledgerhq.com first.');
           setLoading(false);
@@ -125,7 +125,7 @@ const handleSubmit = async (e) => {
             .from('allowed_emails')
             .select('email')
             .eq('email', email.toLowerCase())
-            .single();
+            .maybeSingle();
           if (whitelistError || !whitelist) {
             await supabase.auth.signOut();
             setError('Your subscription is inactive. Please visit flipledgerhq.com to resubscribe.');
