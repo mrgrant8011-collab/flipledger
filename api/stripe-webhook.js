@@ -105,7 +105,7 @@ export default async function handler(req, res) {
       console.log(`[Webhook] ✓ Removed ${email} — subscription ended`);
     }
   }
-  // ─── INVOICE PAYMENT FAILED — immediate access revocation ───────────────────
+    // ─── INVOICE PAYMENT FAILED — immediate access revocation ───────────────────
   if (event.type === 'invoice.payment_failed') {
     const invoice = obj;
     if (invoice.subscription) {
@@ -179,7 +179,6 @@ export default async function handler(req, res) {
 
   return res.status(200).json({ received: true });
 }
-
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
