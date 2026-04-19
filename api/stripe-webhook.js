@@ -4,11 +4,12 @@
  * ═══════════════════════════════════════════════════════════════
  *
  * Events handled:
- *   customer.subscription.created  → add to allowed_emails whitelist
- *   customer.subscription.updated  → detect cancel_at_period_end,
- *                                    update subscription_status in user_settings
- *   customer.subscription.deleted  → remove from whitelist (access ends)
- *   invoice.payment_failed          → remove from whitelist
+ *   customer.subscription.created     → add to allowed_emails + grant access
+ *   customer.subscription.updated     → detect cancel_at_period_end + update status
+ *   customer.subscription.deleted     → remove from whitelist + ban user
+ *   invoice.payment_failed            → immediate revoke + ban
+ *   charge.refunded                   → immediate revoke + ban
+ *   charge.dispute.created            → immediate revoke + ban (chargeback protection)
  *
  * Required env vars (already set in Vercel):
  *   STRIPE_SECRET_KEY
@@ -17,7 +18,6 @@
  *   SUPABASE_SERVICE_ROLE_KEY
  * ═══════════════════════════════════════════════════════════════
  */
-
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 
