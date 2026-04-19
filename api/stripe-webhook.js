@@ -105,7 +105,6 @@ export default async function handler(req, res) {
       console.log(`[Webhook] ✓ Removed ${email} — subscription ended`);
     }
   }
-
   // ─── INVOICE PAYMENT FAILED — immediate access revocation ───────────────────
   if (event.type === 'invoice.payment_failed') {
     const invoice = obj;
@@ -132,7 +131,7 @@ export default async function handler(req, res) {
 
   // ─── CHARGE REFUNDED — immediate access revocation ─────────────────────────
   if (event.type === 'charge.refunded') {
-    const charge = obj;   // or event.data.object — both are fine here
+    const charge = obj;
     const email = await getEmail(charge.customer);
 
     if (email) {
@@ -154,8 +153,34 @@ export default async function handler(req, res) {
     }
   }
 
+  // ─── CHARGE DISPUTE (CHARGEBACK) — immediate access revocation ─────────────
+  if (event.type === 'charge.dispute.created') {
+    const dispute = obj;
+    const email = await getEmail(dispute.customer);
+
+    if (email) {
+      console.log(`[Webhook] Dispute created for ${email} — revoking access immediately`);
+
+      const { error: deleteError } = await supabase
+        .from('allowed_emails')
+        .delete()
+        .eq('email', email);
+
+      if (deleteError) {
+        console.error('[Webhook] Whitelist delete error on dispute:', deleteError);
+      }
+
+      await upsertSubscriptionStatus(email, 'disputed', null);
+      await disableSupabaseUser(email);
+
+      console.log(`[Webhook] ✓ Revoked access for disputed user: ${email}`);
+    }
+  }
+
   return res.status(200).json({ received: true });
 }
+
+
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
