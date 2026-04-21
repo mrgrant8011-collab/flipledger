@@ -13,6 +13,7 @@ export default function LandingPage({ onLogin }) {
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const animRef = useRef(null);
@@ -767,7 +768,41 @@ export default function LandingPage({ onLogin }) {
                 </div>
                 <div style={{marginBottom:24}}>
                   <label style={{display:'block',marginBottom:8,fontSize:13,color:'#888'}}>Password</label>
-                  <input className="fl-input" type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={6} placeholder="••••••••" />
+                  <div style={{ position: 'relative' }}>
+                    <input 
+                      className="fl-input" 
+                      type={showPassword ? 'text' : 'password'} 
+                      value={password} 
+                      onChange={e => setPassword(e.target.value)} 
+                      required 
+                      minLength={6} 
+                      placeholder="••••••••" 
+                      style={{ paddingRight: '70px' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      style={{
+                        position: 'absolute',
+                        right: '14px',
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        color: '#C9A962',
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        padding: '4px 8px',
+                        zIndex: 2
+                      }}
+                    >
+                      {showPassword ? 'Hide' : 'Show'}
+                    </button>
+                  </div>
+                  <p style={{ fontSize: '12px', color: '#666', marginTop: '6px', marginBottom: 0 }}>
+                    At least 6 characters
+                  </p>
                 </div>
                 {isSignUp && (
                   <div style={{display:'flex', alignItems:'flex-start', gap:10, marginBottom:20}}>
