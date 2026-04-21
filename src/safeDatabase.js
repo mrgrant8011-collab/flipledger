@@ -619,13 +619,40 @@ export const safeBulkSaveInventory = async (userId, items) => {
   
   console.log(`[SafeDB] Bulk saving ${items.length} inventory items...`);
   
+  // 1. Validate and build records in memory
+  const records = [];
   for (const item of items) {
-    const result = await safeSaveInventory(userId, item);
+    try {
+      validateInventory(item);
+      records.push({
+        user_id: userId,
+        name: item.name.trim(),
+        sku: item.sku || '',
+        size: item.size || '',
+        cost: item.cost,
+        quantity: item.quantity || 1,
+        date: item.date || new Date().toISOString().split('T')[0],
+        sold: false,
+        image: item.image || null,
+        source: item.source || null
+      });
+    } catch (err) {
+      results.errors.push({ item, error: err.message });
+    }
+  }
+  
+  // 2. Batch insert all valid records in ONE call
+  if (records.length > 0) {
+    const { data, error } = await supabase
+      .from('inventory')
+      .insert(records)
+      .select();
     
-    if (result.success) {
-      results.saved.push(result.data);
+    if (error) {
+      console.error('[SafeDB] Batch insert failed:', error);
+      results.errors.push({ item: null, error: error.message });
     } else {
-      results.errors.push({ item, error: result.error });
+      results.saved = data || [];
     }
   }
   
@@ -633,7 +660,6 @@ export const safeBulkSaveInventory = async (userId, items) => {
   
   return results;
 };
-
 // ============================================================
 // SAFE DELETE OPERATIONS
 // ============================================================
