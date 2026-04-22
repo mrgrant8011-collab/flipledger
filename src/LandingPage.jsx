@@ -803,6 +803,44 @@ export default function LandingPage({ onLogin }) {
                   <p style={{ fontSize: '12px', color: '#666', marginTop: '6px', marginBottom: 0 }}>
                     At least 6 characters
                   </p>
+                  {!isSignUp && (
+                    <div style={{ textAlign: 'right', marginTop: 10 }}>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!email) {
+                            setError('Enter your email above first, then click Forgot Password.');
+                            return;
+                          }
+                          setError(null);
+                          setLoading(true);
+                          try {
+                            const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+                              redirectTo: `${window.location.origin}/reset-password`
+                            });
+                            if (resetError) throw resetError;
+                            alert(`Password reset link sent to ${email}. Check your inbox (and spam folder).`);
+                          } catch (err) {
+                            setError(err.message || 'Failed to send reset email');
+                          } finally {
+                            setLoading(false);
+                          }
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#C9A962',
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          padding: 0,
+                          textDecoration: 'underline',
+                          fontFamily: 'inherit'
+                        }}
+                      >
+                        Forgot password?
+                      </button>
+                    </div>
+                  )}
                 </div>
                 {isSignUp && (
                   <div style={{display:'flex', alignItems:'flex-start', gap:10, marginBottom:20}}>
