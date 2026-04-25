@@ -111,6 +111,10 @@ async function retryFailedJobs(userId, tokens, activeMappings) {
             delistResult = await delistEbayOffer(tokens.ebayToken, match.ebay_offer_id);
           }
         } else if (job.sold_on === 'ebay' && job.delisted_from === 'stockx' && match.stockx_listing_id) {
+          const freshTokenRetry = await getValidToken(userId, 'stockx');
+          if (freshTokenRetry.success && freshTokenRetry.accessToken) {
+            tokens.stockxToken = freshTokenRetry.accessToken;
+          }
           delistResult = await delistStockXListing(tokens.stockxToken, match.stockx_listing_id);
           if (!delistResult.success && delistResult.error?.includes('401')) {
             await supabaseAdmin.from('user_tokens').update({ access_token: null, expires_at: new Date().toISOString() }).eq('user_id', userId).eq('platform', 'stockx');
@@ -464,6 +468,10 @@ async function processUser(userId, platforms) {
                 continue;
               }
 
+              const freshTokenMain = await getValidToken(userId, 'stockx');
+              if (freshTokenMain.success && freshTokenMain.accessToken) {
+                tokens.stockxToken = freshTokenMain.accessToken;
+              }
               const delistResult = await delistStockXListing(tokens.stockxToken, match.stockx_listing_id);
 
               if (delistResult.success || delistResult.alreadyRemoved) {
