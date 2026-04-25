@@ -20,6 +20,10 @@ const supabaseAdmin = createClient(
 );
 
 const STOCKX_API_BASE = 'https://api.stockx.com/v2';
+// User IDs to exclude from community/aggregate stats
+const EXCLUDED_FROM_COMMUNITY = [
+  'a636c348-f91c-4e91-87d3-99e7d06d4046',
+];
 const EBAY_API_BASE = 'https://api.ebay.com';
 
 export default async function handler(req, res) {
@@ -177,8 +181,9 @@ async function getCommunityData(sku, size) {
 
     const { data: allSales, error } = await supabaseAdmin
       .from('sales')
-      .select('sku, size, profit, platform, sale_date, cost, sale_price')
+      .select('sku, size, profit, platform, sale_date, cost, sale_price, user_id')
       .ilike('sku', `%${normalizedSku}%`)
+      .not('user_id', 'in', `(${EXCLUDED_FROM_COMMUNITY.map(id => `"${id}"`).join(',')})`)
       .limit(500);
 
     if (error || !allSales || allSales.length === 0) return null;
