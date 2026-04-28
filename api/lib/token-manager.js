@@ -190,7 +190,12 @@ async function refreshStockXToken(userId, refreshToken) {
  */
 export async function storeTokens(userId, platform, tokens) {
   try {
-    const expiresAt = new Date(Date.now() + (tokens.expires_in || 7200) * 1000);
+    // For StockX, cap at 12 hours per StockX docs
+    let effectiveExpiresIn = tokens.expires_in || 7200;
+    if (platform === 'stockx') {
+      effectiveExpiresIn = Math.min(effectiveExpiresIn, 43200);
+    }
+    const expiresAt = new Date(Date.now() + effectiveExpiresIn * 1000);
 
     const { error } = await supabaseAdmin
       .from('user_tokens')
