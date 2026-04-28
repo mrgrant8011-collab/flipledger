@@ -33,10 +33,10 @@ export async function getValidToken(userId, platform) {
       return { success: false, error: `No ${platform} token found for user` };
     }
 
-    // Check if token is expired (with 5 min buffer)
+     // Check if token is expired (with 1 hour buffer)
     const now = new Date();
     const expiresAt = new Date(tokenData.expires_at);
-    const bufferMs = 5 * 60 * 1000; // 5 minutes
+    const bufferMs = 60 * 60 * 1000; // 1 hour
 
     if (expiresAt.getTime() - bufferMs > now.getTime()) {
       // Token still valid
@@ -155,7 +155,9 @@ async function refreshStockXToken(userId, refreshToken) {
     }
 
     // Update token in database
-    const expiresAt = new Date(Date.now() + (data.expires_in || 86400) * 1000);
+    // StockX docs: refresh every 12 hours. Cap at 12h regardless of API response.
+    const stockxExpiresIn = Math.min(data.expires_in || 43200, 43200);
+    const expiresAt = new Date(Date.now() + stockxExpiresIn * 1000);
     
     const { error: updateError } = await supabaseAdmin
       .from('user_tokens')
