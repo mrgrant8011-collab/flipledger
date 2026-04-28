@@ -889,6 +889,7 @@ function App() {
   const [year, setYear] = useState('2026');
   const [stockxImport, setStockxImport] = useState({ show: false, data: [], year: 'all', month: 'all', headers: [] });
   const [ebayImport, setEbayImport] = useState({ show: false, data: [], year: 'all', month: 'all', headers: [] });
+  const [isImporting, setIsImporting] = useState(false);
   const [ebayApiFilter, setEbayApiFilter] = useState({ year: new Date().getFullYear().toString(), month: 'all' });
   const [stockxApiFilter, setStockxApiFilter] = useState({ year: new Date().getFullYear().toString(), month: 'all' });
   
@@ -2553,7 +2554,9 @@ console.log('Found', items.length, 'items');
 
   // Import StockX sales - SAFE VERSION
   const importStockxSales = async () => {
-    const filtered = filterStockxData();
+    setIsImporting(true);
+    try {
+      const filtered = filterStockxData();
     
     const itemsToSave = filtered.map((row) => {
       const orderNum = row['Order Number'] || row['Order Id'] || row['Order #'] || '';
@@ -2627,13 +2630,21 @@ console.log('Found', items.length, 'items');
     if (result.duplicates.length > 0) msg.push(`${result.duplicates.length} duplicates skipped`);
     if (result.errors.length > 0) msg.push(`${result.errors.length} errors`);
     alert(msg.join('\n') || 'Import complete');
-    
-    setStockxImport({ show: false, data: [], year: 'all', month: 'all', headers: [] });
+      
+      setStockxImport({ show: false, data: [], year: 'all', month: 'all', headers: [] });
+    } catch (err) {
+      console.error('StockX import failed:', err);
+      alert('Import failed: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   // Import eBay sales - SAFE VERSION
   const importEbaySales = async () => {
-    const filtered = filterEbayData();
+    setIsImporting(true);
+    try {
+      const filtered = filterEbayData();
     const parseAmount = (val) => {
       if (!val || val === '--') return 0;
       return parseFloat(val.toString().replace(/[$,]/g, '')) || 0;
@@ -2710,8 +2721,14 @@ console.log('Found', items.length, 'items');
     if (result.duplicates.length > 0) msg.push(`${result.duplicates.length} duplicates skipped`);
     if (result.errors.length > 0) msg.push(`${result.errors.length} errors`);
     alert(msg.join('\n') || 'Import complete');
-    
-    setEbayImport({ show: false, data: [], year: 'all', month: 'all', headers: [] });
+      
+      setEbayImport({ show: false, data: [], year: 'all', month: 'all', headers: [] });
+    } catch (err) {
+      console.error('eBay import failed:', err);
+      alert('Import failed: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   const printTaxPackage = () => {
@@ -4713,7 +4730,7 @@ Let me know if you need anything else.`;
                   )}
                   <div style={{ display: 'flex', gap: 10 }}>
                     <button onClick={() => setStockxImport({ show: false, data: [], year: 'all', month: 'all', headers: [] })} style={{ flex: 1, padding: 12, background: 'rgba(255,255,255,0.05)', border: `1px solid ${c.border}`, borderRadius: 10, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
-                    <button onClick={importStockxSales} disabled={filterStockxData().length === 0} style={{ flex: 2, padding: 12, background: 'linear-gradient(135deg, #00c165 0%, #009e52 100%)', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: filterStockxData().length === 0 ? 0.5 : 1 }}>Import {filterStockxData().length} StockX Sales</button>
+                 <button onClick={importStockxSales} disabled={filterStockxData().length === 0 || isImporting} style={{ flex: 2, padding: 12, background: 'linear-gradient(135deg, #00c165 0%, #009e52 100%)', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, cursor: isImporting ? 'wait' : 'pointer', opacity: (filterStockxData().length === 0 || isImporting) ? 0.5 : 1 }}>{isImporting ? `⏳ Importing ${filterStockxData().length} sales...` : `Import ${filterStockxData().length} StockX Sales`}</button>
                   </div>
                 </div>
               )}
@@ -4884,7 +4901,7 @@ Let me know if you need anything else.`;
                         setTimeout(() => importEbaySales(), 100);
                       }
                     }} disabled={filterEbayData().length === 0} style={{ flex: 1, padding: 12, background: 'rgba(239,68,68,0.2)', border: `1px solid ${c.red}`, borderRadius: 10, color: c.red, fontWeight: 700, cursor: 'pointer', opacity: filterEbayData().length === 0 ? 0.5 : 1 }}>🔄 Fresh Import</button>
-                    <button onClick={importEbaySales} disabled={filterEbayData().length === 0} style={{ flex: 2, padding: 12, background: 'linear-gradient(135deg, #e53238 0%, #c62828 100%)', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: filterEbayData().length === 0 ? 0.5 : 1 }}>Import {filterEbayData().length} eBay Sales</button>
+                  <button onClick={importEbaySales} disabled={filterEbayData().length === 0 || isImporting} style={{ flex: 2, padding: 12, background: 'linear-gradient(135deg, #e53238 0%, #c62828 100%)', border: 'none', borderRadius: 10, color: '#fff', fontWeight: 700, cursor: isImporting ? 'wait' : 'pointer', opacity: (filterEbayData().length === 0 || isImporting) ? 0.5 : 1 }}>{isImporting ? `⏳ Importing ${filterEbayData().length} sales...` : `Import ${filterEbayData().length} eBay Sales`}</button>
                   </div>
                 </div>
               )}
