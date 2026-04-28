@@ -38,7 +38,12 @@ export default async function handler(req, res) {
       process.env.SUPABASE_SERVICE_ROLE_KEY
     );
     
-    const expiresAt = new Date(Date.now() + (expires_in || 7200) * 1000);
+    // For StockX, cap at 12 hours per StockX docs
+    let effectiveExpiresIn = expires_in || 7200;
+    if (platform === 'stockx') {
+      effectiveExpiresIn = Math.min(effectiveExpiresIn, 43200);
+    }
+    const expiresAt = new Date(Date.now() + effectiveExpiresIn * 1000);
     
     const { error: upsertError } = await supabaseAdmin.from('user_tokens').upsert({
       user_id: user.id,
